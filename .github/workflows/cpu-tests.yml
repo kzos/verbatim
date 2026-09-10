@@ -1,0 +1,103 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# CPU only. There is deliberately no GPU runner here and there never will be on a
+# pull_request event: GitHub's own documentation warns that "forks of your public
+# repository can potentially run dangerous code on your self-hosted runner machine
+# by creating a pull request that executes the code in a workflow", and this
+# project's only unforgeable asset is the measurement rows its hardware produces.
+#
+# GitHub-hosted GPU runners are not an escape hatch either: they are Tesla T4
+# (SM75), which cannot run the gate on either of this project's dies, and they are
+# rented CI, which the project's standing cost condition forbids.
+#
+# What CI can therefore never tell you: what the tick budget is. What it can tell
+# you, entirely on a free runner: everything the scheduler does with it, and every
+# byte of both protocol surfaces, against a deterministic CPU stub pipeline.
+
+name: cpu-tests
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpu-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install dev tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: ruff check
+        run: ruff check .
+      - name: ruff format --check
+        run: ruff format --check .
+
+  protos:
+    name: codegen determinism
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install dev tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Vendored protos match their recorded checksums
+        run: sha256sum --check proto/riva/CHECKSUMS
+      - name: Regenerate the Riva stubs
+        run: ./scripts/gen_protos.sh
+      - name: Committed stubs must equal regenerated stubs
+        run: |
+          if ! git diff --exit-code -- src/verbatim/protocols/riva/_gen; then
+            echo "::error::Generated stubs differ from the committed ones."
+            echo "Run scripts/gen_protos.sh and commit the result."
+            exit 1
+          fi
+
+  test:
+    name: pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install the server and the harness
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install -e ./bench
+      - name: NeMo and torch must NOT be installed
+        # The whole CPU suite has to pass without a model runtime. If this fails,
+        # something has taken a hard dependency it was not supposed to take.
+        run: |
+          if pip show nemo-toolkit torch >/dev/null 2>&1; then
+            echo "::error::nemo-toolkit or torch is installed; the CPU suite must not need either."
+            exit 1
+          fi
+      - name: pytest
+        # `python -m pytest`, not bare `pytest`, so CI imports exactly the way a developer does.
+        # The two differ in whether the working directory lands on sys.path, and that difference
+        # is what let a broken cross-module import pass locally and fail here.
+        run: python -m pytest -q

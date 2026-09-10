@@ -1,0 +1,57 @@
+<!--
+Hand-written parser fixture for the environment collector's nvidia-smi parser.
+Its values are placeholders, never measured values: no value in it may ever
+be reported as measured. Nobody has captured a real nvidia-smi document here;
+do not treat this synthetic document as a captured one.
+-->
+<nvidia_smi_log>
+  <driver_version>550.144.03</driver_version>
+  <cuda_version>12.4</cuda_version>
+  <nvml_version>12.550.144.03</nvml_version>
+  <attached_gpus>1</attached_gpus>
+  <gpu id="00000000:01:00.0">
+    <product_name>Synthetic Test GPU</product_name>
+    <uuid>GPU-11111111-2222-3333-4444-555555555555</uuid>
+    <serial>1523822000000</serial>
+    <vbios_version>94.02.00.00.00</vbios_version>
+    <pci_bus_id>00000000:01:00.0</pci_bus_id>
+    <compute_cap>8.6</compute_cap>
+    <fb_memory_total_mib>49140 MiB</fb_memory_total_mib>
+    <pcie_gen_current>4</pcie_gen_current>
+    <pcie_gen_max>4</pcie_gen_max>
+    <pcie_width_current>16</pcie_width_current>
+    <pcie_width_max>16</pcie_width_max>
+    <persistence_mode>Enabled</persistence_mode>
+    <compute_mode>Default</compute_mode>
+    <mig_mode>Disabled</mig_mode>
+    <ecc_current>Enabled</ecc_current>
+    <ecc_pending>Enabled</ecc_pending>
+    <power_limit>300.00 W</power_limit>
+    <default_power_limit>300.00 W</default_power_limit>
+    <min_power_limit>100.00 W</min_power_limit>
+    <max_power_limit>300.00 W</max_power_limit>
+    <clocks>
+      <graphics_clock>1500 MHz</graphics_clock>
+      <mem_clock>1200 MHz</mem_clock>
+      <max_graphics_clock>1800 MHz</max_graphics_clock>
+      <applications_clocks>
+        <graphics_clock>1500 MHz</graphics_clock>
+      </applications_clocks>
+    </clocks>
+    <temperature>
+      <gpu_temp>45 C</gpu_temp>
+      <gpu_temp_slow_threshold>85 C</gpu_temp_slow_threshold>
+      <gpu_temp_max_threshold>92 C</gpu_temp_max_threshold>
+    </temperature>
+    <throttle_reasons>
+      <clocks_throttle_reason_gpu_idle>0</clocks_throttle_reason_gpu_idle>
+      <clocks_throttle_reason_sw_thermal_slowdown>0</clocks_throttle_reason_sw_thermal_slowdown>
+    </throttle_reasons>
+    <utilization>
+      <gpu_util>5 %</gpu_util>
+    </utilization>
+    <processes>
+    </processes>
+    <power_draw>50.00 W</power_draw>
+  </gpu>
+</nvidia_smi_log>

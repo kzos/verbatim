@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Environments
+.venv
+venv/
+env/
+.python-version
+
+# Test and tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Audio never enters git: corpora are manifests only.
+*.wav
+*.flac
+*.opus
+*.ogg
+*.mp3
+*.sph
+
+# Model weights are never redistributed: they are OpenMDW-1.1, not Apache-2.0.
+*.nemo
+*.ckpt
+*.safetensors
+*.pt
+*.bin
+
+# Local run output. Published rows live under rows/ and are added deliberately.
+results/
+*.nsys-rep
+*.sqlite
+*.qdrep
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

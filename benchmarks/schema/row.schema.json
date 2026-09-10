@@ -1,0 +1,598 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:verbatim:schema:vb-results:1",
+  "title": "vb-results/1 results row",
+  "description": "One measured row: the summary is never trusted, it is recomputed from sessions[].",
+  "type": "object",
+  "required": [
+    "schema",
+    "harness",
+    "arm",
+    "checkpoint",
+    "env",
+    "config",
+    "result",
+    "sessions",
+    "date"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "vb-results/1"
+    },
+    "harness": {
+      "type": "object",
+      "required": [
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "git": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "client_floor_p95_ms": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "arm": {
+      "type": "object",
+      "required": [
+        "name",
+        "surface"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "container_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "surface": {
+          "enum": [
+            "websocket",
+            "riva-grpc",
+            "openai-realtime",
+            "file"
+          ]
+        }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "required": [
+        "hf_id",
+        "revision",
+        "file_sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "hf_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "env": {
+      "type": "object",
+      "required": [
+        "die",
+        "sm",
+        "vram_gb",
+        "driver",
+        "cuda",
+        "nemo",
+        "torch",
+        "cpu_sets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "die": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sm": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vram_gb": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "driver": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cuda": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nemo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "torch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cpu_sets": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "required": [
+        "chunk_ms",
+        "frame_ms",
+        "corpus_id",
+        "manifest",
+        "seed",
+        "sessions",
+        "pacing_profile",
+        "paced_real_time",
+        "x_ms",
+        "endpoint",
+        "words",
+        "compute_dtype",
+        "att_context"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "chunk_ms": {
+          "type": "integer"
+        },
+        "frame_ms": {
+          "type": "integer"
+        },
+        "corpus_id": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "manifest": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "sessions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pacing_profile": {
+          "enum": [
+            "uniform",
+            "bursty"
+          ]
+        },
+        "paced_real_time": {
+          "type": "boolean"
+        },
+        "x_ms": {
+          "type": "integer"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "words": {
+          "type": "boolean"
+        },
+        "compute_dtype": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "att_context": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "latency_ms",
+        "sessions_started",
+        "sessions_completed",
+        "sessions_failed",
+        "chunks_sent",
+        "partials_received",
+        "finals_received",
+        "wall_clock_s",
+        "pacing_slip_ms"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "streams": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "streams_runs": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "latency_ms": {
+          "type": "object",
+          "required": [
+            "first_partial",
+            "partial",
+            "final"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "first_partial": {
+              "type": "object",
+              "required": [
+                "p50",
+                "p95",
+                "p99",
+                "n"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "p50": {
+                  "type": "number"
+                },
+                "p95": {
+                  "type": "number"
+                },
+                "p99": {
+                  "type": "number"
+                },
+                "n": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "partial": {
+              "type": "object",
+              "required": [
+                "p50",
+                "p95",
+                "p99",
+                "n"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "p50": {
+                  "type": "number"
+                },
+                "p95": {
+                  "type": "number"
+                },
+                "p99": {
+                  "type": "number"
+                },
+                "n": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "final": {
+              "type": "object",
+              "required": [
+                "p50",
+                "p95",
+                "p99",
+                "n"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "p50": {
+                  "type": "number"
+                },
+                "p95": {
+                  "type": "number"
+                },
+                "p99": {
+                  "type": "number"
+                },
+                "n": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "sessions_started": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sessions_completed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sessions_failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "chunks_sent": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partials_received": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "finals_received": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "wall_clock_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "pacing_slip_ms": {
+          "type": "object",
+          "required": [
+            "p50",
+            "p95",
+            "max"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "p50": {
+              "type": "number"
+            },
+            "p95": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            }
+          }
+        },
+        "invariance": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "hash_1": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "hash_32a": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "hash_32b": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "hash_max": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "equal": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        },
+        "eager_step_fraction": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "fraction_of_ceiling": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "stream_id",
+          "server_session_id",
+          "started_at_s",
+          "chunks",
+          "audio_s",
+          "first_partial_ms",
+          "final_ms",
+          "partial_ms",
+          "final_text",
+          "reference_text",
+          "error"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "stream_id": {
+            "type": "string"
+          },
+          "server_session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at_s": {
+            "type": "number"
+          },
+          "chunks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "audio_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "first_partial_ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "final_ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "partial_ms": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "partials_received": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "final_text": {
+            "type": "string"
+          },
+          "reference_text": {
+            "type": "string"
+          },
+          "words": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "w",
+                "s",
+                "e"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "w": {
+                  "type": "string"
+                },
+                "s": {
+                  "type": "integer"
+                },
+                "e": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "checksum": {
+      "type": "object",
+      "required": [
+        "algorithm",
+        "key_id",
+        "value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "hmac-sha256"
+        },
+        "key_id": {
+          "const": "vb-results-1"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "date": {
+      "type": "string"
+    }
+  }
+}

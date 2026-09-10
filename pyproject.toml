@@ -1,0 +1,87 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "verbatim"
+version = "0.0.1.dev0"
+description = "Multi-tenant tick-scheduled streaming ASR server for NVIDIA's cache-aware speech pipelines"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Zaheer Sheriff K", email = "zaheersheriff.k@gmail.com" }]
+keywords = ["asr", "streaming", "nemo", "riva", "grpc", "websocket"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+# Deliberately minimal for the skeleton. The server's model runtime (NeMo, torch)
+# is NOT installed by default -- see the [nemo] extra and docs/third_party.md.
+dependencies = [
+  "grpcio>=1.71,<2",
+  "protobuf>=5.29,<8",
+  "websockets>=15,<18",
+  "numpy>=1.26",
+  "soundfile>=0.12.1",
+]
+
+[project.optional-dependencies]
+# The model runtime. NOT installed by default: `pip install verbatim` gives you a
+# server skeleton and the protocol surfaces; `pip install 'verbatim[nemo]'` adds
+# the pipeline it wraps. Year 1 has exactly one model runtime and it is NeMo's.
+nemo = [
+  "nemo-toolkit[asr]>=3.0,<4",
+  "torch>=2.8",
+]
+dev = [
+  "grpcio-tools>=1.71,<2",
+  "pytest>=8.0",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/verbatim-asr/verbatim"
+Source = "https://github.com/verbatim-asr/verbatim"
+
+[project.scripts]
+verbatim = "verbatim.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/verbatim"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+  "cpu: runs anywhere, no GPU and no NeMo (the default)",
+  "gpu: requires an NVIDIA GPU; self-hosted runners only",
+  "slow: the gates; not run on every push",
+]
+filterwarnings = ["error::DeprecationWarning:verbatim.*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Only the protoc output is excluded; _gen/__init__.py is hand-written and is linted.
+# probes/ is excluded for a different reason: those scripts are the verbatim record of what was
+# actually run to produce the numbers in the README, and they are published so a reader can re-run
+# them. Reformatting them to satisfy a style rule would break the property that makes them worth
+# publishing, which is that they are the code that produced the result and not a tidied retelling.
+extend-exclude = ["src/verbatim/protocols/riva/_gen/riva", "probes"]
+# Markdown is documentation here, not source. Ruff would otherwise reformat Python fenced
+# in it, and the fenced blocks are illustrations for a reader rather than code to run.
+include = ["*.py", "*.pyi", "**/pyproject.toml"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]

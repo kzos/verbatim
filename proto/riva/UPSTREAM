@@ -1,0 +1,21 @@
+# Vendored protocol buffer definitions -- upstream pin.
+#
+# Do not edit the .proto files under proto/riva/proto/. They are copied verbatim
+# from upstream. To move the pin: change the commit below, re-download, run
+# scripts/gen_protos.sh, and commit the regenerated stubs in the same change.
+
+repository = https://github.com/nvidia-riva/common
+commit     = 268890b7286031a6d4950e34f7ce13ed0d4ce621
+fetched    = 2026-09-08
+licence    = MIT (see proto/riva/LICENSE and the SPDX header in every file)
+
+files:
+  riva/proto/riva_asr.proto     blob a60399c9af0ab897dd26fc1641f37cab499afe4d
+  riva/proto/riva_audio.proto   blob f1a4b17a5eaa35fa565e05d51644fe3c3260e1d6
+  riva/proto/riva_common.proto  blob 43ce2c805e7486dbe08a282dd0e10aab9bd40661
+
+Why this SHA and not the `stable` tag: `stable` is r2.19.0 (766a50d9, 2025-03-19)
+and does NOT carry `StreamingRecognizeRequest.runtime_config` / `force_eou`, the
+one field NVIDIA added specifically for cache-aware RNNT models. 268890b7 is the
+SHA that nvidia-riva/python-clients pins, which is what livekit-plugins-nvidia
+and Pipecat's nvidia STT service actually install.
