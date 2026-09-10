@@ -24,6 +24,7 @@ pytestmark = pytest.mark.cpu
 SERVER_MODULES = [
     "verbatim",
     "verbatim.cli",
+    "verbatim.serve",
     "verbatim.config",
     "verbatim.core",
     "verbatim.core.session",
@@ -47,6 +48,7 @@ SERVER_MODULES = [
     "verbatim.pipelines.nemo_compat",
     "verbatim.pipelines.fake",
     "verbatim.pipelines.registry",
+    "verbatim.pipelines.nemo_runtime",
     "verbatim.protocols",
     "verbatim.protocols.base",
     "verbatim.protocols.health",

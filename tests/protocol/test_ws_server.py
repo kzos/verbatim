@@ -467,3 +467,36 @@ async def test_a_pipeline_exception_becomes_an_error_frame() -> None:
     errors = [f for f in frames if f["type"] == "error"]
     assert len(errors) == 1
     assert errors[0]["code"] == "INTERNAL"
+
+
+class _StoppingEngine(_RecordingEngine):
+    """The stub engine as a reader sees it once `stop()` has begun: the tick wait
+    raises rather than waiting for a tick that will never come."""
+
+    async def wait_for_ticks(self, n: int) -> None:
+        self.log.append(("wait", n))
+        raise RuntimeError("engine tick loop is not running")
+
+
+async def test_a_reader_parked_in_back_pressure_when_the_engine_stops_aborts_cleanly() -> None:
+    """The reader's tick wait raises during shutdown; the session is aborted, the
+    client gets a clean close and no final, and nothing is reported as internal.
+
+    The inner engine keeps ticking, so a partial from audio it had already stepped may
+    precede the close; a real `stop()` delivers the last tick's partials the same way,
+    ahead of its end marker. A final or an error frame would be wrong here."""
+    inner = stub_engine(ring_seconds=0.5)
+    engine = _StoppingEngine(inner)
+    async with (
+        inner,
+        WsServer(engine, WsServerConfig(port=0)) as server,
+        connect(server.endpoint) as ws,
+    ):
+        assert (await _recv_json(ws))["type"] == "session"
+        await ws.send(b"\x00" * (2 * 16000 * 2))  # larger than the ring: the first feed is short
+        frames = await _collect_until_close(ws)
+        assert ws.close_code == 1000
+        await _settle(server)
+    assert [frame["type"] for frame in frames if frame["type"] != "partial"] == []
+    assert engine.calls("wait") == [1]
+    assert engine.calls("abort") == [0]

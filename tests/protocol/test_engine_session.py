@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import asynccontextmanager
 
 import numpy as np
 import pytest
@@ -274,15 +276,23 @@ async def test_audio_processed_s_comes_from_the_session_not_from_the_adapter() -
 
 @pytest.mark.asyncio
 async def test_a_step_exception_reaches_every_live_session_as_internal() -> None:
+    """The second step raises. Both sessions are fed while the thread is parked before
+    its first tick, so the step that fails has two live sessions to reach; fed after
+    the thread was running, the failing tick could land between the two feeds, and did
+    once in a soak under load."""
     pipeline = _FailingPipeline()
+    clock = _HeldClock()
     config = EngineConfig(chunk=CHUNK, buckets=(2,), edge_batch=1)
-    engine = Engine(config, pipeline, clock=ScaledMonotonicClock(100.0))
+    engine = Engine(config, pipeline, clock=clock)
     sessions = [engine.open_session(OPTIONS) for _ in range(2)]
     async with engine:
-        for session in sessions:
-            assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
-        consumers = [asyncio.create_task(_collect(session)) for session in sessions]
-        await engine.wait_for_ticks(2)
+        try:
+            await _until(lambda: clock.sleeps >= 1)
+            for session in sessions:
+                assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
+            consumers = [asyncio.create_task(_collect(session)) for session in sessions]
+        finally:
+            clock.open()  # released whatever happened above, so stop() can join the thread
         for consumer in consumers:
             with pytest.raises(VerbatimError) as raised:
                 await consumer
@@ -343,8 +353,11 @@ async def test_an_open_stream_failure_is_isolated_to_the_failing_session() -> No
         with pytest.raises(VerbatimError) as raised:
             await consumers[1]
         assert raised.value.code is ErrorCode.INTERNAL
+        # The healthy session ended itself, so its results run out on their own; they
+        # are awaited while the engine is still running, because stopping the engine
+        # the moment the failure arrives would cut them short at whatever tick that was.
+        healthy = await consumers[0]
     assert str(raised.value) == "open failed"
-    healthy = await consumers[0]
     assert [(hypothesis.text, hypothesis.is_final) for hypothesis in healthy] == [
         ("row", False),
         ("row", False),
@@ -511,14 +524,24 @@ async def test_an_idle_session_is_closed_with_deadline_exceeded_and_dropped() ->
 
 @pytest.mark.asyncio
 async def test_a_session_that_keeps_sending_is_not_closed_by_the_deadline() -> None:
-    engine = stub_engine(idle_timeout_s=0.5, clock=ScaledMonotonicClock(100.0))  # ~4 ticks
+    """One chunk every two ticks against a deadline of three starved ticks. The thread
+    is stepped one tick at a time on the held clock, so exactly one starved tick
+    separates the feeds whatever the machine is doing; on a real clock at a hundred
+    times, a stall of a few milliseconds between wake and feed reached the deadline."""
+    clock = _HeldClock()
+    engine = stub_engine(idle_timeout_s=0.5, clock=clock)  # 0.5 s is three ticks of 160 ms
     async with engine:
-        session = engine.open_session(OPTIONS)
-        consumer = asyncio.create_task(_collect(session))
-        for _ in range(6):
-            assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
-            await engine.wait_for_ticks(2)
-        session.end()
+        try:
+            await _until(lambda: clock.sleeps >= 1)  # parked before tick 1
+            session = engine.open_session(OPTIONS)
+            consumer = asyncio.create_task(_collect(session))
+            for _ in range(6):
+                assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
+                for _ in range(2):
+                    await _one_tick(engine, clock)
+            session.end()
+        finally:
+            clock.open()  # the drain runs freely, and stop() can join whatever happened
         hypotheses = await consumer
     assert hypotheses[-1].is_final
     assert hypotheses[-1].audio_processed_s == pytest.approx(6 * 0.16)
@@ -560,3 +583,130 @@ async def test_stop_does_not_block_the_event_loop_while_joining_the_tick_thread(
     task.cancel()
     assert elapsed >= 0.1, "the join returned before the step ended; nothing was measured"
     assert beats >= 5, f"the loop ran {beats} heartbeat(s) during a {elapsed:.2f} s join"
+
+
+class _HeldClock:
+    """Real time for `now`; every sleep to the next boundary blocks until the test
+    releases it, so the tick thread parks exactly where the test says. `open()` ends
+    the holding: every sleep from then on returns at once, so a thread parked when a
+    test fails is not left there for `stop()` to join forever."""
+
+    def __init__(self) -> None:
+        self._releases = threading.Semaphore(0)
+        self._open = False
+        self.sleeps = 0
+
+    def now(self) -> float:
+        return time.monotonic()
+
+    def sleep_until(self, deadline: float) -> None:
+        self.sleeps += 1
+        if not self._open:
+            self._releases.acquire()
+
+    def release(self) -> None:
+        self._releases.release()
+
+    def open(self) -> None:
+        self._open = True
+        self._releases.release()
+
+
+async def _until(predicate: Callable[[], bool], *, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        if time.monotonic() > deadline:
+            raise AssertionError("condition not reached in time")
+        await asyncio.sleep(0.005)
+
+
+async def _one_tick(engine: Engine, clock: _HeldClock) -> None:
+    """Release the parked thread for exactly one tick and wait for that tick's wake."""
+    wakes = engine._processed_wakes
+    clock.release()
+    await _until(lambda: engine._processed_wakes > wakes)
+
+
+@asynccontextmanager
+async def _held_engine() -> AsyncIterator[tuple[Engine, _HeldClock]]:
+    """A started engine whose thread has finished tick 1 and is parked in its sleep,
+    with tick 0's wake already processed on the loop. On exit the clock is opened and
+    the engine stopped whatever the test did, so a failed assertion is a failure and
+    not a process hung on the join of a thread parked in a sleep nobody releases."""
+    clock = _HeldClock()
+    config = EngineConfig(chunk=CHUNK, buckets=(1,), edge_batch=1)
+    engine = Engine(config, _StampingPipeline(), clock=clock)
+    await engine.start()
+    try:
+        await _until(lambda: clock.sleeps >= 1)
+        clock.release()
+        await _until(lambda: engine._processed_wakes >= 1)
+        await _until(lambda: clock.sleeps >= 2)
+        yield engine, clock
+    finally:
+        clock.open()
+        await asyncio.wait_for(engine.stop(), timeout=5.0)
+
+
+@pytest.mark.asyncio
+async def test_a_waiter_parked_for_ticks_is_released_when_the_engine_stops() -> None:
+    """A transport reader parked in back-pressure waits for ticks; once `stop()` has
+    begun, only one more wake will ever come from the thread. A waiter for more than
+    that must still be released, and told, or the server would never shut down."""
+    async with _held_engine() as (engine, clock):
+        waiter = asyncio.create_task(engine.wait_for_ticks(3))
+        await asyncio.sleep(0.05)
+        assert not waiter.done()
+        stopping = asyncio.create_task(engine.stop())
+        await asyncio.sleep(0.05)
+        assert not stopping.done(), "stop() joins the thread, which is parked in its sleep"
+        assert not waiter.done()
+        clock.release()  # the thread finishes tick 1, sends its last wake, and exits
+        await asyncio.wait_for(stopping, timeout=5.0)
+        with pytest.raises(RuntimeError, match="not running"):
+            await asyncio.wait_for(waiter, timeout=5.0)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_ticks_during_stop_raises_at_once() -> None:
+    async with _held_engine() as (engine, clock):
+        stopping = asyncio.create_task(engine.stop())
+        await asyncio.sleep(0.05)
+        assert not stopping.done()
+        with pytest.raises(RuntimeError, match="not running"):
+            await asyncio.wait_for(engine.wait_for_ticks(1), timeout=1.0)
+        clock.release()
+        await asyncio.wait_for(stopping, timeout=5.0)
+
+
+@pytest.mark.asyncio
+async def test_a_reader_parked_in_back_pressure_is_released_by_stop() -> None:
+    """Bench's probe, pinned: audio pending against a small ring, the reader parked in
+    `wait_for_ticks`, then `stop()`. The reader is released with the error the
+    transports already handle, and its next `feed` refuses the closed session."""
+    async with _held_engine() as (engine, clock):
+        session = engine.open_session(OPTIONS)
+        pending = b"\x00" * (OPTIONS.chunk_bytes * 40)
+        accepted = session.feed(pending)
+        assert 0 < accepted < len(pending), "the ring must be full for the reader to park"
+        outcomes: list[str] = []
+
+        async def reader() -> None:
+            try:
+                await engine.wait_for_ticks(1)
+            except RuntimeError as exc:
+                outcomes.append(f"released: {exc}")
+                return
+            outcomes.append("returned")
+
+        parked = asyncio.create_task(reader())
+        await asyncio.sleep(0.05)
+        assert not parked.done()
+        stopping = asyncio.create_task(engine.stop())
+        await asyncio.sleep(0.05)
+        clock.release()
+        await asyncio.wait_for(stopping, timeout=5.0)
+        await asyncio.wait_for(parked, timeout=5.0)
+        assert outcomes == ["released: engine tick loop is not running"]
+        with pytest.raises(VerbatimError, match="CLOSED"):
+            session.feed(pending[accepted:])
