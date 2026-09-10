@@ -198,14 +198,17 @@ so the code path is the variable:
 | path | precision | ragged lengths | lengths equalised | where they differ |
 |---|---|---:|---:|---|
 | example, `conformer_stream_step` | float32 | 38 in 2,939 | 1 in 2,939 | **all 38** at or after the last shared word |
-| **server, `CacheAwareRNNTPipeline`** | float32 | **6 in 2,939** | see the raw file | **none** at the tail; all 6 mid-sentence |
+| **server, `CacheAwareRNNTPipeline`** | float32 | **6 in 2,939** | **6 in 2,939** | **none** at the tail in either arm |
 | **server, `CacheAwareRNNTPipeline`** | **bfloat16** | **287 in 2,939** | **328 in 2,939** | 321 of 328 mid-sentence |
 
 Two things follow, and the second is larger than anything else on this page.
 
 **The tail effect was an artefact of the example buffer.** On the server's own path the count falls from
 38 to 6 and not one of the six is a tail difference, where all thirty-eight were. What remains is the
-ordinary numerical effect, at the same order as the offline runs.
+ordinary numerical effect, at the same order as the offline runs. The control makes it sharper still:
+padding every row to a common length changes the count **not at all**, 6 against 6, where on the example
+path the same control took 38 to 1. A control that removes an effect where it exists and removes nothing
+where it does not is the strongest form this comparison could take.
 
 **Reduced precision costs far more invariance than batch composition ever did.** At bfloat16 the same
 path diverges roughly forty-eight times as often, and **equalising row lengths does not reduce it**:
