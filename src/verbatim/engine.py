@@ -43,8 +43,9 @@ __all__ = ["Engine", "EngineSession", "stub_engine"]
 
 logger = logging.getLogger(__name__)
 
-# A test-harness input used only by ``stub_engine``. It is not a measurement.
+# Test-harness inputs used only by ``stub_engine``. Neither is a measurement.
 STUB_ENGINE_CLOCK_SCALE: Final = 100.0
+STUB_ENGINE_BUCKET: Final = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,7 +150,8 @@ class Engine(EngineHandle):
             return
 
         # A completed tick may have queued a wake that has not run yet. Drain it
-        # before appending shutdown markers so final rows retain FIFO order.
+        # before appending shutdown markers so final rows retain FIFO order. The same
+        # wake releases any waiter that parked after the thread's last one.
         self._wake()
         with self._lock:
             live = self._registry.by_state(
@@ -215,15 +217,22 @@ class Engine(EngineHandle):
             return handle
 
     async def wait_for_ticks(self, n: int) -> None:
-        """Wait for ``n`` further completed ticks using the per-tick wake."""
-        if self._dead:
-            raise RuntimeError("engine tick loop is not running")
+        """Wait for ``n`` further completed ticks using the per-tick wake.
+
+        Raises RuntimeError once the engine is stopping or its tick thread is gone. A
+        transport reader parked here in back-pressure is released by the thread's last
+        wake or by ``stop()``'s own, and told, rather than left waiting for a tick that
+        will never come; ``stop()`` sets ``_running`` false before it joins, so the
+        thread's last wake is enough to release a waiter of any count.
+        """
         if n < 0:
             raise ValueError(f"tick count must be >= 0, got {n!r}")
         if n == 0:
             return
         if self._thread is None or self._wake_event is None:
             raise RuntimeError("Engine.wait_for_ticks requires a started engine")
+        if self._dead or not self._running:
+            raise RuntimeError("engine tick loop is not running")
         target = self._processed_wakes + n
         event = self._wake_event
         while self._processed_wakes < target:
@@ -231,7 +240,7 @@ class Engine(EngineHandle):
             if self._processed_wakes >= target:
                 break
             await event.wait()
-            if self._dead:
+            if self._dead or not self._running:
                 raise RuntimeError("engine tick loop is not running")
 
     def _run_ticks(self) -> None:
@@ -416,7 +425,7 @@ def stub_engine(
     chunk = ChunkMode(chunk_ms)
     config = EngineConfig(
         chunk=chunk,
-        buckets=(bucket,) if bucket is not None else None,
+        buckets=(bucket if bucket is not None else STUB_ENGINE_BUCKET,),
         ring_seconds=ring_seconds,
         idle_timeout_s=idle_timeout_s,
     )

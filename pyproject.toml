@@ -52,7 +52,7 @@ Homepage = "https://github.com/verbatim-asr/verbatim"
 Source = "https://github.com/verbatim-asr/verbatim"
 
 [project.scripts]
-verbatim = "verbatim.cli:main"
+verbatim = "verbatim.cli:console_main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/verbatim"]

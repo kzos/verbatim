@@ -33,10 +33,6 @@ __all__ = [
 VALID_CHUNK_MS: Final = (80, 160, 560, 1120)
 SAMPLE_RATE_HZ: Final = 16000
 
-#: Placeholder bucket used when neither buckets nor a calibrated ceiling is given.
-#: This is a CPU-test convenience default, not a measurement of any GPU.
-_DEFAULT_BUCKET: Final = (8,)
-
 
 @dataclass(frozen=True, slots=True)
 class ChunkMode:
@@ -67,13 +63,21 @@ class EngineConfig:
 
     The bucket list defaults to a single bucket at the calibrated ceiling -- the
     fixed-shape policy: at any occupancy every tick replays the same shape. Elastic
-    buckets (``n > 1``) are opt-in via ``elastic_buckets=True``.
+    buckets (``n > 1``) are opt-in via ``elastic_buckets=True``. One of ``buckets``
+    and ``calibrated_ceiling`` is required: there is no placeholder bucket, because a
+    bucket nobody measured would otherwise reach a published row looking valid. The
+    CPU test harness passes its own through ``stub_engine``.
 
     ``calibrated_ceiling`` is supplied from a measurement row for this GPU and mode;
     there is no default and none may be invented, because a ceiling this project did
     not measure is a number this project does not have. When it is ``None`` the
     admission controller has no ceiling and rejects nothing on that basis (slot
     capacity still binds).
+
+    ``pad_pool`` is either 0, one persistent pad row per steady row, or at least the
+    largest bucket. Anything between is refused: a steady batch that cannot fill its
+    own shape changes shape with occupancy, which is a batch invariance break by
+    configuration.
 
     ``pipeline`` names a factory in ``verbatim.pipelines.registry``; the default is
     the CPU fake, so no configuration silently loads a model. ``stop_history_eou_ms``
@@ -105,14 +109,15 @@ class EngineConfig:
     def __post_init__(self) -> None:
         buckets = self.buckets
         if buckets is None:
-            # The default is n = 1, B_1 = ceiling(mode). Without a calibration
-            # there is no ceiling, so fall back to a placeholder bucket: a
-            # CPU-test convenience, explicitly not a measurement.
-            buckets = (
-                (self.calibrated_ceiling,)
-                if self.calibrated_ceiling is not None
-                else _DEFAULT_BUCKET
-            )
+            # The default is n = 1, B_1 = ceiling(mode). Without a calibration there
+            # is no ceiling and no bucket: nothing here invents one.
+            if self.calibrated_ceiling is None:
+                raise ConfigError(
+                    "EngineConfig has no bucket: pass buckets=(B,) or calibrated_ceiling=N. "
+                    "A server's bucket is a measured number and none is invented here; "
+                    "the CPU test harness passes its own through stub_engine"
+                )
+            buckets = (self.calibrated_ceiling,)
             object.__setattr__(self, "buckets", buckets)
         if len(buckets) == 0:
             raise ConfigError("buckets must be non-empty")
@@ -125,6 +130,15 @@ class EngineConfig:
             raise ConfigError(f"edge_batch must be >= 1, got {self.edge_batch!r}")
         if self.pad_pool < 0:
             raise ConfigError(f"pad_pool must be >= 0, got {self.pad_pool!r}")
+        if 0 < self.pad_pool < max(buckets):
+            raise ConfigError(
+                f"pad_pool={self.pad_pool} cannot hold the steady shape: the largest bucket is "
+                f"{max(buckets)}, so the steady batch needs up to {max(buckets)} pad rows "
+                f"(one live session leaves {max(buckets) - 1} to fill, none leaves all "
+                f"{max(buckets)}). A steady batch that cannot fill its shape changes shape "
+                "with occupancy, which is a batch invariance break by configuration. Pass "
+                f"pad_pool=0 (one pad row per steady row) or at least {max(buckets)}"
+            )
         if self.drain_margin < 0:
             raise ConfigError(f"drain_margin must be >= 0, got {self.drain_margin!r}")
         if self.max_graphs < 1:
@@ -160,10 +174,20 @@ class EngineConfig:
         return self.pad_pool if self.pad_pool > 0 else max(self.buckets)
 
     @property
+    def edge_pad_rows(self) -> int:
+        """The most one-shot pad rows in flight during one edge step: an edge batch
+        holds at least one real final, so at most ``edge_batch - 1`` pads. They take
+        NeMo slots for the duration of the step, and the slot table reserves them."""
+        return self.edge_batch - 1
+
+    @property
     def num_slots(self) -> int:
-        """``max(buckets) + pad_pool + edge_batch + drain_margin``."""
+        """NeMo slots the pipeline must have, term by term: live sessions up to the
+        largest bucket, the persistent steady pad rows, the edge pad rows in flight
+        during an edge step, and ``drain_margin`` spare slots so NeMo's table is never
+        exactly full. Each term is named so none is incidental to another."""
         assert self.buckets is not None
-        return max(self.buckets) + self.effective_pad + self.edge_batch + self.drain_margin
+        return max(self.buckets) + self.effective_pad + self.edge_pad_rows + self.drain_margin
 
     @property
     def budget_ms(self) -> float:

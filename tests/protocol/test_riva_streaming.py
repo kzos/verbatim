@@ -522,3 +522,31 @@ async def test_a_pipeline_exception_aborts_with_internal() -> None:
             await _collect(server.target, requests)
     assert excinfo.value.code() == grpc.StatusCode.INTERNAL
     assert excinfo.value.details() == "boom"
+
+
+class _StoppingEngine(_RecordingEngine):
+    """The stub engine as a reader sees it once `stop()` has begun."""
+
+    async def wait_for_ticks(self, n: int) -> None:
+        self.log.append(("wait", n))
+        raise RuntimeError("engine tick loop is not running")
+
+
+async def test_a_reader_parked_in_back_pressure_when_the_engine_stops_ends_the_stream() -> None:
+    """The reader's tick wait raises during shutdown: the session is aborted and the
+    stream ends with no final and no status but OK, the same rule as the WebSocket.
+
+    The inner engine keeps ticking, so a partial from audio it had already stepped may
+    precede the end; a real `stop()` delivers the last tick's partials the same way,
+    ahead of its end marker. Only a final would be wrong here."""
+    inner = stub_engine(ring_seconds=0.5)
+    engine = _StoppingEngine(inner)
+    async with inner, RivaServer(engine, RivaServerConfig(port=0)) as server:
+        # `_collect` raises on any status but OK, so completing it asserts that a
+        # stopping engine is reported as neither INTERNAL nor UNKNOWN.
+        responses = await _collect(
+            server.target, [_config_message(), _audio_message(b"\x00" * (2 * 16000 * 2))]
+        )
+    assert _finals(responses) == []
+    assert engine.calls("wait") == [1]
+    assert engine.calls("abort") == [0]

@@ -78,6 +78,11 @@ class TickLoop:
         # Warm-up: pad rows hold slots for the life of the process and are never shed.
         self._pad_count = config.effective_pad
         self._slots.reserve(self._pad_count)
+        # Edge pad rows are one-shot, but the slots they take during an edge step are
+        # real. Reserving the most that can be in flight at once keeps `free()` the
+        # truth, so admission never lends those slots to a session.
+        if config.edge_pad_rows > 0:
+            self._slots.reserve(config.edge_pad_rows)
         # The idle deadline in ticks. A live session starved for this many consecutive
         # ticks is closed with DEADLINE_EXCEEDED in the collect phase, where its slot
         # is held. Counted on the engine's clock, so both transports inherit it

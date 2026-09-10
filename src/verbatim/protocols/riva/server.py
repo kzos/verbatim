@@ -148,14 +148,21 @@ class RivaSpeechRecognitionServicer(riva_asr_pb2_grpc.RivaSpeechRecognitionServi
                             "audio before streaming_config"
                         )
                     pending = bytes(request.audio_content)
-                    while pending:
-                        accepted = handle.feed(pending)
-                        pending = pending[accepted:]
-                        if pending:
-                            # The ring is full: hold the remainder and stop reading
-                            # the request stream until a tick has drained it, so
-                            # HTTP/2 flow control slows the client down.
-                            await self._engine.wait_for_ticks(1)
+                    try:
+                        while pending:
+                            accepted = handle.feed(pending)
+                            pending = pending[accepted:]
+                            if pending:
+                                # The ring is full: hold the remainder and stop reading
+                                # the request stream until a tick has drained it, so
+                                # HTTP/2 flow control slows the client down.
+                                await self._engine.wait_for_ticks(1)
+                    except (VerbatimError, RuntimeError):
+                        # The session is over from the engine's side: a step failure,
+                        # the idle deadline, or the engine stopping under a parked
+                        # reader. The handler's result stream carries the outcome.
+                        handle.abort()
+                        return
                 # Unknown oneof branches are ignored per proto3 semantics.
             if handle is None:
                 opened.set_result(None)

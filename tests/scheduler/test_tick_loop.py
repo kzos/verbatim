@@ -177,7 +177,8 @@ def test_slot_accounting_reconciles_over_a_long_run() -> None:
         loop.run_tick()
     live = sum(1 for s in open_sessions.values() if s.state is not SessionState.CLOSED)
     assert live == loop.registry.live
-    assert loop.slots.reserved == loop.registry.live + loop.scheduler.config.effective_pad
+    config = loop.scheduler.config
+    assert loop.slots.reserved == loop.registry.live + config.effective_pad + config.edge_pad_rows
 
 
 def test_tick_stats_are_recorded_per_tick() -> None:
@@ -190,8 +191,8 @@ def test_tick_stats_are_recorded_per_tick() -> None:
 
 
 def test_uncalibrated_loop_never_overfills_the_steady_batch() -> None:
-    config = EngineConfig(chunk=CHUNK)
-    pipeline = FakePipelineAdapter(CHUNK, buckets=config.buckets or (8,))
+    config = EngineConfig(chunk=CHUNK, buckets=(8,))
+    pipeline = FakePipelineAdapter(CHUNK, buckets=(8,))
     loop = TickLoop(config, pipeline, SessionRegistry(), clock=SimulatedClock())
     rng = np.random.default_rng(19)
     for session_id in range(1, 13):
@@ -263,7 +264,7 @@ def test_a_step_failure_fails_and_closes_every_live_session() -> None:
     assert all(str(error) == "step failed" for error in errors.values())
     assert all(session.state is SessionState.CLOSED for session in sessions)
     assert loop.registry.live == 0
-    assert loop.slots.reserved == config.effective_pad
+    assert loop.slots.reserved == config.effective_pad + config.edge_pad_rows
     assert sorted(pipeline.closed) == [1, 2, 3]
     # Nothing is fed again and no second error is queued.
     assert loop.run_tick() == []
@@ -285,7 +286,8 @@ def test_a_session_whose_open_fails_is_closed_in_the_same_tick_and_never_stepped
     assert dict(loop.drain_errors())[1].code is ErrorCode.INTERNAL
     assert session.state is SessionState.CLOSED
     assert 1 not in loop.registry
-    assert loop.slots.reserved == config.effective_pad + 1  # only the healthy session
+    # Only the healthy session, over the steady and edge pad rows.
+    assert loop.slots.reserved == config.effective_pad + config.edge_pad_rows + 1
     assert pipeline.closed == [1]
     assert 1 not in pipeline.stepped
     for _ in range(3):
@@ -308,7 +310,7 @@ def test_a_draining_session_whose_final_was_consumed_outside_the_loop_is_closed(
     assert loop.run_tick() == []
     assert session.state is SessionState.CLOSED
     assert 1 not in loop.registry
-    assert loop.slots.reserved == config.effective_pad
+    assert loop.slots.reserved == config.effective_pad + config.edge_pad_rows
     assert pipeline.closed == [1]
 
 

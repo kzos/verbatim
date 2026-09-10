@@ -26,7 +26,7 @@ def _config(**overrides) -> EngineConfig:
 
 def test_capacity_is_the_configured_num_slots() -> None:
     config = _config()
-    assert config.num_slots == 16 + 16 + 8 + 8
+    assert config.num_slots == 16 + 16 + 7 + 8  # bucket, steady pads, edge pads, margin
     assert SlotTable(config.num_slots).capacity == config.num_slots
 
 
@@ -57,8 +57,9 @@ def test_pad_rows_hold_slots_for_the_process_lifetime() -> None:
         SessionRegistry(),
         clock=SimulatedClock(),
     )
-    # Pads are reserved at warm-up, before any session exists.
-    assert loop.slots.reserved == config.effective_pad
+    # Pads are reserved at warm-up, before any session exists: the steady pad rows and
+    # the edge pad rows that can be in flight during one edge step.
+    assert loop.slots.reserved == config.effective_pad + config.edge_pad_rows
     session = Session(1, CHUNK)
     session.configure()
     assert loop.admit_session(session).admitted
@@ -67,4 +68,25 @@ def test_pad_rows_hold_slots_for_the_process_lifetime() -> None:
     loop.run_for(3)
     assert session.state.value == "CLOSED"
     # The drain released the session's slot; the pads were never released.
-    assert loop.slots.reserved == config.effective_pad
+    assert loop.slots.reserved == config.effective_pad + config.edge_pad_rows
+
+
+def test_edge_pad_rows_are_reserved_at_warm_up_so_free_is_the_truth() -> None:
+    """An edge batch of eight holds at most seven one-shot pad rows, and they take NeMo
+    slots for the step. The table reserves them up front, so `free()` never counts a
+    slot an edge step is about to use, and the sum of the named terms is the capacity."""
+    config = _config(edge_batch=8)
+    loop = TickLoop(
+        config,
+        FakePipelineAdapter(CHUNK, buckets=(16,)),
+        SessionRegistry(),
+        clock=SimulatedClock(),
+    )
+    assert config.edge_pad_rows == 7
+    assert loop.slots.reserved == config.effective_pad + 7
+    assert loop.slots.free() == max(config.buckets or ()) + config.drain_margin
+    single = _config(edge_batch=1)
+    loop = TickLoop(
+        single, FakePipelineAdapter(CHUNK, buckets=(16,)), SessionRegistry(), clock=SimulatedClock()
+    )
+    assert loop.slots.reserved == single.effective_pad
