@@ -269,3 +269,20 @@ def test_config_response_filters_by_model_name() -> None:
     assert [c.model_name for c in filtered.model_config] == ["b-stub"]
     with pytest.raises(NotFound):
         config_response(served, model_name_filter="nope")
+
+
+def test_endpointing_silence_rides_on_the_session_options() -> None:
+    config = riva_asr_pb2.RecognitionConfig(encoding=riva_audio_pb2.AudioEncoding.LINEAR_PCM)
+    config.endpointing_config.stop_history_eou = 320
+    session = options_from_config(
+        config, interim_results=True, request_id="r", served_models=("verbatim-stub",)
+    )
+    assert session.stop_history_eou_ms == 320
+    assert session.options.stop_history_eou_ms == 320
+    default = options_from_config(
+        riva_asr_pb2.RecognitionConfig(encoding=riva_audio_pb2.AudioEncoding.LINEAR_PCM),
+        interim_results=True,
+        request_id="r",
+        served_models=("verbatim-stub",),
+    )
+    assert default.options.stop_history_eou_ms == DEFAULT_STOP_HISTORY_EOU_MS

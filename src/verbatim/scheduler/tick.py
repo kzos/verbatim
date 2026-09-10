@@ -238,11 +238,12 @@ class TickLoop:
                     frame = session.next_frame()
                     if frame is None:
                         if session.state is SessionState.DRAINING:
-                            # The final frame already went out on an earlier tick without
-                            # a close: `open_stream` raised on a frame that was both first
-                            # and last, which skips the closing list below. The slot
-                            # bookkeeping now runs its normal close path. Reached by
-                            # test_a_first_and_last_frame_whose_open_fails_is_closed_next_tick.
+                            # A DRAINING session whose final frame was already consumed
+                            # without a close. No tick-loop path produces this today:
+                            # a failed open closes in its own tick and a failed step
+                            # closes every live session. Kept as a safety net so the
+                            # state can never leak a slot; the test that reaches it
+                            # consumes the final frame through the session directly.
                             closing.append(session)
                         else:
                             # STARVED: not scheduled, slot kept, no synthetic audio inserted.
@@ -259,11 +260,17 @@ class TickLoop:
                             try:
                                 self._pipeline.open_stream(frame.stream_id, session.options)
                             except Exception as exc:
+                                # The never-opened-stream decision: a session whose open
+                                # failed never steps. NeMo has no state for it, so any
+                                # frame of it, including the synthetic abort frame, would
+                                # dereference None inside the batch and fail everyone.
+                                # It closes in this tick; its transport gets the error.
                                 self._errors.setdefault(
                                     frame.stream_id,
                                     VerbatimError(str(exc), ErrorCode.INTERNAL),
                                 )
                                 session.begin_draining(aborted=True)
+                                closing.append(session)
                                 continue
                         if frame.is_last:
                             final.append(frame)
@@ -276,10 +283,6 @@ class TickLoop:
                 if lock is not None:
                     lock.release()
 
-            step_ms = _cost(self._pipeline, "step_ms")
-            edge_step_ms = _cost(self._pipeline, "edge_step_ms")
-            edge_ms = edge_step_ms * len(plan.edge_batches)
-
             # The step runs without the lock: holding a non-reentrant engine lock
             # across a whole pipeline batch would deadlock the first tick, and even if
             # it did not it would make every `feed()` on the asyncio loop wait for a
@@ -288,6 +291,12 @@ class TickLoop:
             edge_rows: list[list[StepResult]] = []
             for batch in plan.edge_batches:
                 edge_rows.append(self._pipeline.transcribe_step(batch, keep_all_outputs=True))
+
+            # Costs are read after the steps, so an adapter that measures its own
+            # wall time reports this tick's, not the previous tick's.
+            step_ms = _cost(self._pipeline, "step_ms")
+            edge_step_ms = _cost(self._pipeline, "edge_step_ms")
+            edge_ms = edge_step_ms * len(plan.edge_batches)
 
             def _stamp(rows: list[StepResult], *, eager: bool) -> list[StepResult]:
                 """Stamp each real row from the frame that produced it: the session's own

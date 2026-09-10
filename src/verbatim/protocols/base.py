@@ -66,6 +66,9 @@ class SessionOptions:
     interim_results: bool = True
     word_timestamps: bool = False
     model: str = ""
+    #: End-of-utterance silence in milliseconds for this session, or None for the
+    #: engine default. Carried into NeMo's per-stream request options by the adapter.
+    stop_history_eou_ms: int | None = None
 
     def __post_init__(self) -> None:
         """Raise InvalidArgument for a chunk_ms outside VALID_CHUNK_MS, naming the
@@ -74,6 +77,12 @@ class SessionOptions:
         if self.chunk_ms not in VALID_CHUNK_MS:
             valid = ", ".join(str(v) for v in VALID_CHUNK_MS)
             raise InvalidArgument(f"invalid chunk_ms {self.chunk_ms!r}: must be one of {valid}")
+        if self.stop_history_eou_ms is not None and (
+            isinstance(self.stop_history_eou_ms, bool) or self.stop_history_eou_ms < 0
+        ):
+            raise InvalidArgument(
+                f"invalid stop_history_eou_ms {self.stop_history_eou_ms!r}: must be >= 0"
+            )
 
     @property
     def chunk_samples(self) -> int:

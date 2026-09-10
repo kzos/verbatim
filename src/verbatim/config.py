@@ -75,6 +75,12 @@ class EngineConfig:
     not measure is a number this project does not have. When it is ``None`` the
     admission controller has no ceiling and rejects nothing on that basis (slot
     capacity still binds).
+
+    ``pipeline`` names a factory in ``verbatim.pipelines.registry``; the default is
+    the CPU fake, so no configuration silently loads a model. ``stop_history_eou_ms``
+    is the end-of-utterance silence NeMo's endpointer waits for when a session does
+    not carry its own; 0 disables endpointing and a final then comes only at
+    half-close.
     """
 
     chunk: ChunkMode
@@ -87,6 +93,8 @@ class EngineConfig:
     calibrated_ceiling: int | None = None
     ring_seconds: float = 3.0
     elastic_buckets: bool = False
+    pipeline: str = "fake"
+    stop_history_eou_ms: int = 800
 
     def __post_init__(self) -> None:
         buckets = self.buckets
@@ -127,6 +135,10 @@ class EngineConfig:
             )
         if self.elastic_buckets and len(buckets) == 1:
             raise ConfigError("elastic_buckets requires more than one bucket")
+        if not self.pipeline:
+            raise ConfigError("pipeline must name a registered adapter")
+        if isinstance(self.stop_history_eou_ms, bool) or self.stop_history_eou_ms < 0:
+            raise ConfigError(f"stop_history_eou_ms must be >= 0, got {self.stop_history_eou_ms!r}")
         assert_graph_budget({self.chunk.ms: buckets}, self.max_graphs)
 
     @property
