@@ -105,20 +105,23 @@ promised date — that is for triage once an entry becomes an issue.
 ## Scheduler
 
 - `src/verbatim/scheduler/tick.py::TickLoop.run_tick` — **this entry was wrong and is kept as a
-  correction.** It claimed the branch handling `frame is None` while a session is `DRAINING` was
-  unreachable and should be deleted. It is reached when `open_stream` fails on a frame that is both
-  first and last, which skips the closing list, so the next tick finds the session draining with no
-  frame; deleting the branch leaks its slot and registry entry. It was also reached after a failed step
-  until that path began closing its sessions in the failing tick, which is why an entry that once named
-  two paths now names one. The branch stays and is covered by
-  `test_a_first_and_last_frame_whose_open_fails_is_closed_next_tick`.
-- `src/verbatim/scheduler/tick.py::TickLoop.run_tick` — when `open_stream` raises on a first frame that
-  is **not** also the last, the error is recorded, the session is put into DRAINING as aborted and the
-  frame is dropped. On the next tick the session is DRAINING with no frame, so the loop steps a
-  synthetic abort for a stream the pipeline never opened. Nothing is wrong with the output today, since
-  the abort suppresses emission, but stepping a stream that was never opened is a contract the real NeMo
-  adapter will not honour. Decide it in the adapter brief: either do not open the stream at all and
-  close the session outright, or open it lazily on first successful audio.
+  correction, and it has now been narrowed twice.** It first claimed the branch handling `frame is
+  None` while a session is `DRAINING` was unreachable and should be deleted; it was reached both after
+  a failed step and after `open_stream` failed on a frame that was both first and last. Closing failed
+  sessions in the failing tick removed the first path, and closing a session whose open failed in its
+  own tick removed the second, so **no tick-loop path produces the state today**. The branch stays as a
+  safety net, because reaching it and deleting it leaks a slot and a registry entry, and the test that
+  covers it now builds the state through the session directly rather than through a loop path that no
+  longer exists. An entry that once said "delete this" now says "keep this and never let a path reach
+  it", which is the opposite conclusion from the same code.
+- ~~`src/verbatim/scheduler/tick.py::TickLoop.run_tick` — when `open_stream` raises on a first frame
+  that is **not** also the last, the loop steps a synthetic abort on the next tick for a stream the
+  pipeline never opened. Harmless while the abort suppresses emission, but not a contract the real NeMo
+  adapter will honour. Decide it in the adapter brief: close the session outright, or open it lazily on
+  first successful audio.~~ **Resolved: close outright.** A session whose open fails now closes in the
+  same tick and no frame of it ever reaches the adapter. Lazy opening was rejected because the failure
+  that reaches `open_stream` is NeMo's `create_state` refusing a per-stream option, and raising that
+  inside a batch step would fail every session in the batch rather than the one that asked for it.
 
 - `src/verbatim/config.py::EngineConfig` (`_DEFAULT_BUCKET`, `buckets: tuple[int, ...] | None`) — when
   neither `buckets` nor `calibrated_ceiling` is supplied, the config silently falls back to a

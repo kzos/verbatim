@@ -4,12 +4,15 @@
 
 > ### There is no working server here yet
 >
-> The recognition pipeline is not wired, the transports are not on the engine, and the command-line tool
-> prints `not implemented yet` when you run it. What is finished and worth your time is the **evidence**:
-> a measured account of how batch composition changes a transcript and a word's timing on stock NeMo,
-> with the probe scripts under [`probes/`](probes/) so you can re-run every number rather than believe
-> it. The benchmark harness and its frozen methodology are real too. The server is the argument those
-> measurements make, and it is being built in the open.
+> The recognition pipeline has an adapter now, tested against a fake standing at NeMo's own seam and
+> never yet run against a GPU. Nothing on the wire uses it: the transports are still not on the engine,
+> and the command-line tool prints `not implemented yet` when you run it.
+>
+> What is finished and worth your time is the **evidence**: a measured account of how batch composition
+> changes a transcript and a word's timing on stock NeMo, with the probe scripts under
+> [`probes/`](probes/) so you can re-run every number rather than believe it. The benchmark harness and
+> its frozen methodology are real too. The server is the argument those measurements make, and it is
+> being built in the open.
 
 **License:** Apache-2.0 (see `LICENSE`)
 
