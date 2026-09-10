@@ -15,8 +15,9 @@ implemented. What they establish is that the defect this server is being built t
 |---|---|---|
 | `divergence_hunt.py` | Does batch composition change the transcript, offline, on LibriSpeech? | 6 in 5,559 across both test splits |
 | `divergence_hunt_fleurs.py` | Does it happen on a second corpus? | 1 in 647 on FLEURS `en_us` |
-| `streaming_divergence_repro.py` | Does it happen on the cache-aware **streaming** path? | 38 in 2,939, every one at the tail |
-| `streaming_divergence_controlled.py` | Does padding every row to one length remove it? | 38 becomes 1 |
+| `streaming_divergence_repro.py` | Does it happen on the cache-aware **streaming** path? | 38 in 2,939, every one at the tail — **but see the next row: this is NeMo's example path, not the server's** |
+| `streaming_divergence_controlled.py` | Does padding every row to one length remove it? | 38 becomes 1, on the example path |
+| `streaming_divergence_pipeline.py` | The same question on the path a **server** runs, `CacheAwareRNNTPipeline` | float32: **6 in 2,939, none at the tail**. bfloat16: **287**, and equalising lengths does not help (**328**) |
 | `deep_divergence.py` | Which channel does it actually reach: text, tokens, timestamps or score? | word timing 35, text 4, of 2,912 |
 | `negative_control.py` | Is any of this just run-to-run noise? Does row position matter? | both arms zero |
 | `duration_mechanism.py` | Is the length-coupling explanation a measured relationship? | only weakly; see the caveat below |

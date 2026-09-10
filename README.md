@@ -177,11 +177,41 @@ are** — and padding every row to a common length, which is what fixed-shape ba
 
 That leaves two distinct effects, and the common one is not the exotic one:
 
-- **Length coupling**, 38 in 2,939, on the path a server actually runs.
+- **Length coupling**, 38 in 2,939, on the *example* path. **Not on the path a server runs** — see below.
 - **Numerical perturbation**, 1 in 2,939, which survives the length control. The single
   divergence that survives is the same utterance, with the same two hypotheses, that the offline run
   found. Two decode paths reaching the same pair of wrong answers for the same token is better evidence
   for that effect than either run alone.
+
+### Correction, 2026-09-11: that 38 was measured on the wrong code path, and the real answer is smaller
+
+The table above was produced through `CacheAwareStreamingAudioBuffer` and `conformer_stream_step`, which
+is NeMo's shipped **example** path. This server is built on `nemo.collections.asr.inference`, a different
+implementation: it computes a per-stream right padding for every frame and passes those paddings **only
+for the final sub-batch**, splitting finals away from the steady rows. A tick server's steady batch is
+therefore uniform in length by construction, so the length coupling above **cannot happen in it**.
+
+Re-run against `CacheAwareRNNTPipeline` directly — same checkpoint, batch, corpus and attention context,
+so the code path is the variable:
+
+| path | precision | ragged lengths | lengths equalised | where they differ |
+|---|---|---:|---:|---|
+| example, `conformer_stream_step` | float32 | 38 in 2,939 | 1 in 2,939 | **all 38** at or after the last shared word |
+| **server, `CacheAwareRNNTPipeline`** | float32 | **6 in 2,939** | see the raw file | **none** at the tail; all 6 mid-sentence |
+| **server, `CacheAwareRNNTPipeline`** | **bfloat16** | **287 in 2,939** | **328 in 2,939** | 321 of 328 mid-sentence |
+
+Two things follow, and the second is larger than anything else on this page.
+
+**The tail effect was an artefact of the example buffer.** On the server's own path the count falls from
+38 to 6 and not one of the six is a tail difference, where all thirty-eight were. What remains is the
+ordinary numerical effect, at the same order as the offline runs.
+
+**Reduced precision costs far more invariance than batch composition ever did.** At bfloat16 the same
+path diverges roughly forty-eight times as often, and **equalising row lengths does not reduce it**:
+328 against 287. The control that took the example path from 38 to 1 does nothing here. bfloat16 is the
+compute dtype in NeMo's own shipped example configuration, so a server on that default would not get
+batch invariance from pinning shapes alone. **What this server should do about that is unmeasured**, and
+it is the open question this page cannot yet answer.
 
 ### Word timestamps are the channel this reaches most often
 
@@ -250,11 +280,12 @@ narrow: *transcript* divergence is architecture-dependent, and nothing here says
 timestamps on Blackwell.
 
 **Length coupling reproduces at exactly 38 on both cards**, which is what a deterministic algorithmic
-artefact looks like rather than an arithmetic one. Two caveats travel with that number. The probe drives
-NeMo's example streaming path, not the inference pipeline this server is designed to wrap, and those are
-different code with different boundary handling — see the honesty note below. And the two result files
-carry no machine stamp, so they are indistinguishable except by elapsed time; the runs were separate but
-the artefacts cannot prove it, and the next run fixes that.
+artefact looks like rather than an arithmetic one — **on the example path**. As of 2026-09-11 that
+caveat is no longer open: the effect was measured against the inference pipeline this server actually
+wraps and does not survive there, because a tick server's steady batch has no ragged lengths to couple.
+See the correction above. One caveat still travels with the 38-against-38 comparison: those two result
+files carry no machine stamp, so they are indistinguishable except by elapsed time. The runs were
+separate but the artefacts cannot prove it, and every probe stamps its stack now.
 
 ### Fixed shape, different neighbours
 
@@ -277,18 +308,23 @@ against a batch of 32, which changes the shape — moved text twice and word tim
 That is the first evidence that fixed-shape batching is sufficient at the level of output rather than of
 encoder floats. It is one card, one checkpoint, the offline path, and 1,024 utterances.
 
-### An honesty note about which code path this measures
+### An honesty note about which code path this measures, and how it was resolved
 
-The streaming probes drive NeMo's example streaming path, stepping the model chunk by chunk through the
-streaming audio buffer. This server is designed to wrap a different implementation in the same
+The streaming probes in the tables above drive NeMo's example streaming path, stepping the model chunk by
+chunk through the streaming audio buffer. This server wraps a different implementation in the same
 repository, `nemo.collections.asr.inference`, which computes per-stream right paddings and carries an
 explicit flag for whether tokens past the clip boundary are returned. Those are different code with
 different boundary handling.
 
-So the 38 is a real measurement of the example path and **not** evidence about the pipeline this server
-wraps. The re-run against the inference pipeline is the next experiment. Until it lands, read the length
-coupling result as a property of NeMo's example driver, and read the transcript and timestamp results,
-which use the offline path, as unaffected by this caveat.
+That note stood here from 2026-09-10 as an open admission that the front page's strongest streaming claim
+was measured on the wrong code path. **It was resolved on 2026-09-11 by running the experiment**, and the
+answer went against the claim: the length coupling does not survive on the server's own path, where the
+count is 6 in 2,939 and none of the six is a tail difference. The correction is above, with the table.
+
+The result also turned up something the caveat did not anticipate. At bfloat16 the divergence rate on the
+same path is roughly forty-eight times higher and is untouched by equalising row lengths, which means the
+property this server is named for is threatened far more by compute precision than by batch composition.
+That is now the open question on this page.
 
 One count against four is not a difference these numbers can resolve; treat both paths as showing the same
 rare numerical effect. The honest summary is that **fixed-shape batching addresses both, and the effect it
