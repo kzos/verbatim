@@ -104,11 +104,13 @@ promised date — that is for triage once an entry becomes an issue.
 
 ## Scheduler
 
-- `src/verbatim/scheduler/tick.py::TickLoop.run_tick` — the branch handling `frame is None` while a
-  session is `DRAINING` is unreachable: a session's final frame is always closed out (removed from the
-  registry) in the same tick it is emitted, per `_drain_frame`/`_final_emitted` in
-  `src/verbatim/core/session.py`, so no `DRAINING` session ever survives to a later tick with its final
-  already sent. Delete the branch, or add the test case it would need to be reachable and keep it.
+- `src/verbatim/scheduler/tick.py::TickLoop.run_tick` — **this entry was wrong and is kept as a
+  correction.** It claimed the branch handling `frame is None` while a session is `DRAINING` was
+  unreachable and should be deleted. A later review showed it is reached twice over: after a failed
+  step, where the final frame was popped in the failing tick and the except path discards `closing` so
+  the session survives in `DRAINING` with its final already marked emitted; and when `open_stream` fails
+  on a frame that is both first and last. Deleting it leaks that session's slot and registry entry. The
+  branch stays; what is missing is the test that reaches it.
 - `src/verbatim/scheduler/tick.py::TickLoop` (`_stats`, `_boundaries`) — both lists grow by one entry
   per tick for the whole lifetime of the loop, with no trimming or cap. Harmless for the short-lived CPU
   test suite; unbounded growth once this loop drives a long-running server. Bound them (a ring buffer,

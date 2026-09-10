@@ -21,6 +21,7 @@ implemented. What they establish is that the defect this server is being built t
 | `negative_control.py` | Is any of this just run-to-run noise? Does row position matter? | both arms zero |
 | `duration_mechanism.py` | Is the length-coupling explanation a measured relationship? | only weakly; see the caveat below |
 | `nemo_biasing_repro.py` | The upstream registry defects, reproduced without a checkpoint | filed as NVIDIA-NeMo/Speech#16236 |
+| `fixed_shape_contents.py` | With the batch shape pinned, do the batch contents reach the target's output? | 0 text and 0 timing differences in 1,024 |
 
 ## Running them
 
@@ -33,6 +34,13 @@ Each writes JSON to `probe-output/` beside where you run it; set `PROBE_OUT` to 
 stream their corpora from the Hugging Face hub, so the first run downloads. A full 2,939-utterance sweep
 took about six minutes on an RTX A6000 and about three on a B300.
 
+`negative_control.py` is the one to run first, and `fixed_shape_contents.py` is the one that tests the
+mechanism this server is built on rather than the defect it exists to prevent.
+
+Not every claim on the front page comes from a script here: the encoder-level results in the first
+bullets, and the graphed-versus-eager comparison on the B300, were run from scratch files that were not
+kept. Their raw outputs are cited where they are used, and re-running them is open work.
+
 `negative_control.py` is the one to run first. If its repeat arm is not zero on your hardware, nothing
 else here means what it says on yours.
 
@@ -43,8 +51,14 @@ else here means what it says on yours.
 - **`duration_mechanism.py` partly refutes the explanation it was written to confirm.** Divergent
   utterances sit at about the 61st percentile of the duration-deficit distribution, not the 90th. The
   direction survives, the strength of the story does not, and the README says so.
-- **Two machines, two software stacks.** The Ampere and Blackwell results differ in silicon *and* in
-  torch and NeMo versions. Nothing here attributes a difference to an architecture.
+- **The architecture claim covers transcripts only.** Running the newer stack on the older card
+  separated silicon from software: transcript divergence went 4, 5, 0 across old-stack Ampere,
+  new-stack Ampere and new-stack Blackwell, so it tracks the hardware. Word timing went 35 to 27 on the
+  same card with only the software changed, so it does not, and the Blackwell timing channel has never
+  been measured.
+- **The streaming probes carry no machine stamp.** Two result files from different cards are
+  distinguishable only by elapsed time. Re-runs should stamp the device, torch and NeMo version the way
+  `deep_divergence.py` does.
 - **Everything ran eager on the A6000.** Its driver refuses NeMo's graphed decoding.
 - **`deep_divergence.py` needs `timestamps=True` on the transcribe call**, not a decoding-config field.
   Two earlier attempts set the config and silently got no timestamps at all, which is why the run that

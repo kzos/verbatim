@@ -49,7 +49,7 @@ each group was zero-padded to one common length before either call, so batch siz
   output, against running it alone. It was present at the smallest concurrency tested, 8, and does not
   require load to provoke it.
 - Padding every step to a fixed batch shape restores bit-identical output at every occupancy tested.
-  Reducing precision does not fix the problem: precision is not the lever. Shape is.
+  Turning TF32 off raises precision and does not fix the problem, so precision is not the lever. Shape is.
 - **That numerical difference reaches the transcript.** The superseding run found seven transcript
   divergences across the three corpora below.
 
@@ -92,8 +92,8 @@ quantify that over-representation.
 
 The direction is mixed. Three cases tie on word error rate. In one the batched hypothesis is better by
 one word. In one the batched hypothesis is exactly the reference and running alone introduced the only
-error. In one the reverse. Over the seven divergent utterances only, twelve word errors alone against
-eleven batched. This is a comparison over seven hand-picked utterances, not a corpus word error rate; the
+error. In one the reverse. Over the six LibriSpeech divergences, twelve word errors alone against eleven
+batched; adding the FLEURS case makes it twenty-three against twenty-one over all seven. This is a comparison over seven hand-picked utterances, not a corpus word error rate; the
 utterances that did not diverge are not in it.
 
 The FLEURS divergence is a deletion, not merely a token substitution. In FLEURS `en_us`, utterance id
@@ -111,9 +111,8 @@ Both hypotheses are poor on this utterance, with eleven word errors alone and te
 twenty-seven, so this is not a case of one arm being right. Batch composition changed whether that span
 was emitted at all, not merely which token was emitted. It matters beyond its count: a deletion is the one
 failure mode that phrase boosting provably cannot repair on the greedy decoder, because the choice to emit
-nothing is taken before any boost is applied and is then preserved. See
-the batched beam decoder, where the fusion score enters before pruning and can therefore reach
-it.
+nothing is taken before any boost is applied and is then preserved. The path that can reach it is the
+batched beam decoder, where the fusion score enters before pruning.
 
 **Seven divergences in 6,206 utterances is a count with a denominator, not a rate, and this README will
 not convert it into one.** Seven events do not support a frequency, a percentage or a probability, and any
@@ -182,11 +181,12 @@ Over 2,912 `test-other` utterances on the A6000, padded control, one session aga
 |---|---:|
 | transcript text | 4 |
 | token ids | 4 |
-| **word timestamps** | **35** |
+| **word timestamps** | **35**, of which **31** have identical text |
 | segment timestamps | 8 |
 | hypothesis score, bit-identical | 3 of 2,912 |
 
-**A word's timing moves about nine times more often than a word itself changes.** In every case exactly one
+**A word's timing moves without the word changing 31 times, against 4 times that a word itself
+changes.** The 35 above includes those 4, whose timings differ because the words do. In every case exactly one
 word moves, by between one and five frames; at 80 ms per frame that is 80 ms in most cases and 400 ms in
 the largest. A reader of words sees nothing. Anything that cuts subtitles, aligns to picture, or feeds a
 diarisation stage gets a different answer.
@@ -214,23 +214,67 @@ live in that tick, so it changes whenever a neighbour joins or leaves. Had permu
 fixed-shape batching would not have been enough and the scheduler would have had to pin positions too. It
 does not, so it does not.
 
-### The same experiment on a second architecture
+### The same experiment on two architectures, with the software held fixed
 
-| experiment | A6000, Ampere | B300, Blackwell |
+| experiment | A6000, torch 2.6 / NeMo 2.7.3 | A6000, torch 2.11 / NeMo 3.0.0 | B300, torch 2.11 / NeMo 3.0.0 |
+|---|---:|---:|---:|
+| transcript, offline padded control | 4 in 2,912 | 5 in 2,912 | **0 in 2,912** |
+| word timing, offline padded control | 35 | 27 | not measured |
+| streaming, no length control | 38 in 2,939 | — | 38 in 2,939 |
+| streaming, length-controlled | 1 in 2,939 | — | 0 in 2,939 |
+
+**Transcript divergence tracks the silicon.** Holding the software fixed and changing only the card takes
+it from 5 to 0. Holding the card fixed and changing the whole stack leaves it at 4 against 5. That is a
+property of the hardware, and it is consistent with the mechanism: a linear-algebra library choosing
+different kernels, and therefore different reduction orders, for different batch shapes on the
+architecture it was tuned for.
+
+**Word timing does not track the silicon, and this is the more honest half.** The same card with a
+different stack moves it from 35 to 27. Software matters for the channel this page calls the most
+exposed, and the B300's timing channel has never been measured at all. So the sentence that survives is
+narrow: *transcript* divergence is architecture-dependent, and nothing here says anything about
+timestamps on Blackwell.
+
+**Length coupling reproduces at exactly 38 on both cards**, which is what a deterministic algorithmic
+artefact looks like rather than an arithmetic one. Two caveats travel with that number. The probe drives
+NeMo's example streaming path, not the inference pipeline this server is designed to wrap, and those are
+different code with different boundary handling — see the honesty note below. And the two result files
+carry no machine stamp, so they are indistinguishable except by elapsed time; the runs were separate but
+the artefacts cannot prove it, and the next run fixes that.
+
+### Fixed shape, different neighbours
+
+Every table above compares batch 1 against batch 32, which changes the batch *shape*. The claim this
+server rests on is stronger: that once the shape is pinned, the batch *contents* stop mattering. That had
+never been tested past the encoder.
+
+Batch size held at 32 in both arms, every row padded to one common length, the target in row 0. The only
+difference is who the other 31 rows are.
+
+| the other 31 rows are | target's text differs | target's word timing differs |
 |---|---:|---:|
-| streaming, no length control | 38 in 2,939 | 38 in 2,939 |
-| streaming, length-controlled | 1 in 2,939 | 0 in 2,939 |
-| offline, padded control | 4 in 2,939 | 0 in 2,912 |
+| silence | — | — |
+| real utterances | **0 in 1,024** | **0 in 1,024** |
 
-**Length coupling reproduces exactly, 38 against 38**, which is what a deterministic algorithmic artefact
-looks like and is consistent with a mechanism about which chunks a stream receives rather than about
-arithmetic. The numerical effect does not appear on the B300 at all.
+Zero on both channels. As a positive control, the composition arm of the same corpus — one session
+against a batch of 32, which changes the shape — moved text twice and word timing nine times in the same
+1,024 utterances. The instrument could detect a difference and did not find one here.
 
-**A confound this table cannot resolve, stated rather than buried:** the two machines differ in software as
-well as silicon, torch 2.6 with NeMo 2.7.3 against torch 2.11 with NeMo 3.0.0. Nothing here attributes the
-difference to Blackwell. What the table does establish is that the harness behaves identically on both,
-since the algorithmic effect lands on the same integer. Running one stack on both cards is the next run and
-it has not been done.
+That is the first evidence that fixed-shape batching is sufficient at the level of output rather than of
+encoder floats. It is one card, one checkpoint, the offline path, and 1,024 utterances.
+
+### An honesty note about which code path this measures
+
+The streaming probes drive NeMo's example streaming path, stepping the model chunk by chunk through the
+streaming audio buffer. This server is designed to wrap a different implementation in the same
+repository, `nemo.collections.asr.inference`, which computes per-stream right paddings and carries an
+explicit flag for whether tokens past the clip boundary are returned. Those are different code with
+different boundary handling.
+
+So the 38 is a real measurement of the example path and **not** evidence about the pipeline this server
+wraps. The re-run against the inference pipeline is the next experiment. Until it lands, read the length
+coupling result as a property of NeMo's example driver, and read the transcript and timestamp results,
+which use the offline path, as unaffected by this caveat.
 
 One count against four is not a difference these numbers can resolve; treat both paths as showing the same
 rare numerical effect. The honest summary is that **fixed-shape batching addresses both, and the effect it
@@ -395,8 +439,8 @@ Verbatim downloads them, it does not redistribute them.
 
 Nothing above is implemented as a running server. What exists is the module tree as importable,
 documented placeholders; the vendored Riva protos and their generated stubs; the benchmark harness with
-its frozen methodology; and the probes under [`probes/`](probes/) that produced every measurement on this
-page. Start with [`docs/SCOPE.md`](docs/SCOPE.md) for the boundary and
+its frozen methodology; and the probes under [`probes/`](probes/) that produced most of the measurements on
+this page, with the exceptions named in that directory. Start with [`docs/SCOPE.md`](docs/SCOPE.md) for the boundary and
 [`CONTRIBUTING.md`](CONTRIBUTING.md) for how a change lands.
 
 Every numeral in the demo blocks above is an angle-bracketed placeholder for exactly the reason
