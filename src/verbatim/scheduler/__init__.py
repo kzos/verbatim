@@ -4,8 +4,10 @@
 
 Keep a churning multi-tenant batch on NeMo's CUDA-graph path: sessions join and
 leave every chunk period, but the batch handed to NeMo is always one of a few
-fixed bucket sizes whose graphs stay captured, and the ragged first/last steps are
-peeled into a small eager side-batch.
+fixed bucket sizes whose graphs stay captured, and the ragged final steps are
+peeled into a small eager side-batch. First steps stay in the steady batch: NeMo's
+pre-encode drop is a per-batch constant on the inference pipeline, so a first
+frame does not change the graph key.
 
 This package is maintainers-only by design (07_community.md §0): no contribution
 surface requires reading it, and nothing under ``pipelines/``, ``bench/`` or the

@@ -385,3 +385,42 @@ async def test_feed_and_open_session_are_refused_once_the_tick_thread_is_gone(
         with pytest.raises(ResourceExhausted) as open_error:
             engine.open_session(OPTIONS)
         assert open_error.value.retry_after_ms == 0
+
+
+@pytest.mark.asyncio
+async def test_finished_sessions_are_dropped_from_the_engine() -> None:
+    """A session that has delivered its last row costs the engine nothing. Before this
+    the two per-session dictionaries kept every closed session's ring buffer, about
+    188 KiB each, for the life of the process."""
+    engine = _engine()
+    async with engine:
+        sessions = [engine.open_session(OPTIONS) for _ in range(5)]
+        assert len(engine._sessions) == 5
+        assert len(engine._queues) == 5
+        for session in sessions:
+            assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
+            session.end()
+        outputs = await asyncio.gather(*[_collect(session) for session in sessions])
+        assert all(hypotheses[-1].is_final for hypotheses in outputs)
+        assert engine._sessions == {}
+        assert engine._queues == {}
+        assert engine._registry.live == 0
+
+
+@pytest.mark.asyncio
+async def test_a_failed_session_is_dropped_from_the_engine_too() -> None:
+    pipeline = _OpenFailingPipeline()
+    config = EngineConfig(chunk=CHUNK, buckets=(2,), edge_batch=1)
+    engine = Engine(config, pipeline, clock=ScaledMonotonicClock(100.0))
+    sessions = [engine.open_session(OPTIONS) for _ in range(2)]
+    assert sessions[0].feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
+    assert sessions[1].feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
+    async with engine:
+        with pytest.raises(VerbatimError):
+            await _collect(sessions[1])
+        assert 2 not in engine._queues
+        assert 2 not in engine._sessions
+        assert 1 in engine._queues
+        sessions[0].end()
+        assert await _collect(sessions[0])
+        assert engine._queues == {}

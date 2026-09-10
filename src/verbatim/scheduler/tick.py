@@ -20,8 +20,11 @@ the NeMo toolkit or on PyTorch.
 
 from __future__ import annotations
 
+import logging
 import threading
+from collections import deque
 from dataclasses import replace
+from typing import Final
 
 from verbatim.config import EngineConfig
 from verbatim.core.errors import ErrorCode, VerbatimError
@@ -35,6 +38,13 @@ from verbatim.scheduler.clock import Clock, MonotonicClock
 from verbatim.scheduler.slots import SlotTable
 
 __all__ = ["TickLoop"]
+
+logger = logging.getLogger(__name__)
+
+#: How many ticks of ``TickStats`` and boundaries the loop keeps. Unbounded lists
+#: grew by one entry per tick for the life of the process, about 540,000 a day at
+#: the 160 ms grid; the admission window needs 200 and diagnostics need a little more.
+STATS_RETAINED: Final = 1024
 
 
 def _cost(pipeline: PipelineAdapter, name: str) -> float:
@@ -69,8 +79,8 @@ class TickLoop:
         self._slots.reserve(self._pad_count)
         self._start = self._clock.now()
         self._tick_id = 0
-        self._stats: list[TickStats] = []
-        self._boundaries: list[float] = []
+        self._stats: deque[TickStats] = deque(maxlen=STATS_RETAINED)
+        self._boundaries: deque[float] = deque(maxlen=STATS_RETAINED)
         self._errors: dict[int, VerbatimError] = {}
 
     @property
@@ -80,7 +90,8 @@ class TickLoop:
 
     @property
     def stats(self) -> list[TickStats]:
-        """One ``TickStats`` per completed tick, in order."""
+        """One ``TickStats`` per completed tick, in order, for the most recent
+        ``STATS_RETAINED`` ticks. ``tick_id`` keeps counting past that."""
         return list(self._stats)
 
     @property
@@ -101,7 +112,8 @@ class TickLoop:
 
     @property
     def boundaries(self) -> list[float]:
-        """Each tick's scheduled boundary: fixed multiples of the period since start."""
+        """Each tick's scheduled boundary, fixed multiples of the period since start,
+        for the most recent ``STATS_RETAINED`` ticks."""
         return list(self._boundaries)
 
     @property
@@ -139,11 +151,15 @@ class TickLoop:
         return items
 
     def fail_live(self, exc: Exception) -> None:
-        """Mark every currently live session as failed with INTERNAL.
+        """Fail every currently live session with INTERNAL, and close it.
 
-        The delivery half of the step-failure minimum: each transport's `results()`
-        raises it, and the tick thread does not die silently. Marking the engine
-        unhealthy, refusing new admissions and exiting non-zero are a later brief.
+        Each transport's `results()` raises the error, and the tick thread does not
+        die silently. Closing is part of failing: a session left registered after
+        its error would be fed again on the next tick, hold its slot until its
+        transport noticed, and have a second error queued to a consumer that had
+        already gone. Its slot is released, its registry entry removed and the
+        adapter's `close_stream` called. Marking the engine unhealthy, refusing new
+        admissions and exiting non-zero are a later brief.
         """
         err = VerbatimError(str(exc), ErrorCode.INTERNAL)
         for session in self._registry.by_state(
@@ -153,6 +169,15 @@ class TickLoop:
             SessionState.DRAINING,
         ):
             self._errors.setdefault(session.session_id, err)
+            session.begin_draining(aborted=True)
+            self._close_session(session)
+            try:
+                self._pipeline.close_stream(session.session_id)
+            except Exception:
+                logger.exception(
+                    "close_stream failed for stream %s while failing live sessions",
+                    session.session_id,
+                )
 
     def _record(
         self, tick_id: int, plan: BucketPlan, starved: int, step_ms: float, edge_ms: float
@@ -213,8 +238,11 @@ class TickLoop:
                     frame = session.next_frame()
                     if frame is None:
                         if session.state is SessionState.DRAINING:
-                            # The final frame already went out on an earlier tick; the slot
-                            # bookkeeping now runs its normal close path.
+                            # The final frame already went out on an earlier tick without
+                            # a close: `open_stream` raised on a frame that was both first
+                            # and last, which skips the closing list below. The slot
+                            # bookkeeping now runs its normal close path. Reached by
+                            # test_a_first_and_last_frame_whose_open_fails_is_closed_next_tick.
                             closing.append(session)
                         else:
                             # STARVED: not scheduled, slot kept, no synthetic audio inserted.

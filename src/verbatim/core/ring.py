@@ -1,8 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2026 Zaheer Sheriff K
-"""Per-session lock-free PCM ring buffer: fixed capacity, no allocation on the hot path.
+"""Per-session PCM ring buffer: fixed capacity, one output allocation per pop.
 
-Single producer (a decode worker thread), single consumer (the tick thread).
+NOT lock-free, and not safe for two threads on its own. ``_size``, ``_head``,
+``_written`` and ``_popped`` are plain Python integers that both ``write`` and
+``pop`` read-modify-write, so an unsynchronised producer and consumer would lose
+updates. Every call runs under the engine's one lock: ``feed`` writes under it on
+the asyncio thread and the tick loop pops under it in its collect phase. The lock
+is what makes the two ends safe, not this class, and a thread-ownership rewrite
+that removes the lock must give this buffer real synchronisation first.
+
 Chunk boundaries are cut from the session's own sample counter, never from the
 wall clock -- that is what makes a session's frame sequence a pure function of its
 audio, and therefore what makes batch invariance reachable at all.
@@ -20,7 +27,8 @@ __all__ = ["RingBuffer"]
 
 
 class RingBuffer:
-    """Fixed-capacity float32 ring. Single producer, single consumer, no allocation on pop.
+    """Fixed-capacity float32 ring. One writer and one reader, both under the engine
+    lock; ``pop`` and ``drain`` allocate their output array.
 
     Chunk boundaries come from this object's own sample counter, never from a clock:
     that is what makes a session's frame sequence a pure function of its audio.

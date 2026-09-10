@@ -5,16 +5,20 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Sequence
 
 import numpy as np
 import pytest
 
 from verbatim.config import ChunkMode, EngineConfig
+from verbatim.core.errors import ErrorCode
 from verbatim.core.registry import SessionRegistry
 from verbatim.core.session import Session, SessionState
+from verbatim.core.types import PcmFrame, StepResult
 from verbatim.pipelines.fake import FakePipelineAdapter
+from verbatim.protocols.base import SessionOptions
 from verbatim.scheduler.clock import SimulatedClock
-from verbatim.scheduler.tick import TickLoop
+from verbatim.scheduler.tick import STATS_RETAINED, TickLoop
 
 CHUNK = ChunkMode(160)
 N = CHUNK.samples
@@ -197,3 +201,102 @@ def test_uncalibrated_loop_never_overfills_the_steady_batch() -> None:
             assert session.ring.write(_audio(rng, 3)) == 3 * N
     loop.run_for(5)
     assert all(s.steady_rows == 8 for s in loop.stats)
+
+
+class _RecordingPipeline(FakePipelineAdapter):
+    """The CPU fake, plus a record of closes, a failing open and a failing step."""
+
+    def __init__(
+        self,
+        chunk: ChunkMode,
+        *,
+        buckets: Sequence[int],
+        fail_open: Sequence[int] = (),
+        fail_on_call: int | None = None,
+    ) -> None:
+        super().__init__(chunk, buckets=buckets)
+        self.closed: list[int] = []
+        self.calls = 0
+        self._fail_open = set(fail_open)
+        self._fail_on_call = fail_on_call
+
+    def open_stream(self, stream_id: int, options: SessionOptions | None) -> None:
+        if stream_id in self._fail_open:
+            raise RuntimeError("open failed")
+        super().open_stream(stream_id, options)
+
+    def close_stream(self, stream_id: int) -> None:
+        self.closed.append(stream_id)
+        super().close_stream(stream_id)
+
+    def transcribe_step(
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+    ) -> list[StepResult]:
+        self.calls += 1
+        if self.calls == self._fail_on_call:
+            raise RuntimeError("step failed")
+        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+
+
+def _recording_loop(**pipeline_kwargs: object) -> tuple[TickLoop, _RecordingPipeline, EngineConfig]:
+    config = EngineConfig(chunk=CHUNK, buckets=(8,), calibrated_ceiling=8)
+    pipeline = _RecordingPipeline(CHUNK, buckets=(8,), **pipeline_kwargs)  # type: ignore[arg-type]
+    return TickLoop(config, pipeline, SessionRegistry(), clock=SimulatedClock()), pipeline, config
+
+
+def test_a_step_failure_fails_and_closes_every_live_session() -> None:
+    """A failed step delivers INTERNAL to every live session and closes it in the same
+    tick: slot released, registry entry gone, `close_stream` called. Before this the
+    sessions stayed registered, were fed again on the next tick, and held their slots
+    until a transport happened to abort them."""
+    loop, pipeline, config = _recording_loop(fail_on_call=2)
+    rng = np.random.default_rng(21)
+    sessions = [_join(loop, i + 1, _audio(rng, 4), drain=False) for i in range(3)]
+    assert loop.run_tick()
+    assert loop.run_tick() == []
+    errors = dict(loop.drain_errors())
+    assert sorted(errors) == [1, 2, 3]
+    assert all(error.code is ErrorCode.INTERNAL for error in errors.values())
+    assert all(str(error) == "step failed" for error in errors.values())
+    assert all(session.state is SessionState.CLOSED for session in sessions)
+    assert loop.registry.live == 0
+    assert loop.slots.reserved == config.effective_pad
+    assert sorted(pipeline.closed) == [1, 2, 3]
+    # Nothing is fed again and no second error is queued.
+    assert loop.run_tick() == []
+    assert loop.drain_errors() == []
+
+
+def test_a_first_and_last_frame_whose_open_fails_is_closed_next_tick() -> None:
+    """Reaches the DRAINING-with-no-frame branch of `run_tick` on purpose.
+
+    A session that drains with less than one chunk buffered produces a frame that is
+    both first and last. When `open_stream` raises on it, that tick skips the closing
+    list, so the session survives with its final frame already consumed. The next
+    tick's `next_frame` returns None for a DRAINING session, and the branch closes it.
+    Deleting the branch leaks that session's slot and registry entry forever.
+    """
+    loop, pipeline, config = _recording_loop(fail_open=(1,))
+    rng = np.random.default_rng(22)
+    session = _join(loop, 1, _audio(rng, 1)[:100])
+    assert loop.run_tick() == []
+    assert dict(loop.drain_errors())[1].code is ErrorCode.INTERNAL
+    assert session.state is SessionState.DRAINING
+    assert 1 in loop.registry
+    assert loop.slots.reserved == config.effective_pad + 1
+    assert pipeline.closed == []
+    assert loop.run_tick() == []
+    assert session.state is SessionState.CLOSED
+    assert 1 not in loop.registry
+    assert loop.slots.reserved == config.effective_pad
+    assert pipeline.closed == [1]
+
+
+def test_tick_stats_and_boundaries_are_bounded() -> None:
+    loop, _, _ = _harness()
+    loop.run_for(STATS_RETAINED + 50)
+    assert loop.tick_id == STATS_RETAINED + 50
+    assert len(loop.stats) == STATS_RETAINED
+    assert len(loop.boundaries) == STATS_RETAINED
+    assert loop.stats[0].tick_id == 50
+    assert loop.stats[-1].tick_id == STATS_RETAINED + 49
