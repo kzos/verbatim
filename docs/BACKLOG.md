@@ -36,10 +36,14 @@ promised date — that is for triage once an entry becomes an issue.
   `null` and reads back as `None`). Write the document with the real results writer and reload it before
   asserting, the way `tests/harness/test_verify.py::test_writer_output_round_trips_through_validate_and_verify`
   now does for the happy path.
-- ~~`bench/src/verbatim_bench/nullserver.py` (the tail partial) — the null floor now emits a partial for a
-  short final tail so its cadence matches the real server, but no test asserts that partial's own
-  `audio_s`: the cross-check reads the client-computed value instead, so mutating the server's stamp
-  leaves the suite green. Assert the tail partial's `audio_s` directly from the frame the floor sends.~~
+- **`bench/src/verbatim_bench/nullserver.py` (the tail partial) — re-opened 2026-09-10; it was struck
+  through as resolved and the property it asks for is still not asserted.** The null floor emits a
+  partial for a short final tail so its cadence matches the real server, but
+  `test_short_tail_emits_a_final_partial_so_the_floor_matches_the_server` asserts that a final partial
+  arrives, not that partial's own `audio_s` taken from the frame the floor sent. Mutating the server's
+  stamp can still leave the suite green. Assert it directly. **Re-opening this is the point:** a
+  strikethrough is a claim, and an entry struck through without a test that fails without the fix is the
+  same defect as a guard that cannot fail, one level up.
 - `bench/src/verbatim_bench/client.py::ChunkMode.parse` — accepts spellings beyond the documented `160`,
   `"160"` and `"160ms"` forms, such as `"160 ms"` with a space before the suffix, because it strips and
   re-joins the string instead of matching a strict grammar. Replace the manual strip/suffix logic with a
@@ -104,6 +108,19 @@ promised date — that is for triage once an entry becomes an issue.
   trailer and no response is written.
 
 ## Results schema and verify
+
+- **The frozen run-schema constant is read by nothing, and the code writes a different value.**
+  Found 2026-09-10. `benchmarks/METHODOLOGY.md` and `bench/src/verbatim_bench/constants.py` both declare
+  `SCHEMA_VERSION_FOR_RUN = "vb-results/2"`, and the freeze test confirms they agree. But
+  `SCHEMA_VERSION_FOR_RUN` is referenced nowhere outside those two places: `results.py` stamps the
+  literal `"vb-results/1"` when it builds a run document and the literal `"vb-results/2"` in a separate
+  method, so which version a produced row claims depends on which method ran, not on the frozen
+  constant. **The freeze guard cannot see this**, because it compares the document against
+  `constants.py` and never checks that the code path uses the constant. That is the same defect as the
+  fabricated-sentence hole one level down: the guard verifies the wrong pair. Fix by making `results.py`
+  read the constant, then add the assertion that a produced row's `schema` field equals
+  `constants.SCHEMA_VERSION_FOR_RUN`. Do this **before the first row is published**, because a row that
+  labels itself with the wrong schema is not correctable by a later edit — it needs a re-run.
 
 - `tests/harness/test_methodology_freeze.py` — **the freeze guard does not catch a fabricated result
   sentence.** It enforces agreement between the frozen constants block and `constants.py`, and it

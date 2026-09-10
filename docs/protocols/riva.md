@@ -36,8 +36,8 @@ than a refusal for the operators this serves.
 
 | Field | Status | Behaviour |
 |---|---|---|
-| `encoding` | honoured / rejected | `LINEAR_PCM` is the default path (a buffer view, no decoder). `MULAW`/`ALAW` via the G.711 LUT. `FLAC` via `soundfile`. `OGGOPUS` only with the `[opus]` extra. `ENCODING_UNSPECIFIED` and anything else → `INVALID_ARGUMENT`. |
-| `sample_rate_hertz` | honoured | any rate; resampled to 16 kHz in a decode worker thread |
+| `encoding` | **`LINEAR_PCM` honoured; every other encoding rejected today** | `LINEAR_PCM` is a buffer view with no decoder. `MULAW`, `ALAW`, `FLAC` and `OGGOPUS` raise `UNIMPLEMENTED` (`mapping.py`: "audio decoders are a later task"), they are **not** served. `ENCODING_UNSPECIFIED` and anything else → `INVALID_ARGUMENT`. The decoders remain the intent; the row says what ships. |
+| `sample_rate_hertz` | **16 kHz only** | `16000`, or `0` meaning 16000. Any other rate raises `UNIMPLEMENTED` ("the resampler is a later task"). There is no decode worker thread. |
 | `audio_channel_count` | honoured / rejected | `> 1` is downmixed, unless `enable_separate_recognition_per_channel` → `UNIMPLEMENTED` |
 | `language_code` | honoured | for prompt-conditioned checkpoints; an unknown code → `INVALID_ARGUMENT` listing the valid keys. Ignored for monolingual checkpoints. |
 | `model` | honoured / rejected | must be `""` or the served model name/alias; otherwise `NOT_FOUND` |
