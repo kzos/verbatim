@@ -1,9 +1,12 @@
 # The Riva `StreamingRecognize` subset — supported fields
 
-> **Placeholder.** This page will be **generated** from
-> `src/verbatim/protocols/riva/conformance.py`, and CI will fail if the two diverge. Nothing here is
-> implemented yet: neither the servicer nor the field table it would be generated from exists. Until then, read this as the specification the generator must
-> reproduce, not as a description of running code.
+> **Not generated yet.** This page will be **generated** from
+> `src/verbatim/protocols/riva/conformance.py`, and CI will fail if the two diverge. Both now exist: the
+> servicer in `src/verbatim/protocols/riva/server.py` runs every session through the engine, and the
+> conformance table is the field-by-field source of truth. Until the generator is written, treat
+> `conformance.py` as authoritative and this page as a description that can drift from it — and note
+> that some rows below describe intended behaviour rather than shipped behaviour, which is exactly the
+> drift the generator exists to end.
 
 Verbatim implements a *subset* of Riva ASR. A self-hoster deciding whether to point an existing client
 at it needs that subset written down before they install anything, so the subset is data

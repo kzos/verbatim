@@ -355,10 +355,12 @@ This section is provisional and will be rewritten from measured rows, not edited
 
 ## Demo
 
-> **None of this runs yet.** The commands below are the interface this server is being built toward, not
-> something you can execute today: the console script exists and prints `not implemented yet`. They are
-> here so the shape of the thing is arguable before it is built, and so the acceptance criteria are fixed
-> in public rather than chosen afterwards. The distribution name is also unsettled — see
+> **`serve` and `doctor` run; the rest of this is still the interface being built toward.** The console
+> script dispatches to both, and `serve` will start the engine and both wires. What it has never done is
+> load a real model on a GPU. Every numeral in the blocks below is a placeholder for a measurement nobody
+> has taken, and the commands that are not `serve` or `doctor` do not exist yet. They are here so the
+> shape of the thing is arguable before it is built, and so the acceptance criteria are fixed in public
+> rather than chosen afterwards. The distribution name is also unsettled — see
 > [docs/ISSUES.md](docs/ISSUES.md) — **`pip install verbatim` today installs an unrelated and actively
 > maintained speech-to-text project by a different author, not this one.** Everything measured on this
 > page was measured against **stock NeMo**
@@ -367,7 +369,7 @@ This section is provisional and will be rewritten from measured rows, not edited
 
 ```bash
 pip install verbatim
-verbatim serve nvidia/nemotron-3.5-asr-streaming-0.6b --chunk 160ms
+verbatim serve nvidia/nemotron-3.5-asr-streaming-0.6b --chunk 160ms --bucket 32 --eager
 ```
 
 ```text
@@ -428,8 +430,9 @@ pip install verbatim
   cache-aware FastConformer checkpoint NeMo loads. Set `HF_HOME` to control the cache.
 - **NeMo.** The model runtime is an extra, not a default dependency: `pip install 'verbatim[nemo]'`.
   The CUDA-graph encoder step this server is built around (PR #15863) merged on 2026-08-12, five days
-  *after* the latest NeMo release (3.0.0, 2026-08-07), so as of 2026-09-07 **no released NeMo wheel
-  carries it**. `verbatim doctor` reports which track you are on and refuses to start the graph path —
+  *after* the latest NeMo release (3.0.0, 2026-08-07), and **no released NeMo wheel carries it** —
+  rechecked against 2.7.3 and 3.0.0 on 2026-09-10, see
+  [DR-0002](docs/decisions/0002-the-graph-path-is-not-in-a-released-wheel.md). `verbatim doctor` reports which track you are on and refuses to start the graph path —
   rather than silently running eager — when the installed NeMo lacks it.
 - **Ports.** `50051` — the Riva-compatible gRPC `StreamingRecognize` subset, on the Riva convention
   (`livekit-plugins-nvidia` and Pipecat's `nvidia` STT service take any `host:port`; NeMo-Speech.cpp's
@@ -438,7 +441,7 @@ pip install verbatim
 
 ```bash
 verbatim serve nvidia/nemotron-3.5-asr-streaming-0.6b \
-  --chunk 160ms --grpc-port 50051 --ws-port 8080
+  --chunk 160ms --bucket 32 --eager --grpc-port 50051 --ws-port 8080
 ```
 
 ## What Verbatim is not
@@ -488,15 +491,28 @@ Verbatim downloads them, it does not redistribute them.
 
 ## Where this repository is today
 
-Nothing above is implemented as a running server. What exists is the module tree as importable,
-documented placeholders; the vendored Riva protos and their generated stubs; the benchmark harness with
-its frozen methodology; and the probes under [`probes/`](probes/) that produced most of the measurements on
-this page, with the exceptions named in that directory. Start with [`docs/SCOPE.md`](docs/SCOPE.md) for the boundary and
-[`CONTRIBUTING.md`](CONTRIBUTING.md) for how a change lands.
+**Rewritten 2026-09-10.** There is a running server, over a CPU fake, and there is no evidence it works
+on a GPU.
+
+What runs: a tick-scheduled engine with fixed-shape bucket padding, admission with a degradation ladder,
+a session state machine, live back-pressure, an idle deadline, and both wires — the plain WebSocket and
+the Riva `StreamingRecognize` subset — driving every session through that engine. `verbatim serve` starts
+it and `verbatim doctor` reports whether this machine can run the graph path. 615 tests, and every fix
+this month was mutation-tested by someone other than its author.
+
+What does not run: the NeMo adapter has **never executed against NeMo**. Everything it knows was read
+from NeMo's source and tested against a fake standing at NeMo's own seam. The first real `serve` on a GPU
+is the next thing that should happen, and a *successful* first build would be the surprising outcome.
+CUDA graph capture, G.711, resampling, health endpoints and the worker pool do not exist.
+
+Also here: the vendored Riva protos and their generated stubs; the benchmark harness with its frozen
+methodology; and the probes under [`probes/`](probes/) that produced most of the measurements on this
+page, with the exceptions named in that directory. Start with [`docs/SCOPE.md`](docs/SCOPE.md) for the
+boundary and [`CONTRIBUTING.md`](CONTRIBUTING.md) for how a change lands.
 
 Every numeral in the demo blocks above is an angle-bracketed placeholder for exactly the reason
 `CONTRIBUTING.md` gives: **No number that the harness did not produce**, anywhere, ever.
 
 - [`docs/third_party.md`](docs/third_party.md) — the vendored Riva protos: source, licence, pinned SHA.
-- [`docs/protocols/riva.md`](docs/protocols/riva.md) — the supported-subset table (placeholder; it will
-  be generated from `protocols/riva/conformance.py`).
+- [`docs/protocols/riva.md`](docs/protocols/riva.md) — the supported-subset table. Not generated yet, so
+  `protocols/riva/conformance.py` is authoritative where the two disagree.

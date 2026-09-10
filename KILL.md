@@ -1,6 +1,6 @@
 # Kill Conditions
 
-`KILL.md` records the dated conditions under which Verbatim continues, stops, redirects or de-scopes. The clock is anchored at 2026-09-14 and the repository goes public on 2026-09-15. No gate date moves for any reason — the gate is fixed and the scope is the variable. This file is updated on each date with the verdict, whatever the verdict is, and is linked from the [README first screen](README.md). When a condition fires, the README changes the same day.
+`KILL.md` records the dated conditions under which Verbatim continues, stops, redirects or de-scopes. The clock is anchored at 2026-09-14. The repository went public early, on 2026-09-10 (see [DR-0001](docs/decisions/0001-freeze-the-benchmark-methodology.md)), which is what makes the methodology freeze provable rather than merely dated. No gate date moves for any reason — the gate is fixed and the scope is the variable. This file is updated on each date with the verdict, whatever the verdict is, and is linked from the [README first screen](README.md). When a condition fires, the README changes the same day.
 
 An unavailable die is recorded as **not measured**, never estimated or extrapolated.
 

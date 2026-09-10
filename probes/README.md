@@ -6,8 +6,9 @@ the harness. These are exploratory scripts, run by hand, with no environment rec
 definitions. They exist so that a sceptical reader can re-run the claims rather than take them, which is
 the only reason those claims are in the README at all.
 
-They also do not test Verbatim. **Every one of them drives stock NeMo**, because Verbatim is not
-implemented. What they establish is that the defect this server is being built to fix is real.
+They also do not test Verbatim. **Every one of them drives stock NeMo.** That was originally because
+Verbatim did not exist; it is now a deliberate property, because a measurement of the defect this server
+is built to fix must not depend on the server. What they establish is that the defect is real.
 
 ## What each one answers
 

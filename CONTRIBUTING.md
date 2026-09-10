@@ -48,7 +48,7 @@ Eight surfaces. In every row, the knowledge required excludes the scheduler core
 
 **(a) is the flagship unit.** A measured row — a die, a checkpoint, a chunk mode, a concurrency
 sustained at a stated p95, with its WER and its invariance verdict — is the thing this project trades
-in. It is produced by `verbatim-bench run` and `verbatim-bench row`, never hand-written, and it is
+in. It is produced by `verbatim-bench run` (and checked by `verbatim-bench verify`), never hand-written, and it is
 validated by CI with no human in the loop.
 
 **"Add a model class" is explicitly NOT a unit.** Hugging Face Transformers owns the day-0 reference

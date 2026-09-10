@@ -19,7 +19,7 @@ No GPU. No model. Pure arithmetic over the dataset and a run already on disk.
 import io
 import os, json, warnings
 warnings.filterwarnings("ignore")
-import numpy as np, soundfile as sf
+import numpy as np, soundfile as sf, torch
 from datasets import load_dataset, Audio
 
 RUN = os.environ.get("PROBE_OUT", "probe-output/streaming_divergence.json")
