@@ -42,7 +42,14 @@ seeing a number is visible in this directory rather than invisible in a diff.
 
 - Changing a frozen constant requires a schema bump and a full re-run of every affected row, not an edit.
 - A guard that cannot fail is worse than no guard. The freeze test was found inert on 2026-09-09, when a
-  fabricated sentence claiming 412 sustained streams passed all twenty-four of its assertions; it now
-  fails on three separate probes.
+  fabricated sentence claiming 412 sustained streams passed all twenty-four of its assertions.
+  **Corrected 2026-09-10, by probing the guard rather than trusting this record.** What the guard does
+  catch is constant drift: changing a value inside the frozen block reddens
+  `test_document_constants_equal_the_code_constants`, and a constant present on one side only reddens
+  its own test. What it still does **not** catch is the failure mode named above. Appending
+  *"Verbatim sustains 412 concurrent streams at the 160 ms chunk mode on one A6000"* to the document
+  passes all twenty-four assertions today. This record previously said that hole was closed. It is not,
+  it is now in [`docs/BACKLOG.md`](../BACKLOG.md), and the sentence that claimed otherwise is left above
+  rather than deleted so the overclaim is visible.
 - Kill-gate thresholds are read against this document, so amending a condition after seeing a number is
   visible in the history of [`KILL.md`](../../KILL.md) rather than invisible in a definition.

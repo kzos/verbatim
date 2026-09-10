@@ -105,6 +105,17 @@ promised date — that is for triage once an entry becomes an issue.
 
 ## Results schema and verify
 
+- `tests/harness/test_methodology_freeze.py` — **the freeze guard does not catch a fabricated result
+  sentence.** It enforces agreement between the frozen constants block and `constants.py`, and it
+  reddens when a value on either side moves, which was verified on 2026-09-10 by changing one and
+  watching `test_document_constants_equal_the_code_constants` go red. But appending a sentence claiming
+  a measured throughput to `benchmarks/METHODOLOGY.md` still passes all twenty-four assertions. That is
+  the exact failure mode found on 2026-09-09 and `docs/decisions/0001` wrongly recorded it as fixed. A
+  guard for it has to be different in kind: the document may state definitions and thresholds, but a
+  number describing this project's own measured behaviour belongs only in a row under `rows/`, so the
+  check is that no unfrozen numeric claim about Verbatim's performance appears in the document at all.
+
+
 - ~~`bench/src/verbatim_bench/verify.py::_check_pacing_slip` — the summary's `pacing_slip_ms` percentiles
   can only be checked for internal ordering (`p50 <= p95 <= max`), never recomputed from the underlying
   data, because `sessions[]` in `benchmarks/schema/row.schema.json` carries no per-session slip samples

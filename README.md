@@ -5,9 +5,10 @@
 > ### There is no working server here yet
 >
 > Both wires now run every session through the tick-scheduled engine, with admission, live back-pressure
-> and an idle deadline, over a CPU fake. The adapter onto NeMo exists and **has never run on a GPU**, so
-> nothing here has yet transcribed real audio through the real pipeline, and the command-line tool still
-> builds nothing and prints `not implemented yet`. Nothing in this repository has been benchmarked.
+> and an idle deadline, over a CPU fake. `verbatim serve` will start that server and `verbatim doctor`
+> will tell you whether this machine can run it. But the adapter onto NeMo **has never run on a GPU**:
+> nothing here has yet transcribed real audio through the real pipeline, and nothing in this repository
+> has been benchmarked.
 >
 > What is finished and worth your time is the **evidence**: a measured account of how batch composition
 > changes a transcript and a word's timing on stock NeMo, with the probe scripts under
@@ -29,7 +30,7 @@
 NVIDIA's cache-aware streaming speech stack is open and fast, and it has no server. NeMo's
 Apache-2.0 `nemo.collections.asr.inference` package already contains the multi-stream slot manager,
 dynamic stream add/remove, endpointing and — since [NeMo PR #15863](https://github.com/NVIDIA-NeMo/Speech/pull/15863)
-(merged 2026-08-12) — a CUDA-graph encoder step worth **3.08–5.14x** at the 80 ms chunk mode (upstream's figure, and **not yet in a released wheel**: checked 2026-09-11, neither NeMo 2.7.3 nor 3.0.0 carries it, only the source tree — [DR-0002](docs/decisions/0002-the-graph-path-is-not-in-a-released-wheel.md)), because
+(merged 2026-08-12) — a CUDA-graph encoder step worth **3.08–5.14x** at the 80 ms chunk mode (upstream's figure, and **not yet in a released wheel**: checked 2026-09-10, neither NeMo 2.7.3 nor 3.0.0 carries it, only the source tree — [DR-0002](docs/decisions/0002-the-graph-path-is-not-in-a-released-wheel.md)), because
 low-latency streaming "spends most of its time waiting on the host": each step launches "around 1.5k
 small kernels, so the GPU is idle for most of the step while the host enqueues them." But that package
 has zero occurrences of `asyncio`, `websocket` or `grpc`; its entry point takes a file, a directory or
@@ -183,7 +184,7 @@ That leaves two distinct effects, and the common one is not the exotic one:
   found. Two decode paths reaching the same pair of wrong answers for the same token is better evidence
   for that effect than either run alone.
 
-### Correction, 2026-09-11: that 38 was measured on the wrong code path, and the real answer is smaller
+### Correction, 2026-09-10: that 38 was measured on the wrong code path, and the real answer is smaller
 
 The table above was produced through `CacheAwareStreamingAudioBuffer` and `conformer_stream_step`, which
 is NeMo's shipped **example** path. This server is built on `nemo.collections.asr.inference`, a different
@@ -280,7 +281,7 @@ narrow: *transcript* divergence is architecture-dependent, and nothing here says
 timestamps on Blackwell.
 
 **Length coupling reproduces at exactly 38 on both cards**, which is what a deterministic algorithmic
-artefact looks like rather than an arithmetic one — **on the example path**. As of 2026-09-11 that
+artefact looks like rather than an arithmetic one — **on the example path**. As of 2026-09-10 that
 caveat is no longer open: the effect was measured against the inference pipeline this server actually
 wraps and does not survive there, because a tick server's steady batch has no ragged lengths to couple.
 See the correction above. One caveat still travels with the 38-against-38 comparison: those two result
@@ -317,7 +318,7 @@ explicit flag for whether tokens past the clip boundary are returned. Those are 
 different boundary handling.
 
 That note stood here from 2026-09-10 as an open admission that the front page's strongest streaming claim
-was measured on the wrong code path. **It was resolved on 2026-09-11 by running the experiment**, and the
+was measured on the wrong code path. **It was resolved on 2026-09-10 by running the experiment**, and the
 answer went against the claim: the length coupling does not survive on the server's own path, where the
 count is 6 in 2,939 and none of the six is a tail difference. The correction is above, with the table.
 
