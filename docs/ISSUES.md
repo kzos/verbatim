@@ -93,7 +93,7 @@ The established upstream fact is that the encoder is not the problem. NeMo #1586
 
 **Size:** L
 
-NVIDIA-NeMo/Speech issue #12840, "Cache Aware Streaming script yields different results for different batch_sizes", was opened 2025-04-01 by `gabitza-tech` and closed by a stale-bot on 2025-06-13 without a fix. The upstream attribution of PR #15863 is `hamuzhan`, and `naymaraq` is the upstream author of `context_manager.py`; these handles cite existing artifacts, not assignment requests.
+NVIDIA-NeMo/Speech issue #12840, "Cache Aware Streaming script yields different results for different batch_sizes", was opened 2025-04-01 and closed by a stale bot on 2025-06-13 without a fix. Upstream PR #15863 and `context_manager.py` are the other artifacts this issue depends on. Contributors are named in those threads and on those commits; this repository cites the work rather than the people, because naming an individual in a public document is a request for their attention that nobody here has asked for.
 
 Verbatim's headline correctness property, transcripts and timestamps bit-identical regardless of concurrency and batch composition, is a claim about that defect, and the day-45 gate stands or falls on it. Any padding artefact of the #12840 class is fixed upstream in NeMo first.
 
