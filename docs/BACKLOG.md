@@ -146,10 +146,15 @@ promised date — that is for triage once an entry becomes an issue.
   `--bucket N`. Two neighbouring rules landed with it: a `pad_pool` between 1 and `max(buckets) - 1` is
   refused as the invariance break it is, since the steady batch cannot then fill its own shape, and the
   edge pad rows are a named term of `num_slots` rather than an accident of `edge_batch + drain_margin`.
-- `src/verbatim/engine.py::Engine.open_session` (`_sessions`, `_queues`) — the per-session dictionaries
+- ~~`src/verbatim/engine.py::Engine.open_session` (`_sessions`, `_queues`) — the per-session dictionaries
   are populated on every open and never remove closed sessions, retaining roughly 188 KiB of preallocated
-  ring buffer per closed session. Measured: 9.60 MB after fifty fully-drained sessions. Resolve before
-  TASK-007 puts a long-lived transport on the engine.
+  ring buffer per closed session. Measured: 9.60 MB after fifty fully-drained sessions.~~ **Resolved:**
+  `_wake` drops both entries on the terminal row or on an error and `stop()` clears them, while the
+  handle keeps its own queue and ring so `results()` still drains what was queued. Covered by
+  `tests/protocol/test_engine_session.py::test_finished_sessions_are_dropped_from_the_engine`, which
+  asserts both dictionaries are empty after five sessions finish. It stayed open here after the fix
+  landed, which is the failure mode this file exists to prevent, so: **an entry is not resolved until
+  someone has checked the code and named the test.**
 - `src/verbatim/engine.py::EngineSession.results` — the per-session result queue has no maximum size and
   no overflow policy. Resolve before TASK-007 puts a long-lived transport on the engine.
 
