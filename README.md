@@ -5,10 +5,12 @@
 > ### There is no working server here yet
 >
 > Both wires now run every session through the tick-scheduled engine, with admission, live back-pressure
-> and an idle deadline, over a CPU fake. `verbatim serve` will start that server and `verbatim doctor`
-> will tell you whether this machine can run it. But the adapter onto NeMo **has never run on a GPU**:
-> nothing here has yet transcribed real audio through the real pipeline, and nothing in this repository
-> has been benchmarked.
+> and an idle deadline. On 2026-09-11 `verbatim serve` ran against a real NeMo pipeline on an A6000 for
+> the first time, transcribed real audio with word timings and shut down cleanly. **Nothing here has been
+> benchmarked**, and the first run surfaced a problem worth reading before anything else:
+> [DR-0003](docs/decisions/0003-serve-defaults-to-the-precision-that-loses-invariance.md) — the server
+> defaults to `bfloat16`, and bfloat16 is the precision measured to lose the batch invariance this
+> project is named for.
 >
 > What is finished and worth your time is the **evidence**: a measured account of how batch composition
 > changes a transcript and a word's timing on stock NeMo, with the probe scripts under
