@@ -77,6 +77,9 @@ ds = load_dataset("google/fleurs", "en_us", split="test", streaming=True)
 ds = ds.cast_column("audio", Audio(decode=False))
 
 state = {"model": MODEL, "corpus": "google/fleurs en_us test", "batch_size": BATCH,
+         "machine": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+         "torch": torch.__version__, "cuda": torch.version.cuda,
+         "nemo": __import__("nemo").__version__,
          "reference_field": "transcription", "control": "all rows padded to one common length",
          "checked": 0, "divergences": []}
 buf, meta, t0 = [], [], time.time()

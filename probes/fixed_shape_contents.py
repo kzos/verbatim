@@ -88,6 +88,10 @@ for rec in ds:
 print(f"[data] {len(pool)} utterances held", flush=True)
 
 state = {
+    "machine": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+    "torch": torch.__version__,
+    "cuda": torch.version.cuda,
+    "nemo": __import__("nemo").__version__,
     "machine": torch.cuda.get_device_name(0),
     "batch": BATCH,
     "question": "with batch SHAPE held fixed, do the batch CONTENTS change the target's output?",

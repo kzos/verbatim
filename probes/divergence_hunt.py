@@ -71,6 +71,9 @@ def texts(rows, L):
 
 
 state = {"model": MODEL, "batch_size": BATCH, "control": "all rows padded to one common length",
+         "machine": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+         "torch": torch.__version__, "cuda": torch.version.cuda,
+         "nemo": __import__("nemo").__version__,
          "splits": {}, "divergences": [], "total_checked": 0}
 t0 = time.time()
 

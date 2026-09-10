@@ -107,6 +107,9 @@ for rec in ds:
 print(f"[data] {len(pool)} utterances held", flush=True)
 
 state = {"model": MODEL, "path": "cache-aware streaming, conformer_stream_step",
+         "machine": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+         "torch": torch.__version__, "cuda": torch.version.cuda,
+         "nemo": __import__("nemo").__version__,
          "att_context_size": list(att) if not isinstance(att, int) else att,
          "batch": BATCH, "checked": 0,
          "control": "every row zero-padded to one common length in BOTH arms, so chunk count and "

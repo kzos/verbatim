@@ -60,6 +60,10 @@ def pct(x, q):
     return float(np.percentile(x, q))
 
 summary = {
+    "machine": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+    "torch": torch.__version__,
+    "cuda": torch.version.cuda,
+    "nemo": __import__("nemo").__version__,
     "n": int(n), "divergent": int(is_div.sum()),
     "own_duration_s": {"divergent_median": float(np.median(dur[is_div])),
                        "other_median": float(np.median(dur[~is_div]))},

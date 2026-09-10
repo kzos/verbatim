@@ -6,6 +6,7 @@
 
 > Verbatim has not been benchmarked. Every number describing Verbatim's own behaviour in this README is an angle-bracketed placeholder until a row under `rows/` fills it. The batch-invariance section below reports exploratory probes on stock NeMo, not on Verbatim, which is not implemented. Two external figures are cited to their sources: the checkpoint's monthly download count and the CUDA-graph speedup range; neither is a measurement of this project.
 >
+> [KILL.md](KILL.md) — the dated conditions under which this stops, written before the runs.<br>
 > [docs/SCOPE.md](docs/SCOPE.md) — fixed boundary and growth trigger.<br>
 > [docs/not-here.md](docs/not-here.md) — common contribution refusals with redirects.<br>
 > [CONTRIBUTING.md](CONTRIBUTING.md) — contribution units and measurement rules.
@@ -29,7 +30,7 @@ runtimes are batch-1 or a bounded four-thread pool, and NeMo-Speech.cpp's docs s
 
 Verbatim is a **tick scheduler**: sessions join and leave every chunk period, but the batch handed to
 NeMo is always one of a few fixed bucket sizes whose CUDA graphs stay captured, and the ragged
-first/last steps are peeled into a small eager side-batch — so a churning multi-tenant workload never
+final steps are peeled into a small eager side-batch — so a churning multi-tenant workload never
 falls off the graph path that PR #15863 opened. The property it is built for is **batch invariance**:
 one session's transcript and word timestamps identical whether that session is alone on the GPU or
 sharing it. Whether that property holds on the graph path is an open question with a dated gate, and

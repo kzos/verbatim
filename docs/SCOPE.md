@@ -12,7 +12,7 @@ The hardware available to this project is four NVIDIA RTX A6000, 48 GB each, Amp
 
 ## In scope — year 1
 
-1. **Tick scheduler.** Asynchronous sessions join and leave; each session has an audio ring buffer. Every chunk period, the scheduler assembles per-chunk-mode batches into fixed bucket sizes whose CUDA graphs are captured and retained. NeMo keys graphs on shape, so buckets multiplied by chunk modes must fit the graph budget. Boundary steps (`is_first`/`is_last`) run in a small eager side-batch so the steady-state batch never leaves the graph path; if measurement shows that side-batching costs more than it saves, capture is extended with per-slot validity masks. Slot assignment uses NeMo's `CacheAwareContextManager`. Admission control operates against a measured tick budget and yields a hard, published concurrency ceiling per chunk mode per GPU.
+1. **Tick scheduler.** Asynchronous sessions join and leave; each session has an audio ring buffer. Every chunk period, the scheduler assembles per-chunk-mode batches into fixed bucket sizes whose CUDA graphs are captured and retained. NeMo keys graphs on shape, so buckets multiplied by chunk modes must fit the graph budget. Final steps (`is_last`) are peeled into a small eager side-batch so the steady-state batch never leaves the graph path. First steps are not: NeMo keys the graph on the per-batch pre-encode drop, which a first frame does not change, so a first frame is safe inside the steady batch. Note that the inference pipeline already splits finals into their own sub-batch, so this peeling duplicates work NeMo does and may be removable once measured; if measurement shows that side-batching costs more than it saves, capture is extended with per-slot validity masks. Slot assignment uses NeMo's `CacheAwareContextManager`. Admission control operates against a measured tick budget and yields a hard, published concurrency ceiling per chunk mode per GPU.
 2. **Reuse, not rewrite.** NeMo's cache-aware RNNT/CTC pipelines, CUDA-graph encoder step, label-looping greedy and MALSD beam decoders, endpointing, per-stream biasing and ITN are used through the pipeline API. No new decoders and no new kernels.
 3. **Batch invariance.** A session's transcript and timestamps are bit-identical regardless of concurrency and batch composition on the graph path. A CI gate runs the same corpus at concurrency `1 / 32 / maximum` and diffs outputs. Any padding artefact found, including the `#12840` class, is fixed upstream in NeMo first.
 4. **Host path.** gRPC exposes the Riva `StreamingRecognize` subset used by `livekit-plugins-nvidia`, Pipecat's `nvidia` STT service and NeMo-Speech.cpp's `riva_server` clients. A plain WebSocket serves the demo. Audio decode and resampling run in worker threads, mel features are batched on the GPU, no JSON runs on the tick path, and back-pressure plus a p95 partial-latency SLO is provided per chunk mode.
@@ -51,6 +51,7 @@ Absent a trigger, Verbatim stays a maintained utility and year 2 is not committe
 
 ## Related documents
 
+- [KILL.md](../KILL.md) — the dated conditions under which this stops.
 - [docs/not-here.md](not-here.md) — common refusals with redirects.
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — contribution units and review boundary.
 - [README.md](../README.md) — the public first screen and current status.

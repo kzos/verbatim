@@ -118,7 +118,7 @@ for rec in ds:
         break
 print(f"[data] {len(pool)} utterances", flush=True)
 
-state = {"machine": torch.cuda.get_device_name(0), "torch": torch.__version__,
+state = {"machine": torch.cuda.get_device_name(0), "torch": torch.__version__, "nemo": __import__("nemo").__version__,
          "model": MODEL, "batch": BATCH, "n": len(pool),
          "control": "every row padded to one common length; batch size is the only variable",
          "note": "text divergence is a LOWER BOUND; the finer channels are what this run adds",
