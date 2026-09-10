@@ -189,6 +189,7 @@ def options_from_config(
         interim_results=interim_results,
         word_timestamps=bool(config.enable_word_time_offsets),
         model=model,
+        stop_history_eou_ms=stop_history_eou_ms,
     )
     return RivaSessionConfig(
         options=options,

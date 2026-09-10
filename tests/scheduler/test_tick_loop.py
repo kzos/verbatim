@@ -216,6 +216,7 @@ class _RecordingPipeline(FakePipelineAdapter):
     ) -> None:
         super().__init__(chunk, buckets=buckets)
         self.closed: list[int] = []
+        self.stepped: list[int] = []
         self.calls = 0
         self._fail_open = set(fail_open)
         self._fail_on_call = fail_on_call
@@ -235,6 +236,7 @@ class _RecordingPipeline(FakePipelineAdapter):
         self.calls += 1
         if self.calls == self._fail_on_call:
             raise RuntimeError("step failed")
+        self.stepped.extend(f.stream_id for f in frames if f.stream_id >= 0)
         return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
 
 
@@ -267,29 +269,61 @@ def test_a_step_failure_fails_and_closes_every_live_session() -> None:
     assert loop.drain_errors() == []
 
 
-def test_a_first_and_last_frame_whose_open_fails_is_closed_next_tick() -> None:
-    """Reaches the DRAINING-with-no-frame branch of `run_tick` on purpose.
-
-    A session that drains with less than one chunk buffered produces a frame that is
-    both first and last. When `open_stream` raises on it, that tick skips the closing
-    list, so the session survives with its final frame already consumed. The next
-    tick's `next_frame` returns None for a DRAINING session, and the branch closes it.
-    Deleting the branch leaks that session's slot and registry entry forever.
+def test_a_session_whose_open_fails_is_closed_in_the_same_tick_and_never_stepped() -> None:
+    """The never-opened-stream decision. NeMo has no state for a stream whose open
+    failed, so any frame of it, including the synthetic abort frame, would dereference
+    None inside a batch and fail every session in it. The session closes in the tick
+    its open failed, its slot is released, and no frame of it ever reaches the adapter.
     """
     loop, pipeline, config = _recording_loop(fail_open=(1,))
     rng = np.random.default_rng(22)
-    session = _join(loop, 1, _audio(rng, 1)[:100])
-    assert loop.run_tick() == []
+    session = _join(loop, 1, _audio(rng, 3), drain=False)
+    healthy = _join(loop, 2, _audio(rng, 6), drain=False)
+    results = loop.run_tick()
+    assert [r.stream_id for r in results] == [2]
     assert dict(loop.drain_errors())[1].code is ErrorCode.INTERNAL
+    assert session.state is SessionState.CLOSED
+    assert 1 not in loop.registry
+    assert loop.slots.reserved == config.effective_pad + 1  # only the healthy session
+    assert pipeline.closed == [1]
+    assert 1 not in pipeline.stepped
+    for _ in range(3):
+        loop.run_tick()
+    assert 1 not in pipeline.stepped
+    assert healthy.state is SessionState.RUNNING
+
+
+def test_a_draining_session_whose_final_was_consumed_outside_the_loop_is_closed() -> None:
+    """The safety net in `run_tick` for a DRAINING session with no frame left. No
+    tick-loop path produces the state today, so the test builds it directly: consume
+    the final frame through the session's own API, then let a tick find the session.
+    Deleting the branch would leave such a session registered with its slot forever."""
+    loop, pipeline, config = _recording_loop()
+    rng = np.random.default_rng(23)
+    session = _join(loop, 1, _audio(rng, 1)[:100])
+    consumed = session.next_frame()
+    assert consumed is not None and consumed.is_last
     assert session.state is SessionState.DRAINING
-    assert 1 in loop.registry
-    assert loop.slots.reserved == config.effective_pad + 1
-    assert pipeline.closed == []
     assert loop.run_tick() == []
     assert session.state is SessionState.CLOSED
     assert 1 not in loop.registry
     assert loop.slots.reserved == config.effective_pad
     assert pipeline.closed == [1]
+
+
+def test_tick_costs_are_read_after_the_step() -> None:
+    """An adapter that measures its own step reports this tick's cost, not the last one's."""
+
+    class MeasuringPipeline(FakePipelineAdapter):
+        def transcribe_step(self, frames, *, keep_all_outputs):
+            self._step_ms = 42.0
+            return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+
+    config = EngineConfig(chunk=CHUNK, buckets=(8,), calibrated_ceiling=8)
+    pipeline = MeasuringPipeline(CHUNK, buckets=(8,), step_ms=1.0)
+    loop = TickLoop(config, pipeline, SessionRegistry(), clock=SimulatedClock())
+    loop.run_tick()
+    assert loop.stats[-1].step_ms == 42.0
 
 
 def test_tick_stats_and_boundaries_are_bounded() -> None:

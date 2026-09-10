@@ -17,7 +17,9 @@ from verbatim.core.session import Session
 from verbatim.core.types import PcmFrame, StepResult
 from verbatim.engine import Engine, stub_engine
 from verbatim.pipelines.base import PipelineAdapter
+from verbatim.pipelines.cache_aware_rnnt import CacheAwareRNNTAdapter
 from verbatim.pipelines.fake import FakePipelineAdapter
+from verbatim.pipelines.nemo_fake import FakeCacheAwarePipeline, boundary_for
 from verbatim.protocols.base import Hypothesis, SessionHandle, SessionOptions
 from verbatim.scheduler.clock import ScaledMonotonicClock, SimulatedClock
 from verbatim.scheduler.tick import TickLoop
@@ -424,3 +426,44 @@ async def test_a_failed_session_is_dropped_from_the_engine_too() -> None:
         sessions[0].end()
         assert await _collect(sessions[0])
         assert engine._queues == {}
+
+
+@pytest.mark.asyncio
+async def test_endpointing_delivers_a_final_before_the_client_half_closes() -> None:
+    """LiveKit and Pipecat never half-close during a live call: the final for an
+    utterance must arrive from NeMo's endpointer, on silence, with the session still
+    open. Wired end to end: SessionOptions.stop_history_eou_ms into the adapter, into
+    NeMo's request options, and the step where the fake detects the end of utterance
+    back out as an is_final hypothesis with word timings."""
+    config = EngineConfig(chunk=CHUNK, buckets=(2,), edge_batch=1, pipeline="cache_aware_rnnt")
+    nemo = FakeCacheAwarePipeline(CHUNK.ms, num_slots=config.num_slots)
+    adapter = CacheAwareRNNTAdapter(
+        CHUNK, boundary_for(nemo), buckets=(2,), required_slots=config.num_slots
+    )
+    engine = Engine(config, adapter, clock=ScaledMonotonicClock(100.0))
+    session = engine.open_session(
+        SessionOptions(chunk_ms=160, word_timestamps=True, stop_history_eou_ms=2 * CHUNK.ms)
+    )
+    speech = (b"\x10\x00" * OPTIONS.chunk_samples) * 2
+    silence = b"\x00" * (OPTIONS.chunk_bytes * 2)
+    received: list[Hypothesis] = []
+
+    async def consume() -> None:
+        async for hypothesis in session.results():
+            received.append(hypothesis)
+            if hypothesis.is_final:
+                return
+
+    async with engine:
+        assert session.feed(speech) == len(speech)
+        assert session.feed(silence) == len(silence)
+        await asyncio.wait_for(consume(), timeout=5.0)
+        # The final arrived while the session was still open: nobody called end().
+        assert engine._registry.live == 1
+        final = received[-1]
+        assert final.is_final and final.text.count(" ") == 1
+        assert [(w.start_ms, w.end_ms) for w in final.words] == [(0, 160), (160, 320)]
+        assert final.audio_processed_s == pytest.approx(4 * 0.16)
+        session.end()
+        rest = await _collect(session)
+    assert rest[-1].is_final is True
