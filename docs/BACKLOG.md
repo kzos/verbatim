@@ -111,6 +111,13 @@ promised date — that is for triage once an entry becomes an issue.
   the session survives in `DRAINING` with its final already marked emitted; and when `open_stream` fails
   on a frame that is both first and last. Deleting it leaks that session's slot and registry entry. The
   branch stays; what is missing is the test that reaches it.
+- `src/verbatim/scheduler/tick.py::TickLoop.run_tick` — when `open_stream` raises on a first frame that
+  is **not** also the last, the error is recorded, the session is put into DRAINING as aborted and the
+  frame is dropped. On the next tick the session is DRAINING with no frame, so the loop steps a
+  synthetic abort for a stream the pipeline never opened. Nothing is wrong with the output today, since
+  the abort suppresses emission, but stepping a stream that was never opened is a contract the real NeMo
+  adapter will not honour. Decide it in the adapter brief: either do not open the stream at all and
+  close the session outright, or open it lazily on first successful audio.
 - `src/verbatim/scheduler/tick.py::TickLoop` (`_stats`, `_boundaries`) — both lists grow by one entry
   per tick for the whole lifetime of the loop, with no trimming or cap. Harmless for the short-lived CPU
   test suite; unbounded growth once this loop drives a long-running server. Bound them (a ring buffer,
