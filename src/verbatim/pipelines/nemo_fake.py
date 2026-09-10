@@ -125,6 +125,9 @@ class FakeCacheAwarePipeline:
         self.seen: list[FakeFrame] = []
         self.released: list[int] = []
         self.step_calls = 0
+        #: Set to an exception to raise it where NeMo's encoder raises: after the
+        #: bufferer and context manager allocated, before either cleaned up.
+        self.raise_in_encoder: BaseException | None = None
 
     # --- the state pool, as BasePipeline has it ---
 
@@ -177,6 +180,9 @@ class FakeCacheAwarePipeline:
                 if len(self._slots) >= self.num_slots:
                     raise RuntimeError("No free slots available")
                 self._slots.add(request.stream_id)
+        if self.raise_in_encoder is not None:
+            # NeMo's encoder step: after allocation, before any of the cleanup below.
+            raise self.raise_in_encoder
 
         outputs: list[FakeStepOutput] = []
         chunk_ms = self.chunk_size_in_secs * 1000.0

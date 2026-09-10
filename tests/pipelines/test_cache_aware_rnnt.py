@@ -407,3 +407,66 @@ def test_the_boundary_for_nemo_is_built_lazily() -> None:
     assert boundary.release_stream is None
     with pytest.raises((ImportError, ModuleNotFoundError)):
         NeMoBoundary.from_pipeline(object())
+
+
+# --- a step that raises ----------------------------------------------------------------
+
+
+def test_a_step_that_raises_on_a_final_frame_does_not_strand_the_streams_slot() -> None:
+    """Bench's round-2 finding. NeMo raises from the encoder, after its bufferer freed a
+    final frame's slot but before the context manager freed its own or the state was
+    deleted. Bookkeeping written before the step recorded the stream as gone, so
+    close_stream skipped the release and the context slot was stranded for good."""
+    adapter, pipeline = _adapter()
+    adapter.open_stream(1, None)
+    adapter.transcribe_step([_frame(1, _speech(30), is_first=True)], keep_all_outputs=False)
+    assert pipeline.live_slots == 1
+    pipeline.raise_in_encoder = RuntimeError("CUDA error: device-side assert triggered")
+    last = PcmFrame(stream_id=1, samples=_speech(31), is_first=False, is_last=True, valid_samples=N)
+    with pytest.raises(RuntimeError, match="device-side assert"):
+        adapter.transcribe_step([last], keep_all_outputs=True)
+    assert pipeline.live_slots == 1  # NeMo never reached its cleanup
+    adapter.close_stream(1)  # what fail_live does for every live session
+    assert pipeline.released == [1]
+    assert pipeline.live_slots == 0
+    assert pipeline.get_state(1) is None
+
+
+def test_a_step_that_raises_on_a_first_frame_releases_what_nemo_allocated() -> None:
+    adapter, pipeline = _adapter()
+    adapter.open_stream(1, None)
+    pipeline.raise_in_encoder = RuntimeError("encoder failed")
+    with pytest.raises(RuntimeError, match="encoder failed"):
+        adapter.transcribe_step([_frame(1, _speech(32), is_first=True)], keep_all_outputs=False)
+    assert pipeline.live_slots == 1
+    adapter.close_stream(1)
+    assert pipeline.released == [1]
+    assert pipeline.live_slots == 0
+
+
+def test_pad_rows_self_heal_after_a_failed_edge_step() -> None:
+    """Bench's question. Pads never get a close_stream. After a failed edge step a
+    one-shot pad holds a slot and a state NeMo never cleaned up; its id recurs, the
+    adapter sends it as an already-started stream, and its next edge appearance ends
+    it through NeMo's own cleanup."""
+    adapter, pipeline = _adapter()
+    adapter.open_stream(1, None)
+    adapter.transcribe_step(
+        [_frame(1, _speech(33), is_first=True), _pad(-1), _pad(-2)], keep_all_outputs=False
+    )
+    assert pipeline.live_slots == 3
+    pipeline.raise_in_encoder = RuntimeError("encoder failed")
+    last = PcmFrame(stream_id=1, samples=_speech(34), is_first=False, is_last=True, valid_samples=N)
+    with pytest.raises(RuntimeError):
+        adapter.transcribe_step([last, _pad(-3)], keep_all_outputs=True)
+    pipeline.raise_in_encoder = None
+    adapter.close_stream(1)
+    assert pipeline.live_slots == 3  # pads -1, -2 and the stranded one-shot -3
+    # The pad recurs in a steady batch: sent as started, NeMo finds its state.
+    adapter.transcribe_step([_pad(-1), _pad(-2), _pad(-3)], keep_all_outputs=False)
+    assert pipeline.live_slots == 3
+    assert [f.is_first for f in pipeline.seen[-3:]] == [False, False, False]
+    # And in an edge batch it ends through NeMo's own cleanup.
+    adapter.transcribe_step([_pad(-3)], keep_all_outputs=True)
+    assert pipeline.live_slots == 2
+    assert pipeline.get_state(-3) is None

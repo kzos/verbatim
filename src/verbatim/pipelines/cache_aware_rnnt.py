@@ -25,6 +25,13 @@ What the adapter owns, and what it leaves to NeMo:
 - ``step_ms`` and ``edge_step_ms`` are the wall time of the last steady and edge
   step, measured, so the admission controller's budget arithmetic runs on real
   numbers. The tick loop reads them after the step.
+- The record of which streams NeMo holds is written after the step, from what NeMo
+  did rather than what it was asked. NeMo raises from the encoder, after its
+  bufferer and context manager allocated and after the bufferer freed a final
+  frame's slot, but before the context manager freed its slot or the state was
+  deleted. A step that raises therefore leaves every stream in the batch holding
+  something, and ``close_stream`` must release it; bookkeeping written before the
+  step said the final stream was gone and stranded its context slot.
 
 NeMo is reached through ``NeMoBoundary``, one object and four callables, so the CPU
 suite can stand a fake at exactly NeMo's seam (``verbatim.pipelines.nemo_fake``) and
@@ -104,6 +111,11 @@ class NeMoBoundary:
             return torch.from_numpy(np.ascontiguousarray(samples, dtype=np.float32))
 
         def release_stream(stream_id: int) -> None:
+            # Two slot tables, keyed differently, and one name that means two things:
+            # the bufferer's `free_slots` is a method taking SLOT ids, while the context
+            # manager's `free_slots` is its Queue of free slots. The context manager is
+            # released through `reset_slots`, which takes STREAM ids and raises KeyError
+            # for a stream it does not map, hence the membership guard.
             bufferer = pipeline.bufferer
             slot = bufferer.streamidx2slotidx.get(stream_id)
             if slot is not None:
@@ -246,6 +258,7 @@ class CacheAwareRNNTAdapter(PipelineAdapter):
         if not frames:
             return []
         requests = []
+        ending: list[tuple[int, bool]] = []
         for frame in frames:
             stream_id = frame.stream_id
             if stream_id < 0:
@@ -277,14 +290,24 @@ class CacheAwareRNNTAdapter(PipelineAdapter):
                     options=request_options,
                 )
             )
-            if is_last:
-                self._started.discard(stream_id)
-            else:
-                self._started.add(stream_id)
+            ending.append((stream_id, is_last))
 
         started_at = time.perf_counter()
-        outputs = self._boundary.pipeline.transcribe_step(requests)
+        try:
+            outputs = self._boundary.pipeline.transcribe_step(requests)
+        except BaseException:
+            # NeMo raised between allocating and freeing: every stream in the batch
+            # may now hold a slot or a state, the final ones included. Record them
+            # all as held so close_stream releases whatever is left.
+            for stream_id, _ in ending:
+                self._started.add(stream_id)
+            raise
         elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+        for stream_id, is_last in ending:
+            if is_last:
+                self._started.discard(stream_id)  # NeMo deleted the state, freed the slots
+            else:
+                self._started.add(stream_id)
         if keep_all_outputs:
             self._edge_step_ms = elapsed_ms
         else:
