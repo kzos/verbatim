@@ -61,7 +61,10 @@ promised date — that is for triage once an entry becomes an issue.
   1009 for a message over `max_message_bytes`) are described only in the module docstring and the tests.
   A demo protocol that is still moving is a bad thing to freeze into a document, so this is recorded
   rather than written: give it a page under `docs/protocols/` once the day-21 row has been taken over
-  this surface, since that row is what makes the frames load-bearing.
+  this surface, since that row is what makes the frames load-bearing. Note that it is already frozen in
+  practice by two implementations, because the harness client under `bench/` parses these frames and the
+  null server emits them, so **the tests are the spec until the row lands, and whoever changes a frame
+  changes the harness client in the same commit**.
 
 - `src/verbatim/protocols/ws/frames.py::PartialFrame.to_json` — builds its JSON with
   `round(float(self.audio_s), 6)` and no guard against `NaN`; Python's `json.dumps` will happily emit
