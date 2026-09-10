@@ -27,16 +27,16 @@ The methodology document asks for proof that the freeze predates the numbers, an
 date is forgeable. It named two acceptable proofs: a push to a public remote, or an external timestamp
 of the commit recorded here.
 
-Neither exists yet. This repository is private and its history was restarted on 2026-09-10, so the
-freeze is currently **unproven** and the document says so. This record is the placeholder that becomes
-the proof: when the repository goes public, the commit hash introducing the methodology gets written
-below, and GitHub's own record of that commit's date is the external timestamp.
+The repository went public on 2026-09-10, so the second proof now exists: the commit below carries a
+date GitHub records independently of any local clock, and it predates every comparative row because
+none exists yet.
 
-**Commit hash of the methodology freeze:** `<filled on the first public push>`
-**Public remote:** `<filled on the first public push>`
+**Commit hash of the methodology freeze:** `d3f5a6f8de70717ef84a0f499ce3e2245b8f4e95`
+**Public remote:** https://github.com/kzos/verbatim, public since 2026-09-10
 
-Until both are filled, no comparative row published from this repository may claim its methodology was
-frozen in advance. The claim and the proof land together or not at all.
+The freeze is therefore proven as of the date above. Any later change to a frozen constant requires a
+schema bump and a full re-run, recorded as its own decision record, so that amending a definition after
+seeing a number is visible in this directory rather than invisible in a diff.
 
 ## Consequences
 
