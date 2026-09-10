@@ -52,6 +52,7 @@ _STATUS_BY_CODE: Final = {
     ErrorCode.UNIMPLEMENTED: grpc.StatusCode.UNIMPLEMENTED,
     ErrorCode.RESOURCE_EXHAUSTED: grpc.StatusCode.RESOURCE_EXHAUSTED,
     ErrorCode.DEADLINE_EXCEEDED: grpc.StatusCode.DEADLINE_EXCEEDED,
+    ErrorCode.UNAVAILABLE: grpc.StatusCode.UNAVAILABLE,
     ErrorCode.INTERNAL: grpc.StatusCode.INTERNAL,
 }
 
@@ -158,10 +159,12 @@ class RivaSpeechRecognitionServicer(riva_asr_pb2_grpc.RivaSpeechRecognitionServi
                                 # HTTP/2 flow control slows the client down.
                                 await self._engine.wait_for_ticks(1)
                     except (VerbatimError, RuntimeError):
-                        # The session is over from the engine's side: a step failure,
-                        # the idle deadline, or the engine stopping under a parked
-                        # reader. The handler's result stream carries the outcome.
-                        handle.abort()
+                        # The session is over from the engine's side: a step failure
+                        # (INTERNAL), the idle deadline (DEADLINE_EXCEEDED) or the
+                        # engine stopping under a parked reader (UNAVAILABLE). The
+                        # engine has already queued that outcome on the result stream.
+                        # Aborting here would race the thread's last tick into a clean
+                        # end that reads as a finished utterance.
                         return
                 # Unknown oneof branches are ignored per proto3 semantics.
             if handle is None:

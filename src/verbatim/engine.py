@@ -28,7 +28,13 @@ from typing import Final
 
 from verbatim.audio.pcm import decode_pcm16
 from verbatim.config import ChunkMode, EngineConfig
-from verbatim.core.errors import ErrorCode, InvalidArgument, ResourceExhausted, VerbatimError
+from verbatim.core.errors import (
+    ErrorCode,
+    InvalidArgument,
+    ResourceExhausted,
+    Unavailable,
+    VerbatimError,
+)
 from verbatim.core.registry import SessionRegistry
 from verbatim.core.session import Session, SessionState
 from verbatim.core.types import StepResult
@@ -54,13 +60,8 @@ class _ErrorEvent:
     error: VerbatimError
 
 
-@dataclass(frozen=True, slots=True)
-class _EndEvent:
-    """Stop a queue whose session was ended by engine shutdown."""
-
-
 _EmitItem = StepResult | _ErrorEvent
-_QueueItem = StepResult | _ErrorEvent | _EndEvent
+_QueueItem = StepResult | _ErrorEvent
 
 
 class Engine(EngineHandle):
@@ -168,8 +169,12 @@ class Engine(EngineHandle):
                 session.close()
                 self._registry.remove(session.session_id)
                 self._tick.slots.release(1)
-            for queue in self._queues.values():
-                queue.put_nowait(_EndEvent())
+            # A session still open here never received its final: the engine is
+            # going away mid-stream. Tell each one so, rather than closing its result
+            # stream as if the utterance had completed. A caller cannot distinguish a
+            # clean end from an abandoned one, and that decides whether it retries.
+            for stream_id, queue in self._queues.items():
+                queue.put_nowait(_ErrorEvent(stream_id, Unavailable("the server is shutting down")))
             self._queues.clear()
             self._sessions.clear()
 
@@ -386,8 +391,6 @@ class EngineSession(SessionHandle):
             item = await self._queue.get()
             if isinstance(item, _ErrorEvent):
                 raise item.error
-            if isinstance(item, _EndEvent):
-                return
             emission = emissions_for(item, self.options)
             for hypothesis in emission.hypotheses:
                 yield hypothesis

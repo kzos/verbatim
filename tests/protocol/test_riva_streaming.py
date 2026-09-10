@@ -525,28 +525,91 @@ async def test_a_pipeline_exception_aborts_with_internal() -> None:
 
 
 class _StoppingEngine(_RecordingEngine):
-    """The stub engine as a reader sees it once `stop()` has begun."""
+    """The engine as a parked reader sees it once `stop()` has begun: the tick wait
+    raises, and by then the engine has ended the session itself."""
 
     async def wait_for_ticks(self, n: int) -> None:
         self.log.append(("wait", n))
+        await self.inner.stop()
         raise RuntimeError("engine tick loop is not running")
 
 
-async def test_a_reader_parked_in_back_pressure_when_the_engine_stops_ends_the_stream() -> None:
-    """The reader's tick wait raises during shutdown: the session is aborted and the
-    stream ends with no final and no status but OK, the same rule as the WebSocket.
+async def _read_to_end(
+    call,  # type: ignore[no-untyped-def]
+) -> tuple[list[riva_asr_pb2.StreamingRecognizeResponse], grpc.StatusCode, str]:
+    """Responses, then the status: a streaming call's status resolves only once its
+    responses are read to EOF, and a failed call may surface that as an error on read."""
+    responses = []
+    try:
+        while (response := await asyncio.wait_for(call.read(), timeout=5.0)) is not grpc.aio.EOF:
+            responses.append(response)
+    except grpc.aio.AioRpcError as exc:
+        return responses, exc.code(), exc.details() or ""
+    return responses, await call.code(), (await call.details()) or ""
 
-    The inner engine keeps ticking, so a partial from audio it had already stepped may
-    precede the end; a real `stop()` delivers the last tick's partials the same way,
-    ahead of its end marker. Only a final would be wrong here."""
+
+async def test_a_reader_parked_in_back_pressure_when_the_engine_stops_is_told_unavailable() -> None:
+    """The reader's tick wait raises during shutdown. The reader does not abort the
+    session, because the engine has already ended it with UNAVAILABLE and an abort
+    could race the thread's last tick into a clean end; the call ends UNAVAILABLE with
+    no final. A partial from audio the engine had already stepped may precede it."""
     inner = stub_engine(ring_seconds=0.5)
     engine = _StoppingEngine(inner)
-    async with inner, RivaServer(engine, RivaServerConfig(port=0)) as server:
-        # `_collect` raises on any status but OK, so completing it asserts that a
-        # stopping engine is reported as neither INTERNAL nor UNKNOWN.
-        responses = await _collect(
-            server.target, [_config_message(), _audio_message(b"\x00" * (2 * 16000 * 2))]
-        )
+    async with (
+        inner,
+        RivaServer(engine, RivaServerConfig(port=0)) as server,
+        grpc.aio.insecure_channel(server.target) as channel,
+    ):
+        stub = riva_asr_pb2_grpc.RivaSpeechRecognitionStub(channel)
+
+        async def gen():  # type: ignore[no-untyped-def]
+            yield _config_message()
+            yield _audio_message(b"\x00" * (2 * 16000 * 2))  # larger than the ring
+
+        responses, code, details = await _read_to_end(stub.StreamingRecognize(gen()))
+    assert code == grpc.StatusCode.UNAVAILABLE
+    assert "shutting down" in details
     assert _finals(responses) == []
     assert engine.calls("wait") == [1]
-    assert engine.calls("abort") == [0]
+    assert engine.calls("abort") == []
+
+
+async def test_a_client_mid_stream_is_told_unavailable_when_the_engine_stops() -> None:
+    """The engine stops under an open stream: the call ends with UNAVAILABLE, not OK,
+    so the caller knows its utterance was abandoned rather than finished and can
+    decide to retry. Partials already produced still arrive first; no final does."""
+    inner = stub_engine()
+    async with (
+        inner,
+        RivaServer(inner, RivaServerConfig(port=0)) as server,
+        grpc.aio.insecure_channel(server.target) as channel,
+    ):
+        stub = riva_asr_pb2_grpc.RivaSpeechRecognitionStub(channel)
+        release: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+
+        async def gen():  # type: ignore[no-untyped-def]
+            yield _config_message()
+            yield _audio_message(_chunk())
+            await release  # the client stays mid-stream until the test lets go
+
+        call = stub.StreamingRecognize(gen())
+        try:
+            first = await asyncio.wait_for(call.read(), timeout=5.0)
+            assert first.results[0].is_final is False, "the stream must be live and mid-utterance"
+            await inner.stop()
+            rest, code, details = await _read_to_end(call)
+        finally:
+            release.set_result(None)
+    assert code == grpc.StatusCode.UNAVAILABLE
+    assert "shutting down" in details
+    assert _finals([first, *rest]) == []
+
+
+def test_every_error_code_has_a_grpc_status() -> None:
+    """A code without a status would surface as an unhandled KeyError in `_abort`,
+    which grpc reports as UNKNOWN: the one status this taxonomy must never produce."""
+    from verbatim.core.errors import ErrorCode
+    from verbatim.protocols.riva.server import _STATUS_BY_CODE
+
+    assert set(_STATUS_BY_CODE) == set(ErrorCode)
+    assert _STATUS_BY_CODE[ErrorCode.UNAVAILABLE] is grpc.StatusCode.UNAVAILABLE

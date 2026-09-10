@@ -9,9 +9,11 @@ for the ladder run. ``run_server`` binds the Riva and WebSocket listeners over o
 ``Engine`` and holds them open until ``shutdown`` is set, then closes the listeners
 first and the engine last, so no socket outlives the engine that fed it.
 
-A session mid-stream at shutdown gets a clean end with no final on both wires: the
-engine ends every open result stream when it stops. That is the engine's rule, not
-this module's, and it is written down in the round-4 handoff as a decision.
+A session mid-stream at shutdown is told the server is going away: the engine raises
+`UNAVAILABLE` on every result stream still open when it stops, which the Riva wire
+returns as the `UNAVAILABLE` status and the WebSocket as close code 1001. A clean end
+is reserved for an utterance that actually finished, so a caller can tell the two
+apart and decide whether to retry. That is the engine's rule, not this module's.
 """
 
 from __future__ import annotations

@@ -19,6 +19,7 @@ from verbatim.core.errors import (
     ErrorCode,
     InvalidArgument,
     ResourceExhausted,
+    Unavailable,
     VerbatimError,
 )
 from verbatim.core.registry import SessionRegistry
@@ -710,3 +711,64 @@ async def test_a_reader_parked_in_back_pressure_is_released_by_stop() -> None:
         assert outcomes == ["released: engine tick loop is not running"]
         with pytest.raises(VerbatimError, match="CLOSED"):
             session.feed(pending[accepted:])
+
+
+@pytest.mark.asyncio
+async def test_a_session_open_at_stop_is_told_unavailable_not_given_a_clean_end() -> None:
+    """A session still open when the engine stops never received its final: the engine
+    is going away mid-stream. Its result stream ends with UNAVAILABLE rather than a
+    clean return, because a caller cannot otherwise tell a finished utterance from an
+    abandoned one, and that is what decides whether it retries. Partials the engine
+    had already produced still arrive first."""
+    engine = _engine()
+    async with engine:
+        session = engine.open_session(OPTIONS)
+        assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
+        await engine.wait_for_ticks(2)  # the chunk has been stepped: a partial is queued
+    # the context exit stopped the engine with the session still open
+    seen: list[Hypothesis] = []
+
+    async def drain() -> None:
+        async for hypothesis in session.results():
+            seen.append(hypothesis)
+
+    with pytest.raises(Unavailable) as raised:
+        await asyncio.wait_for(drain(), timeout=5.0)
+    assert raised.value.code is ErrorCode.UNAVAILABLE
+    assert "shutting down" in str(raised.value)
+    assert seen, "the partial produced before stop() must still be delivered"
+    assert all(not hypothesis.is_final for hypothesis in seen)
+
+
+@pytest.mark.asyncio
+async def test_a_final_produced_by_the_last_tick_arrives_as_a_final_not_as_unavailable() -> None:
+    """`stop()` tells a session UNAVAILABLE only after the join, so the thread's last
+    tick has run and its wake has been processed (the loop runs that callback before
+    the join's completion, in FIFO order; `stop()`'s own drain covers a wake still
+    queued). A session whose final that last tick produced finished its utterance: the
+    caller gets the final and a clean end, and only a stream still open after the
+    join is told the server went away. Told before the join, a finished utterance
+    would be reported abandoned. The scripted fake delivers the final two ticks after
+    `end()`, so the thread is held with the final exactly one tick away when `stop()`
+    begins."""
+    clock = _HeldClock()
+    engine = stub_engine(clock=clock)
+    async with engine:
+        try:
+            await _until(lambda: clock.sleeps >= 1)  # parked before tick 1
+            session = engine.open_session(OPTIONS)
+            assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
+            await _one_tick(engine, clock)  # the chunk is stepped
+            session.end()
+            await _one_tick(engine, clock)  # the drain has begun; the final is one tick away
+            assert 1 in engine._queues, "the final must still be in flight when stop() begins"
+            stopping = asyncio.create_task(engine.stop())
+            await asyncio.sleep(0.05)
+            assert not stopping.done(), "stop() joins the thread, which is parked in its sleep"
+            clock.release()  # the thread's last tick produces the final, then it exits
+            await asyncio.wait_for(stopping, timeout=5.0)
+        finally:
+            clock.open()
+    hypotheses = await _collect(session)
+    assert hypotheses[-1].is_final
+    assert hypotheses[-1].audio_processed_s == pytest.approx(0.16)

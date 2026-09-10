@@ -230,9 +230,12 @@ class WsServer:
                             # back-pressure, through the peer's own flow control.
                             await self._engine.wait_for_ticks(1)
                 except (VerbatimError, RuntimeError):
-                    # The session is over from the engine's side, by a step failure,
-                    # the idle deadline or a dead engine. The writer tells the client.
-                    session.abort()
+                    # The session is over from the engine's side: a step failure
+                    # (INTERNAL), the idle deadline (DEADLINE_EXCEEDED) or the engine
+                    # stopping under a parked reader (UNAVAILABLE). The engine has
+                    # already queued that outcome and the writer tells the client.
+                    # Aborting here would race the thread's last tick into a clean
+                    # close that reads as a finished utterance.
                     return
             else:
                 try:
@@ -254,7 +257,12 @@ class WsServer:
         The engine stamps `audio_processed_s`; the transport never keeps a clock of
         its own, because bytes received are not bytes recognised once a ring sits
         between the socket and the pipeline.
+
+        A normal end closes with 1000. When the engine is going away under a live
+        session it raises `UNAVAILABLE`; that closes with 1001 (going away), the code
+        a client reads as "the server left", not "your utterance finished".
         """
+        close_code = 1000
         try:
             async for hypothesis in session.results():
                 if hypothesis.is_final:
@@ -274,9 +282,11 @@ class WsServer:
                     )
         except VerbatimError as exc:
             # The client is always told why a session dies.
+            if exc.code is ErrorCode.UNAVAILABLE:
+                close_code = 1001
             with contextlib.suppress(ConnectionClosed):
                 await ws.send(ErrorFrame(code=exc.code, message=str(exc)).to_json())
         except ConnectionClosed:
             return
         with contextlib.suppress(ConnectionClosed):
-            await ws.close()
+            await ws.close(close_code)
