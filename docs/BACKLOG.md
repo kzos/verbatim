@@ -138,12 +138,14 @@ promised date — that is for triage once an entry becomes an issue.
   that reaches `open_stream` is NeMo's `create_state` refusing a per-stream option, and raising that
   inside a batch step would fail every session in the batch rather than the one that asked for it.
 
-- `src/verbatim/config.py::EngineConfig` (`_DEFAULT_BUCKET`, `buckets: tuple[int, ...] | None`) — when
-  neither `buckets` nor `calibrated_ceiling` is supplied, the config silently falls back to a
-  hard-coded batch size of 8 (commented as a CPU-test convenience, not a measurement), and the public
-  `buckets` field's declared type had to widen to allow `None` to make room for that fallback. Either
-  make `calibrated_ceiling` (or `buckets`) mandatory, or give the fallback a name and a docstring making
-  clear no server should ever run it unmeasured.
+- ~~`src/verbatim/config.py::EngineConfig` (`_DEFAULT_BUCKET`) — when neither `buckets` nor
+  `calibrated_ceiling` is supplied, the config silently falls back to a hard-coded batch size of 8, a
+  CPU-test convenience and not a measurement.~~ **Resolved:** `_DEFAULT_BUCKET` is deleted and a config
+  with neither is refused, so a number nobody measured can no longer reach a published row through a
+  default. `serve` requires either `--ceiling N` from a measured row or an explicitly named uncalibrated
+  `--bucket N`. Two neighbouring rules landed with it: a `pad_pool` between 1 and `max(buckets) - 1` is
+  refused as the invariance break it is, since the steady batch cannot then fill its own shape, and the
+  edge pad rows are a named term of `num_slots` rather than an accident of `edge_batch + drain_margin`.
 - `src/verbatim/engine.py::Engine.open_session` (`_sessions`, `_queues`) — the per-session dictionaries
   are populated on every open and never remove closed sessions, retaining roughly 188 KiB of preallocated
   ring buffer per closed session. Measured: 9.60 MB after fifty fully-drained sessions. Resolve before

@@ -44,6 +44,8 @@ Each condition carries six fields: **Date**, **What it measures**, **Measurable 
 
 **What it measures:** Whether concurrency and batch composition leave transcripts and timestamps bit-identical on the graph path, while preserving the batch-1 streaming reference accuracy.
 
+> **The graph path is not in a released NeMo wheel.** Checked 2026-09-11 against NeMo 2.7.3 and 3.0.0: both halves of PR #15863 exist only in the source tree, so a default install can run this gate eager only. No threshold here moves because of that; a row must name its execution mode instead. See [docs/decisions/0002](docs/decisions/0002-the-graph-path-is-not-in-a-released-wheel.md).
+
 **Measurable exit criterion:** Bit-identical transcripts and timestamps across concurrency 1 / 32 / maximum for 1,000 LibriSpeech test-other and 500 FLEURS utterances with ≤ 2 % of steps eager; per-stream WER equal to NeMo's batch-1 streaming reference at the same chunk mode within 0.1 absolute; and the same corpus re-run with fixed-shape batching disabled, whose divergence count is published either way.
 
 **If it fires:** If unattainable on the graph path, de-scope to **harness plus upstream fix** and stop the server.

@@ -29,7 +29,7 @@
 NVIDIA's cache-aware streaming speech stack is open and fast, and it has no server. NeMo's
 Apache-2.0 `nemo.collections.asr.inference` package already contains the multi-stream slot manager,
 dynamic stream add/remove, endpointing and — since [NeMo PR #15863](https://github.com/NVIDIA-NeMo/Speech/pull/15863)
-(merged 2026-08-12) — a CUDA-graph encoder step worth **3.08–5.14x** at the 80 ms chunk mode, because
+(merged 2026-08-12) — a CUDA-graph encoder step worth **3.08–5.14x** at the 80 ms chunk mode (upstream's figure, and **not yet in a released wheel**: checked 2026-09-11, neither NeMo 2.7.3 nor 3.0.0 carries it, only the source tree — [DR-0002](docs/decisions/0002-the-graph-path-is-not-in-a-released-wheel.md)), because
 low-latency streaming "spends most of its time waiting on the host": each step launches "around 1.5k
 small kernels, so the GPU is idle for most of the step while the host enqueues them." But that package
 has zero occurrences of `asyncio`, `websocket` or `grpc`; its entry point takes a file, a directory or
