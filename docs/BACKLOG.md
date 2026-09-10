@@ -47,13 +47,22 @@ promised date — that is for triage once an entry becomes an issue.
 
 ## WebSocket protocol
 
-- `src/verbatim/protocols/ws/server.py::WsServer._handle` — the back-pressure drain loop
-  (`while len(buffer) > cap_bytes ...`) and the `ring_seconds` config knob it depends on are currently
-  unreachable: with the synchronous stub recognizers in use today, every full chunk is consumed before
-  the next `ws.recv()`, so the buffer never grows past one chunk and the cap is never exercised. This is
-  now measured rather than suspected: a reviewer instrumented the loop and recorded zero line hits while
-  driving a one-megabyte message through the server. Test it against a recognizer that can fall behind
-  (or a fake that stalls `add_chunk`), and revisit once a real, possibly slower recognizer is wired in.
+- ~~`src/verbatim/protocols/ws/server.py::WsServer._handle` — the back-pressure drain loop and the
+  `ring_seconds` knob it depends on are unreachable, measured at zero line hits while a one-megabyte
+  message was driven through the server, because a synchronous recogniser consumes every chunk before
+  the next receive.~~ **Resolved.** The transports run on the engine, so a ring sits between the socket
+  and the pipeline and fills. The reader holds the remainder, waits a tick and offers it again, reading
+  nothing meanwhile, so the peer's own flow control slows the client. The test drives two seconds of
+  audio in one message against a half-second ring and asserts every byte reached the engine, that the
+  first feed was short, and that at least one tick was waited per short feed.
+- **The WebSocket demo protocol has no document, while the Riva subset has one.** The frames, the
+  `error` codes a client can receive (`INVALID_ARGUMENT`, `RESOURCE_EXHAUSTED` with a retry hint, and
+  `DEADLINE_EXCEEDED` when the idle deadline reclaims a slot) and the close codes (1000 after a refusal,
+  1009 for a message over `max_message_bytes`) are described only in the module docstring and the tests.
+  A demo protocol that is still moving is a bad thing to freeze into a document, so this is recorded
+  rather than written: give it a page under `docs/protocols/` once the day-21 row has been taken over
+  this surface, since that row is what makes the frames load-bearing.
+
 - `src/verbatim/protocols/ws/frames.py::PartialFrame.to_json` — builds its JSON with
   `round(float(self.audio_s), 6)` and no guard against `NaN`; Python's `json.dumps` will happily emit
   the bare token `NaN`, which is not valid JSON and will break a strict client-side parser.
@@ -76,17 +85,20 @@ promised date — that is for triage once an entry becomes an issue.
   four named message types via `.get(name, ())`, so a gap in any other message type the function covers
   would pass silently. Add `assert missing_fields() == {}` alongside the named checks so an uncovered
   message type fails the build.
-- `src/verbatim/protocols/riva/server.py::RivaSpeechRecognitionServicer._emit` — takes a `recognizer`
-  parameter that the method body never reads. Drop it from the signature and its three call sites.
-- `src/verbatim/protocols/riva/server.py::RivaSpeechRecognitionServicer.StreamingRecognize` — on a
-  cancelled RPC the servicer still calls `recognizer.finalize()` when its buffer happens to be empty,
-  but returns without finalizing when a partial tail is buffered. The WebSocket surface never finalizes
-  an aborted session at all. Pick one rule for an abandoned stream and apply it on both surfaces; a
-  cancelled call arguably should not produce a final on either.
-- `src/verbatim/protocols/riva/server.py::RivaServerConfig.max_concurrent_streams` — declared and
-  documented but never read anywhere in the servicer; admission is not yet wired into the Riva surface
-  at all. Either wire it into `StreamingRecognize` (reject over the limit, matching the WebSocket
-  surface once that has admission too) or drop the field until it is.
+- ~~`src/verbatim/protocols/riva/server.py::RivaSpeechRecognitionServicer._emit` — takes a `recognizer`
+  parameter that the method body never reads.~~ **Resolved:** the method and the `Recognizer` type are
+  both gone; the servicer forwards what the engine delivers.
+- ~~`src/verbatim/protocols/riva/server.py::RivaSpeechRecognitionServicer.StreamingRecognize` — on a
+  cancelled RPC the servicer finalizes when its buffer happens to be empty and not when a partial tail
+  is buffered, while the WebSocket surface never finalizes an aborted session at all. Pick one rule and
+  apply it on both surfaces.~~ **Resolved: a departed client gets no final, on either surface.** A
+  WebSocket close without an end message is an abort. A gRPC cancel reaches the library as a half-close
+  followed by cancellation of the handler, so the reader ends the session and the cancelled handler
+  aborts it; abort after end is legal and wins for whatever the ring still held.
+- ~~`src/verbatim/protocols/riva/server.py::RivaServerConfig.max_concurrent_streams` — declared and
+  documented but never read; admission is not wired into the Riva surface at all.~~ **Resolved:** the
+  field is deleted and admission is the engine's, on both wires. A refusal carries a `retry-after-ms`
+  trailer and no response is written.
 
 ## Results schema and verify
 

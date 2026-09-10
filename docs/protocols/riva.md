@@ -68,6 +68,22 @@ Every tick in which a session was scheduled produces one `StreamingRecognizeResp
 with `is_final=true`, the final transcript, `words` if requested, and `confidence` as the mean of the
 word confidences — followed by an empty partial.
 
+## Status codes the server sends
+
+| Code | When | Carried with it |
+|---|---|---|
+| `RESOURCE_EXHAUSTED` | admission refused the session | a `retry-after-ms` trailer; no response is written |
+| `DEADLINE_EXCEEDED` | no audio arrived for the engine's idle timeout, so the slot was reclaimed | the elapsed idle time and the deadline, in the message |
+| `INVALID_ARGUMENT` | a rejected field, audio before the config, a second config on one stream, or a chunk size this engine does not serve | the field name |
+
+A refusal reaches the client before any acknowledgement: no response precedes it, so a client never
+holds a confirmation for a stream it did not get. The idle deadline is counted in ticks rather than
+against a wall clock, so on a late loop it stretches with the ticks.
+
+A cancelled call produces no final. The cancel reaches the server as a half-close followed by
+cancellation of the handler, so the session is ended and then aborted, and whatever the ring still held
+is discarded rather than transcribed for a client that has gone.
+
 ## Transport tolerances that decide "zero plugin code"
 
 - `livekit-plugins-nvidia/auth.py` appends a `function-id` metadata header **unconditionally**, whether

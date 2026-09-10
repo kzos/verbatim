@@ -4,9 +4,10 @@
 
 > ### There is no working server here yet
 >
-> The recognition pipeline has an adapter now, tested against a fake standing at NeMo's own seam and
-> never yet run against a GPU. Nothing on the wire uses it: the transports are still not on the engine,
-> and the command-line tool prints `not implemented yet` when you run it.
+> Both wires now run every session through the tick-scheduled engine, with admission, live back-pressure
+> and an idle deadline, over a CPU fake. The adapter onto NeMo exists and **has never run on a GPU**, so
+> nothing here has yet transcribed real audio through the real pipeline, and the command-line tool still
+> builds nothing and prints `not implemented yet`. Nothing in this repository has been benchmarked.
 >
 > What is finished and worth your time is the **evidence**: a measured account of how batch composition
 > changes a transcript and a word's timing on stock NeMo, with the probe scripts under
