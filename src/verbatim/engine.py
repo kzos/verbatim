@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """The asynchronous engine facade over the CPU tick loop.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This module drives the deterministic CPU fake today and keeps all
-protocol-independent result delivery on the asyncio loop.
+The engine runs whichever ``PipelineAdapter`` it is built with, the NeMo adapter
+in ``verbatim.pipelines.cache_aware_rnnt`` or the CPU fake in
+``verbatim.pipelines.fake``, and keeps all protocol-independent result delivery
+on the asyncio loop. Both transports run every session through it.
 
 Threading is deliberately coarse and temporary: exactly one lock is constructed
 here. It guards ``open_session``, ``feed``, ``end``/``abort``/``close``, and the
@@ -64,8 +65,8 @@ _QueueItem = StepResult | _ErrorEvent | _EndEvent
 class Engine(EngineHandle):
     """One chunk mode's ``TickLoop`` on a dedicated thread.
 
-    The engine drives a deterministic CPU fake. The real NeMo adapter is a later
-    task and belongs on a machine with a GPU. The single coarse lock is a temporary
+    The pipeline is whatever adapter the engine is built with; ``stub_engine`` builds
+    one over the scripted CPU fake. The single coarse lock is a temporary
     placeholder for the later thread-ownership brief; it is never held across
     ``PipelineAdapter.transcribe_step``.
     """
@@ -133,11 +134,16 @@ class Engine(EngineHandle):
         self._thread.start()
 
     async def stop(self) -> None:
-        """Stop the tick thread and finish every open results iterator."""
+        """Stop the tick thread and finish every open results iterator.
+
+        The join happens in an executor: the tick thread may be inside a pipeline
+        step, up to a period plus that step, and blocking the event loop for that
+        long during shutdown would stall every live socket with it.
+        """
         self._running = False
         thread = self._thread
         if thread is not None and thread is not threading.current_thread():
-            thread.join()
+            await asyncio.get_running_loop().run_in_executor(None, thread.join)
         self._thread = None
         if self._loop is None:
             return
@@ -173,7 +179,17 @@ class Engine(EngineHandle):
         await self.stop()
 
     def open_session(self, options: SessionOptions) -> SessionHandle:
-        """Create, admit and register one session under the engine lock."""
+        """Create, admit and register one session under the engine lock.
+
+        One engine serves one chunk mode. A session asking for another is refused
+        with INVALID_ARGUMENT rather than run on this engine's period: the transcript
+        would then be attributed to a configuration that never produced it.
+        """
+        if options.chunk_ms != self._config.chunk.ms:
+            raise InvalidArgument(
+                f"invalid chunk_ms {options.chunk_ms!r}: this engine serves "
+                f"{self._config.chunk.ms} ms"
+            )
         session_id = self._next_session_id
         session = Session(
             session_id,
@@ -387,19 +403,22 @@ def stub_engine(
     bucket: int | None = None,
     ring_seconds: float = 3.0,
     clock: Clock | None = None,
+    idle_timeout_s: float | None = None,
 ) -> Engine:
     """Build a ready-to-run engine over the scripted CPU fake.
 
-    The real NeMo adapter is a later task. ``bucket``, ``ring_seconds`` and the
-    clock scale are test-harness inputs, not measurements of hardware. The default
-    clock keeps protocol tests on the same boundary arithmetic without waiting for
-    real audio time.
+    ``bucket``, ``ring_seconds``, ``idle_timeout_s`` and the clock scale are
+    test-harness inputs, not measurements of hardware. The default clock keeps
+    protocol tests on the same boundary arithmetic without waiting for real audio
+    time, which is also why the idle deadline is off unless a test asks for it: on
+    the scaled clock thirty engine seconds pass in a third of a real one.
     """
     chunk = ChunkMode(chunk_ms)
     config = EngineConfig(
         chunk=chunk,
         buckets=(bucket,) if bucket is not None else None,
         ring_seconds=ring_seconds,
+        idle_timeout_s=idle_timeout_s,
     )
     source = script_for
     if source is None:

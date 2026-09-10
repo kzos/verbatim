@@ -7,9 +7,9 @@ Verbatim never touches NeMo's tables directly. ``SlotTable`` guarantees
 NeMo's ``RuntimeError("No free slots available")`` is unreachable in steady
 operation and is treated as a bug when it happens.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This is integer bookkeeping only. This module must not depend on
-the NeMo toolkit or on PyTorch.
+This is integer bookkeeping only; the NeMo adapter in
+``verbatim.pipelines.cache_aware_rnnt`` releases the real slots. This module must
+not depend on the NeMo toolkit or on PyTorch.
 """
 
 from __future__ import annotations

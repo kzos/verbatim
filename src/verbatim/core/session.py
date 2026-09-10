@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2026 Zaheer Sheriff K
-"""``Session``: id, chunk mode, options, state machine, deadlines.
+"""``Session``: id, chunk mode, options, state machine, the starved-tick count.
 
 The state machine (02_architecture.md §1.8)::
 
@@ -10,10 +10,11 @@ The state machine (02_architecture.md §1.8)::
       CLOSED               REJECTED                                          v
                      (RESOURCE_EXHAUSTED)                        DRAINING --is_last--> CLOSED
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This state machine is clock-free bookkeeping: frames are cut from the
-ring's own sample counter, so a session's frame sequence is a pure function of its
-audio. This module must not depend on the NeMo toolkit or on PyTorch.
+This state machine is clock-free bookkeeping: frames are cut from the ring's own
+sample counter, so a session's frame sequence is a pure function of its audio.
+The one time-like quantity here is the starved-tick count, which the tick loop
+turns into the idle deadline. This module must not depend on the NeMo toolkit or
+on PyTorch.
 """
 
 from __future__ import annotations
@@ -104,6 +105,7 @@ class Session:
         self._audio_processed_s = 0.0
         self._aborted = False
         self._final_emitted = False
+        self._starved_ticks = 0
 
     @property
     def session_id(self) -> int:
@@ -134,6 +136,12 @@ class Session:
     def audio_processed_s(self) -> float:
         """Audio seconds counted from valid (non-padding) samples only."""
         return self._audio_processed_s
+
+    @property
+    def starved_ticks(self) -> int:
+        """Consecutive ticks on which this live session had no chunk to give. The tick
+        loop turns the count into the idle deadline; a produced frame resets it."""
+        return self._starved_ticks
 
     def _move(self, target: SessionState) -> None:
         if target is self._state:
@@ -191,9 +199,11 @@ class Session:
         samples = self._ring.pop(n)
         if samples is None:
             self._move(SessionState.STARVED)
+            self._starved_ticks += 1
             return None
         is_first = self._chunks_emitted == 0
         self._account(n)
+        self._starved_ticks = 0
         self._move(SessionState.RUNNING)
         return PcmFrame(
             stream_id=self._session_id,

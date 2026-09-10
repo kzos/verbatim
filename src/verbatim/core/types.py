@@ -5,10 +5,10 @@
 No protobuf and no JSON on the tick path. Protocol encoding happens on the
 asyncio loop, in the emitter, from these types.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. These types are the stable boundary it will be driven through; the
-CPU fake in ``verbatim.pipelines.fake`` is the only producer here. This module
-must not depend on the NeMo toolkit or on PyTorch.
+These types are the stable boundary between the scheduler and any adapter: the
+NeMo adapter in ``verbatim.pipelines.cache_aware_rnnt`` and the CPU fake in
+``verbatim.pipelines.fake`` both produce them. This module must not depend on
+the NeMo toolkit or on PyTorch.
 """
 
 from __future__ import annotations

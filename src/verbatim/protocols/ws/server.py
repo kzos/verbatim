@@ -1,28 +1,28 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2026 Zaheer Sheriff K
-"""Plain WebSocket server for the demo: binary PCM in, JSON out.
+"""Plain WebSocket server for the demo: binary PCM in, JSON out, on the engine.
 
 ``ws://host:8080/v1/stream?chunk_ms=160&lang=en-US&words=1``. The same listener
 serves the demo page and the health endpoints. The day-21 prototype row is taken
 over this surface, because the Riva subset is month-2 work; the row's ``surface``
 field says so.
 
-Chunk boundaries are cut from the session's own sample counter, never from the
-wall clock: inbound bytes are buffered and the recognizer is handed exactly one
-``chunk_ms`` chunk at a time, so the chunk sequence is a pure function of the
-audio. The trailing tail is zero-padded to a full chunk and passed as the final
-chunk, but the session's audio clock advances by the real bytes handed to the
-recognizer -- the server still pads the tail for the recognizer and still never
-counts the bytes it invented into ``audio_s``. The session therefore stamps
-every outgoing frame from its own real-byte counter rather than forwarding
-the recognizer's view, which cannot tell real bytes from padding.
+The transport owns nothing about recognition. A connection opens one engine
+session, feeds it whatever bytes arrive, and forwards the hypotheses the engine
+delivers, each stamped with the engine's own audio clock. Chunk boundaries are cut
+by the session's ring from its sample counter, so the chunk sequence is a pure
+function of the audio and never of packetisation or arrival time.
 
-Back-pressure: no audio is ever dropped. If a session's buffer exceeds its cap
-(``ring_seconds`` of audio), the server stops reading that socket until the
-recognizer drains it, so the peer's own flow control slows the client down.
-With the synchronous recognizers used here every full chunk is consumed before
-the next read, so the retained buffer stays below one chunk; the cap is the
-guard that keeps that promise explicit.
+Refusal comes before any acknowledgement: at capacity the client gets one ``error``
+frame and a clean close, and never a ``session`` frame.
+
+Back-pressure is live. ``feed`` returns short only when the session's ring is full;
+the reader then keeps the remainder and stops reading the socket until the next
+tick has drained the ring, so the peer's own flow control slows the client down.
+Audio is never dropped server-side. One message larger than ``max_message_bytes``
+is refused by the framing layer with close code 1009 before its payload is read;
+no error frame can precede that, because sending one would mean reading the
+payload the cap exists to refuse.
 """
 
 from __future__ import annotations
@@ -38,15 +38,8 @@ from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 
-from verbatim.core.errors import ErrorCode, InvalidArgument, VerbatimError
-from verbatim.protocols.base import (
-    SAMPLE_RATE_HZ,
-    VALID_CHUNK_MS,
-    Hypothesis,
-    Recognizer,
-    RecognizerFactory,
-    SessionOptions,
-)
+from verbatim.core.errors import ErrorCode, InvalidArgument, ResourceExhausted, VerbatimError
+from verbatim.protocols.base import SAMPLE_RATE_HZ, EngineHandle, SessionHandle, SessionOptions
 from verbatim.protocols.ws.frames import (
     ErrorFrame,
     FinalFrame,
@@ -56,9 +49,15 @@ from verbatim.protocols.ws.frames import (
     parse_query,
 )
 
-__all__ = ["WsServer", "WsServerConfig"]
+__all__ = ["DEFAULT_MAX_MESSAGE_BYTES", "WsServer", "WsServerConfig"]
 
 logger = logging.getLogger(__name__)
+
+#: The largest single binary message accepted: three seconds of PCM16 at 16 kHz,
+#: the default ring. A message the ring cannot hold at once is fed over several
+#: ticks from memory, so this cap bounds what one connection can make the server
+#: hold for it.
+DEFAULT_MAX_MESSAGE_BYTES = 3 * SAMPLE_RATE_HZ * 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,32 +69,28 @@ class WsServerConfig:
     port: int = 8080
     path: str = "/v1/stream"
     invariance_class: str = "<unmeasured>"  # a placeholder, never a fabricated value
-    ring_seconds: float = 3.0  # back-pressure cap
-    default_chunk_ms: int = 160
+    max_message_bytes: int = DEFAULT_MAX_MESSAGE_BYTES
 
     def __post_init__(self) -> None:
-        if self.default_chunk_ms not in VALID_CHUNK_MS:
-            valid = ", ".join(str(v) for v in VALID_CHUNK_MS)
+        if self.max_message_bytes < 2:
             raise ValueError(
-                f"invalid default_chunk_ms {self.default_chunk_ms!r}: must be one of {valid}"
+                f"invalid max_message_bytes {self.max_message_bytes!r}: must hold one sample"
             )
 
 
-class _SessionClosed(Exception):
-    """Control flow: the session was closed after telling the client why."""
-
-
 class WsServer:
-    """The plain WebSocket demo surface. Binary PCM in, JSON out.
+    """The plain WebSocket demo surface over an engine. Binary PCM in, JSON out.
+
+    The server does not own the engine: one engine may sit behind both surfaces,
+    so starting and stopping it is the caller's.
 
     Usage:
-        server = WsServer(stub_recognizer_factory(), WsServerConfig(port=0))
-        async with server:
+        async with engine, WsServer(engine, WsServerConfig(port=0)) as server:
             ...  server.endpoint -> "ws://127.0.0.1:<bound port>/v1/stream"
     """
 
-    def __init__(self, factory: RecognizerFactory, config: WsServerConfig | None = None) -> None:
-        self._factory = factory
+    def __init__(self, engine: EngineHandle, config: WsServerConfig | None = None) -> None:
+        self._engine = engine
         self._config = config if config is not None else WsServerConfig()
         self._server: Server | None = None
         self._live = 0
@@ -120,10 +115,6 @@ class WsServer:
     def sessions_total(self) -> int:
         return self._total
 
-    @property
-    def _cap_bytes(self) -> int:
-        return int(self._config.ring_seconds * SAMPLE_RATE_HZ * 2)
-
     async def start(self) -> None:
         if self._server is not None:
             return
@@ -132,7 +123,7 @@ class WsServer:
             self._config.host,
             self._config.port,
             process_request=self._process_request,
-            max_size=None,
+            max_size=self._config.max_message_bytes,
         )
 
     async def stop(self) -> None:
@@ -155,164 +146,137 @@ class WsServer:
             return connection.respond(404, "not found")
         return None
 
-    async def _send_hypothesis(
-        self, ws: ServerConnection, hypo: Hypothesis, options: SessionOptions, audio_s: float
-    ) -> None:
-        """Emit one hypothesis, stamped with the session's own audio clock."""
-        if hypo.is_final:
-            words = tuple(hypo.words) if options.word_timestamps else None
-            await ws.send(FinalFrame(text=hypo.text, audio_s=audio_s, words=words).to_json())
-        elif options.interim_results:
-            await ws.send(PartialFrame(text=hypo.text, audio_s=audio_s).to_json())
-
-    async def _consume_chunk(
-        self,
-        ws: ServerConnection,
-        recognizer: Recognizer,
-        chunk: bytes,
-        options: SessionOptions,
-        audio_s: float,
-    ) -> None:
-        """Pass one full chunk to the recognizer and emit what is ready.
-
-        A recognizer failure becomes an `ErrorFrame` and a closed session; the
-        client is always told why. Raises _SessionClosed after closing.
-        """
-        try:
-            hypos = recognizer.add_chunk(chunk)
-        except VerbatimError as exc:
-            await ws.send(ErrorFrame(code=exc.code, message=str(exc)).to_json())
+    @staticmethod
+    async def _refuse(ws: ServerConnection, code: ErrorCode, message: str) -> None:
+        """One error frame and a clean close: never a crash, never a silent substitution."""
+        with contextlib.suppress(ConnectionClosed):
+            await ws.send(ErrorFrame(code=code, message=message).to_json())
+        with contextlib.suppress(ConnectionClosed):
             await ws.close()
-            raise _SessionClosed from exc
-        except Exception as exc:  # every failure must reach the client
-            logger.exception("recognizer failed; closing session")
-            await ws.send(ErrorFrame(code=ErrorCode.INTERNAL, message=str(exc)).to_json())
-            await ws.close()
-            raise _SessionClosed from exc
-        for hypo in hypos:
-            await self._send_hypothesis(ws, hypo, options, audio_s)
-
-    async def _finish(
-        self,
-        ws: ServerConnection,
-        recognizer: Recognizer,
-        options: SessionOptions,
-        audio_s: float,
-    ) -> None:
-        """Flush the recognizer, send the remaining hypotheses, and close cleanly."""
-        try:
-            hypos = recognizer.finalize()
-        except VerbatimError as exc:
-            await ws.send(ErrorFrame(code=exc.code, message=str(exc)).to_json())
-            await ws.close()
-            raise _SessionClosed from exc
-        except Exception as exc:  # every failure must reach the client
-            logger.exception("recognizer finalize failed; closing session")
-            await ws.send(ErrorFrame(code=ErrorCode.INTERNAL, message=str(exc)).to_json())
-            await ws.close()
-            raise _SessionClosed from exc
-        for hypo in hypos:
-            await self._send_hypothesis(ws, hypo, options, audio_s)
-        await ws.close()
 
     async def _handle(self, ws: ServerConnection) -> None:
-        target = ws.request.path
-        _, _, raw_query = target.partition("?")
+        _, _, raw_query = ws.request.path.partition("?")
         try:
             options = parse_query(raw_query)
         except InvalidArgument as exc:
-            # Never a crash, never a silent substitution: one error frame, clean close.
-            await ws.send(ErrorFrame(code=ErrorCode.INVALID_ARGUMENT, message=str(exc)).to_json())
-            await ws.close()
+            await self._refuse(ws, ErrorCode.INVALID_ARGUMENT, str(exc))
             return
         params = dict(parse_qsl(raw_query, keep_blank_values=True))
-        if "chunk_ms" not in params and self._config.default_chunk_ms != options.chunk_ms:
-            options = replace(options, chunk_ms=self._config.default_chunk_ms)
+        if "chunk_ms" not in params:
+            # No mode asked for: the engine's. A mode that was asked for goes to the
+            # engine as is, and an engine serving another refuses it by name.
+            options = replace(options, chunk_ms=self._engine.chunk_ms)
 
-        session_id = uuid.uuid4().hex[:16]
+        # Admission first: a refusal is one error frame and a close, with no session
+        # frame, so a client never holds an acknowledgement for a session it has not got.
+        try:
+            session = self._engine.open_session(options)
+        except ResourceExhausted as exc:
+            await self._refuse(ws, exc.code, f"{exc}; retry after {exc.retry_after_ms} ms")
+            return
+        except VerbatimError as exc:
+            await self._refuse(ws, exc.code, str(exc))
+            return
+
         self._live += 1
         self._total += 1
+        writer: asyncio.Task[None] | None = None
         try:
             await ws.send(
                 SessionFrame(
-                    id=session_id,
+                    id=uuid.uuid4().hex[:16],
                     chunk_ms=options.chunk_ms,
                     invariance_class=self._config.invariance_class,
                 ).to_json()
             )
-            try:
-                recognizer = self._factory(options)
-            except VerbatimError as exc:
-                await ws.send(ErrorFrame(code=exc.code, message=str(exc)).to_json())
-                await ws.close()
-                return
-            except Exception as exc:  # every failure must reach the client
-                logger.exception("recognizer factory failed; closing session")
-                await ws.send(ErrorFrame(code=ErrorCode.INTERNAL, message=str(exc)).to_json())
-                await ws.close()
-                return
-
-            buffer = bytearray()
-            cap_bytes = self._cap_bytes
-            real_bytes = 0  # real bytes handed to the recognizer; the audio clock
-            while True:
-                # Back-pressure: stop reading this socket while the buffer is over
-                # its cap instead of discarding; drain first, read after.
-                while len(buffer) > cap_bytes and len(buffer) >= options.chunk_bytes:
-                    chunk = bytes(buffer[: options.chunk_bytes])
-                    del buffer[: options.chunk_bytes]
-                    real_bytes += options.chunk_bytes
-                    await self._consume_chunk(
-                        ws, recognizer, chunk, options, real_bytes / 2 / SAMPLE_RATE_HZ
-                    )
-                    await asyncio.sleep(0)
-                try:
-                    message = await ws.recv()
-                except ConnectionClosed:
-                    # Aborted without `end`: drop the session, emit nothing, and
-                    # never call finalize() -- an aborted session has no final.
-                    return
-                if isinstance(message, bytes):
-                    buffer += message
-                    while len(buffer) >= options.chunk_bytes:
-                        chunk = bytes(buffer[: options.chunk_bytes])
-                        del buffer[: options.chunk_bytes]
-                        real_bytes += options.chunk_bytes
-                        await self._consume_chunk(
-                            ws, recognizer, chunk, options, real_bytes / 2 / SAMPLE_RATE_HZ
-                        )
-                else:
-                    try:
-                        parse_client_text(message)
-                    except InvalidArgument as exc:
-                        await ws.send(
-                            ErrorFrame(code=ErrorCode.INVALID_ARGUMENT, message=str(exc)).to_json()
-                        )
-                        continue
-                    if len(buffer):
-                        # The tail completes the chunk grid: pad it, pass it as
-                        # the final chunk, and stamp what comes back with the
-                        # clock including the tail's real bytes.
-                        tail = bytes(buffer)
-                        buffer.clear()
-                        padded = tail + b"\x00" * (options.chunk_bytes - len(tail))
-                        real_bytes += len(tail)
-                        clock_s = real_bytes / 2 / SAMPLE_RATE_HZ
-                        await self._consume_chunk(ws, recognizer, padded, options, clock_s)
-                        await self._finish(ws, recognizer, options, clock_s)
-                    else:
-                        clock_s = real_bytes / 2 / SAMPLE_RATE_HZ
-                        await self._finish(ws, recognizer, options, clock_s)
-                    return
-        except _SessionClosed:
-            pass
+            writer = asyncio.create_task(self._write_results(ws, session, options))
+            await self._read_audio(ws, session)
+            # end() or abort() has been called, so the engine's results end after the
+            # drain frame and the writer closes the socket when it has sent the last.
+            await writer
         except ConnectionClosed:
             pass
         except Exception as exc:  # a session never dies unexplained
             logger.exception("unexpected session failure; closing session")
-            with contextlib.suppress(ConnectionClosed):
-                await ws.send(ErrorFrame(code=ErrorCode.INTERNAL, message=str(exc)).to_json())
-            with contextlib.suppress(ConnectionClosed):
-                await ws.close()
+            session.abort()
+            await self._refuse(ws, ErrorCode.INTERNAL, str(exc))
         finally:
+            if writer is not None and not writer.done():
+                writer.cancel()
             self._live -= 1
+
+    async def _read_audio(self, ws: ServerConnection, session: SessionHandle) -> None:
+        """Feed the socket into the session until the client ends or leaves.
+
+        Returns only after `end()` or `abort()` has been called on the session, so the
+        caller can wait for the results to run out.
+        """
+        while True:
+            try:
+                message = await ws.recv()
+            except ConnectionClosed:
+                # Gone without `end`: drop the session and emit no final.
+                session.abort()
+                return
+            if isinstance(message, bytes):
+                pending = bytes(message)
+                try:
+                    while pending:
+                        accepted = session.feed(pending)
+                        pending = pending[accepted:]
+                        if pending:
+                            # The ring is full. Hold the remainder and do not read the
+                            # socket again until a tick has drained it: live
+                            # back-pressure, through the peer's own flow control.
+                            await self._engine.wait_for_ticks(1)
+                except (VerbatimError, RuntimeError):
+                    # The session is over from the engine's side, by a step failure,
+                    # the idle deadline or a dead engine. The writer tells the client.
+                    session.abort()
+                    return
+            else:
+                try:
+                    parse_client_text(message)
+                except InvalidArgument as exc:
+                    await ws.send(
+                        ErrorFrame(code=ErrorCode.INVALID_ARGUMENT, message=str(exc)).to_json()
+                    )
+                    continue
+                session.end()
+                return
+
+    @staticmethod
+    async def _write_results(
+        ws: ServerConnection, session: SessionHandle, options: SessionOptions
+    ) -> None:
+        """Forward every hypothesis the engine delivers, then close cleanly.
+
+        The engine stamps `audio_processed_s`; the transport never keeps a clock of
+        its own, because bytes received are not bytes recognised once a ring sits
+        between the socket and the pipeline.
+        """
+        try:
+            async for hypothesis in session.results():
+                if hypothesis.is_final:
+                    words = tuple(hypothesis.words) if options.word_timestamps else None
+                    await ws.send(
+                        FinalFrame(
+                            text=hypothesis.text,
+                            audio_s=hypothesis.audio_processed_s,
+                            words=words,
+                        ).to_json()
+                    )
+                elif options.interim_results:
+                    await ws.send(
+                        PartialFrame(
+                            text=hypothesis.text, audio_s=hypothesis.audio_processed_s
+                        ).to_json()
+                    )
+        except VerbatimError as exc:
+            # The client is always told why a session dies.
+            with contextlib.suppress(ConnectionClosed):
+                await ws.send(ErrorFrame(code=exc.code, message=str(exc)).to_json())
+        except ConnectionClosed:
+            return
+        with contextlib.suppress(ConnectionClosed):
+            await ws.close()

@@ -8,9 +8,9 @@ reserved negative stream ids. Default policy is ``n = 1``, ``B_1 = ceiling(mode)
 -- the fixed-shape default. Elastic buckets are opt-in and must pass the
 invariance gate for that bucket list before a release enables them.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This module is batch-shape arithmetic only. This module must not
-depend on the NeMo toolkit or on PyTorch.
+This module is batch-shape arithmetic only, tested against the CPU fake in
+``verbatim.pipelines.fake``. This module must not depend on the NeMo toolkit or
+on PyTorch.
 """
 
 from __future__ import annotations

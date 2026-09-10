@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """The shared result cadence, kept separate from both protocol encoders.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This module only turns CPU-side ``StepResult`` records into the
-hypotheses a future protocol adapter will encode.
+This module turns ``StepResult`` records into the hypotheses both protocol
+adapters encode. It runs on the asyncio loop and touches no model.
 """
 
 from __future__ import annotations

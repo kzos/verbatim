@@ -11,23 +11,24 @@ Final (``is_last``) frames are never mixed into the steady call: NeMo's pipeline
 splits them into a ``keep_all_outputs=True`` sub-batch, which would shrink the
 steady sub-batch and change its graph key.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This loop is driven here by a deterministic CPU fake and an injectable
-clock, synchronously on the caller's thread, so the whole scheduler suite runs in
-milliseconds with no asyncio and no threads. This module must not depend on
-the NeMo toolkit or on PyTorch.
+The loop runs any ``PipelineAdapter``: the NeMo adapter in
+``verbatim.pipelines.cache_aware_rnnt`` in a server, and in the scheduler suite the
+deterministic CPU fake with an injectable clock, synchronously on the caller's
+thread, so the whole suite runs in milliseconds with no asyncio and no threads.
+This module must not depend on the NeMo toolkit or on PyTorch.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from collections import deque
 from dataclasses import replace
 from typing import Final
 
 from verbatim.config import EngineConfig
-from verbatim.core.errors import ErrorCode, VerbatimError
+from verbatim.core.errors import DeadlineExceeded, ErrorCode, VerbatimError
 from verbatim.core.registry import SessionRegistry
 from verbatim.core.session import Session, SessionState
 from verbatim.core.types import PcmFrame, StepResult, TickStats
@@ -77,6 +78,15 @@ class TickLoop:
         # Warm-up: pad rows hold slots for the life of the process and are never shed.
         self._pad_count = config.effective_pad
         self._slots.reserve(self._pad_count)
+        # The idle deadline in ticks. A live session starved for this many consecutive
+        # ticks is closed with DEADLINE_EXCEEDED in the collect phase, where its slot
+        # is held. Counted on the engine's clock, so both transports inherit it
+        # without a timer of their own.
+        self._idle_limit_ticks: int | None = (
+            None
+            if config.idle_timeout_s is None
+            else max(1, math.ceil(config.idle_timeout_s / config.chunk.period_s))
+        )
         self._start = self._clock.now()
         self._tick_id = 0
         self._stats: deque[TickStats] = deque(maxlen=STATS_RETAINED)
@@ -248,6 +258,23 @@ class TickLoop:
                         else:
                             # STARVED: not scheduled, slot kept, no synthetic audio inserted.
                             starved += 1
+                            if (
+                                self._idle_limit_ticks is not None
+                                and session.starved_ticks >= self._idle_limit_ticks
+                            ):
+                                # Past the idle deadline. A client that opened a session
+                                # and stopped sending would otherwise hold its slot for
+                                # ever, and a bucket of them denies service to everyone.
+                                idle_s = session.starved_ticks * self._config.chunk.period_s
+                                self._errors.setdefault(
+                                    session.session_id,
+                                    DeadlineExceeded(
+                                        f"no audio for {idle_s:.2f} s; the idle deadline "
+                                        f"is {self._config.idle_timeout_s} s"
+                                    ),
+                                )
+                                session.begin_draining(aborted=True)
+                                closing.append(session)
                     else:
                         # Read the audio clock immediately after `next_frame` returned
                         # this tick's frame, before the step; only `next_frame` mutates

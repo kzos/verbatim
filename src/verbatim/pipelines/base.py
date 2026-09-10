@@ -7,10 +7,10 @@ An adapter owns: constructing the NeMo pipeline through its builder, translating
 parameters to ``scheduler/graph_budget.py``, and declaring which chunk modes it
 supports.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This ABC lets the scheduler's whole logic be tested without one, via
-the deterministic CPU fake in ``verbatim.pipelines.fake``. This module must not
-depend on the NeMo toolkit or on PyTorch.
+The NeMo adapter is ``verbatim.pipelines.cache_aware_rnnt``. This ABC lets the
+scheduler's whole logic be tested without a GPU, against the deterministic CPU
+fake in ``verbatim.pipelines.fake``. This module must not depend on the NeMo
+toolkit or on PyTorch.
 """
 
 from __future__ import annotations
@@ -28,9 +28,9 @@ __all__ = ["PipelineAdapter"]
 class PipelineAdapter(abc.ABC):
     """Verbatim's stable surface over the model runtime. One per chunk mode.
 
-    The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine with
-    a GPU. This ABC and the CPU fake below exist so the scheduler's whole logic is
-    testable without one.
+        The NeMo adapter is ``verbatim.pipelines.cache_aware_rnnt``; the CPU fake in
+    ``verbatim.pipelines.fake`` exists so the scheduler's whole logic is testable
+    without a GPU.
     """
 
     @property

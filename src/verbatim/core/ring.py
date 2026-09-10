@@ -14,9 +14,8 @@ Chunk boundaries are cut from the session's own sample counter, never from the
 wall clock -- that is what makes a session's frame sequence a pure function of its
 audio, and therefore what makes batch invariance reachable at all.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This buffer is clock-free bookkeeping with no model behind it.
-This module must not depend on the NeMo toolkit or on PyTorch.
+This buffer is clock-free bookkeeping with no model behind it. This module must
+not depend on the NeMo toolkit or on PyTorch.
 """
 
 from __future__ import annotations

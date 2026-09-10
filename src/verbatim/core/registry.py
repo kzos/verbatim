@@ -2,9 +2,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 Zaheer Sheriff K
 """The live session table: join, leave, iterate. The only shared mutable state.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This registry is plain bookkeeping with no model behind it. This
-module must not depend on the NeMo toolkit or on PyTorch.
+This registry is plain bookkeeping with no model behind it. This module must
+not depend on the NeMo toolkit or on PyTorch.
 """
 
 from __future__ import annotations

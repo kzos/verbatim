@@ -18,6 +18,7 @@ from verbatim.core.types import PcmFrame, StepResult
 from verbatim.pipelines.fake import FakePipelineAdapter
 from verbatim.protocols.base import SessionOptions
 from verbatim.scheduler.clock import SimulatedClock
+from verbatim.scheduler.graph_budget import ConfigError
 from verbatim.scheduler.tick import STATS_RETAINED, TickLoop
 
 CHUNK = ChunkMode(160)
@@ -334,3 +335,90 @@ def test_tick_stats_and_boundaries_are_bounded() -> None:
     assert len(loop.boundaries) == STATS_RETAINED
     assert loop.stats[0].tick_id == 50
     assert loop.stats[-1].tick_id == STATS_RETAINED + 49
+
+
+def _idle_harness(idle_timeout_s: float | None) -> TickLoop:
+    config = EngineConfig(
+        chunk=CHUNK, buckets=(8,), edge_batch=8, calibrated_ceiling=8, idle_timeout_s=idle_timeout_s
+    )
+    return TickLoop(
+        config, FakePipelineAdapter(CHUNK, buckets=(8,)), SessionRegistry(), clock=SimulatedClock()
+    )
+
+
+def _admit_idle(loop: TickLoop, session_id: int) -> Session:
+    session = Session(session_id, CHUNK, ring_seconds=8.0)
+    session.configure()
+    assert loop.admit_session(session).admitted
+    return session
+
+
+def test_an_idle_session_is_closed_at_the_deadline_and_its_slot_released() -> None:
+    """0.4 s on a 160 ms period is three ticks: two starved ticks keep the session,
+    the third closes it with DEADLINE_EXCEEDED and gives its slot back."""
+    loop = _idle_harness(idle_timeout_s=0.4)
+    idle = _admit_idle(loop, 1)
+    reserved = loop.slots.reserved
+    loop.run_for(2)
+    assert idle.state is SessionState.STARVED
+    assert idle.starved_ticks == 2
+    assert loop.drain_errors() == []
+    assert loop.slots.reserved == reserved
+    loop.run_for(1)
+    assert idle.state is SessionState.CLOSED
+    assert loop.slots.reserved == reserved - 1
+    assert loop.registry.live == 0
+    errors = loop.drain_errors()
+    assert [(stream_id, error.code) for stream_id, error in errors] == [
+        (1, ErrorCode.DEADLINE_EXCEEDED)
+    ]
+    assert "0.48 s" in str(errors[0][1])
+
+
+def test_audio_resets_the_idle_count() -> None:
+    loop = _idle_harness(idle_timeout_s=0.4)
+    session = _admit_idle(loop, 1)
+    rng = np.random.default_rng(31)
+    for _ in range(4):
+        loop.run_for(2)
+        assert session.ring.write(_audio(rng, 1)) == N
+        loop.run_for(1)
+        assert session.state is SessionState.RUNNING
+        assert session.starved_ticks == 0
+    assert loop.drain_errors() == []
+    loop.run_for(3)
+    assert session.state is SessionState.CLOSED
+    assert [code for _, error in loop.drain_errors() for code in [error.code]] == [
+        ErrorCode.DEADLINE_EXCEEDED
+    ]
+
+
+def test_the_deadline_does_not_touch_sessions_with_audio_or_the_pads() -> None:
+    loop = _idle_harness(idle_timeout_s=0.4)
+    rng = np.random.default_rng(32)
+    busy = _join(loop, 1, _audio(rng, 20), drain=False)
+    idle = _admit_idle(loop, 2)
+    loop.run_for(10)
+    assert busy.state is SessionState.RUNNING
+    assert idle.state is SessionState.CLOSED
+    assert [stream_id for stream_id, _ in loop.drain_errors()] == [2]
+    assert all(stat.pad_rows == loop.stats[0].pad_rows for stat in loop.stats)
+
+
+def test_no_deadline_when_disabled() -> None:
+    loop = _idle_harness(idle_timeout_s=None)
+    idle = _admit_idle(loop, 1)
+    loop.run_for(500)
+    assert idle.state is SessionState.STARVED
+    assert idle.starved_ticks == 500
+    assert loop.drain_errors() == []
+
+
+@pytest.mark.parametrize("idle_timeout_s", [0, -1.0, True])
+def test_a_non_positive_idle_timeout_is_a_config_error(idle_timeout_s: object) -> None:
+    with pytest.raises(ConfigError, match="idle_timeout_s"):
+        EngineConfig(chunk=CHUNK, buckets=(8,), idle_timeout_s=idle_timeout_s)  # type: ignore[arg-type]
+
+
+def test_the_default_idle_timeout_is_thirty_seconds_and_the_stub_engine_disables_it() -> None:
+    assert EngineConfig(chunk=CHUNK, buckets=(8,)).idle_timeout_s == 30.0
