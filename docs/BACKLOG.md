@@ -106,11 +106,12 @@ promised date — that is for triage once an entry becomes an issue.
 
 - `src/verbatim/scheduler/tick.py::TickLoop.run_tick` — **this entry was wrong and is kept as a
   correction.** It claimed the branch handling `frame is None` while a session is `DRAINING` was
-  unreachable and should be deleted. A later review showed it is reached twice over: after a failed
-  step, where the final frame was popped in the failing tick and the except path discards `closing` so
-  the session survives in `DRAINING` with its final already marked emitted; and when `open_stream` fails
-  on a frame that is both first and last. Deleting it leaks that session's slot and registry entry. The
-  branch stays; what is missing is the test that reaches it.
+  unreachable and should be deleted. It is reached when `open_stream` fails on a frame that is both
+  first and last, which skips the closing list, so the next tick finds the session draining with no
+  frame; deleting the branch leaks its slot and registry entry. It was also reached after a failed step
+  until that path began closing its sessions in the failing tick, which is why an entry that once named
+  two paths now names one. The branch stays and is covered by
+  `test_a_first_and_last_frame_whose_open_fails_is_closed_next_tick`.
 - `src/verbatim/scheduler/tick.py::TickLoop.run_tick` — when `open_stream` raises on a first frame that
   is **not** also the last, the error is recorded, the session is put into DRAINING as aborted and the
   frame is dropped. On the next tick the session is DRAINING with no frame, so the loop steps a
@@ -118,10 +119,7 @@ promised date — that is for triage once an entry becomes an issue.
   the abort suppresses emission, but stepping a stream that was never opened is a contract the real NeMo
   adapter will not honour. Decide it in the adapter brief: either do not open the stream at all and
   close the session outright, or open it lazily on first successful audio.
-- `src/verbatim/scheduler/tick.py::TickLoop` (`_stats`, `_boundaries`) — both lists grow by one entry
-  per tick for the whole lifetime of the loop, with no trimming or cap. Harmless for the short-lived CPU
-  test suite; unbounded growth once this loop drives a long-running server. Bound them (a ring buffer,
-  or periodic eviction of entries older than the admission controller's own window) before that happens.
+
 - `src/verbatim/config.py::EngineConfig` (`_DEFAULT_BUCKET`, `buckets: tuple[int, ...] | None`) — when
   neither `buckets` nor `calibrated_ceiling` is supplied, the config silently falls back to a
   hard-coded batch size of 8 (commented as a CPU-test convenience, not a measurement), and the public
