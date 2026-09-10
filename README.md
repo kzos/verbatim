@@ -2,6 +2,15 @@
 
 **An Apache-2.0, asynchronous, multi-client server for NVIDIA's cache-aware streaming speech pipelines. No API key.**
 
+> ### There is no working server here yet
+>
+> The recognition pipeline is not wired, the transports are not on the engine, and the command-line tool
+> prints `not implemented yet` when you run it. What is finished and worth your time is the **evidence**:
+> a measured account of how batch composition changes a transcript and a word's timing on stock NeMo,
+> with the probe scripts under [`probes/`](probes/) so you can re-run every number rather than believe
+> it. The benchmark harness and its frozen methodology are real too. The server is the argument those
+> measurements make, and it is being built in the open.
+
 **License:** Apache-2.0 (see `LICENSE`)
 
 > Verbatim has not been benchmarked. Every number describing Verbatim's own behaviour in this README is an angle-bracketed placeholder until a row under `rows/` fills it. The batch-invariance section below reports exploratory probes on stock NeMo, not on Verbatim, which is not implemented. Two external figures are cited to their sources: the checkpoint's monthly download count and the CUDA-graph speedup range; neither is a measurement of this project.
