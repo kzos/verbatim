@@ -54,7 +54,9 @@ class PipelineAdapter(abc.ABC):
 
     @abc.abstractmethod
     def close_stream(self, stream_id: int) -> None:
-        """Called once, on the tick thread, after this stream's is_last frame."""
+        """Called once, on the tick thread, after this stream's is_last frame, or when
+        the tick loop fails the stream. It may be called for a stream whose
+        `open_stream` raised, and must tolerate that."""
 
     @abc.abstractmethod
     def transcribe_step(

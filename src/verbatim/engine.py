@@ -162,6 +162,8 @@ class Engine(EngineHandle):
                 self._tick.slots.release(1)
             for queue in self._queues.values():
                 queue.put_nowait(_EndEvent())
+            self._queues.clear()
+            self._sessions.clear()
 
     async def __aenter__(self) -> Engine:
         await self.start()
@@ -252,7 +254,14 @@ class Engine(EngineHandle):
             self._loop_wakes += 1
 
     def _wake(self) -> None:
-        """Move the lock-free emit deque into per-session asyncio queues."""
+        """Move the lock-free emit deque into per-session asyncio queues.
+
+        A terminal item, the ``is_last`` row or an error, also drops the engine's
+        references to the session: the handle keeps its own queue and ring, so
+        ``results()`` still drains what was queued, and once the transport lets the
+        handle go the session costs nothing. Before this the two dictionaries kept
+        every closed session's ring buffer for the life of the process.
+        """
         while True:
             try:
                 item = self._emit.popleft()
@@ -261,6 +270,9 @@ class Engine(EngineHandle):
             queue = self._queues.get(item.stream_id)
             if queue is not None:
                 queue.put_nowait(item)
+                if isinstance(item, _ErrorEvent) or item.is_last:
+                    del self._queues[item.stream_id]
+                    self._sessions.pop(item.stream_id, None)
         if self._wake_event is not None:
             self._processed_wakes += 1
             self._wake_event.set()
