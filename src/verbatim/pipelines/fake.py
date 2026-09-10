@@ -10,8 +10,9 @@ This is what makes the entire protocol conformance suite runnable on a free CPU
 runner. It is a test double that ships in the package on purpose: the protocol
 surfaces must be testable by anyone, on any machine, forever.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This module must not depend on the NeMo toolkit or on PyTorch.
+The NeMo adapter is ``verbatim.pipelines.cache_aware_rnnt``; this fake exists so
+the scheduler and both protocol surfaces are testable without a GPU. This module
+must not depend on the NeMo toolkit or on PyTorch.
 """
 
 from __future__ import annotations
@@ -26,24 +27,25 @@ from verbatim.config import ChunkMode
 from verbatim.core.errors import InvalidArgument
 from verbatim.core.types import PcmFrame, StepResult
 from verbatim.pipelines.base import PipelineAdapter
-from verbatim.protocols.base import Hypothesis, Recognizer, RecognizerFactory, SessionOptions, Word
+from verbatim.protocols.base import Hypothesis, SessionOptions, Word
 
-__all__ = ["FakePipelineAdapter", "ScriptSource", "StubRecognizer", "stub_recognizer_factory"]
+__all__ = ["FakePipelineAdapter", "ScriptSource", "ScriptedTranscript"]
 
 #: How a scripted adapter picks a transcript for a stream. A test-harness input.
 ScriptSource = Callable[[SessionOptions], Sequence[str] | None]
 
 
-class StubRecognizer(Recognizer):
-    """A deterministic scripted recognizer. No model, no torch, no GPU.
+class ScriptedTranscript:
+    """A deterministic scripted transcript source. No model, no torch, no GPU.
 
-    Emits one partial per chunk, each the running prefix of `script` word by word,
+    Returns one partial per chunk, each the running prefix of `script` word by word,
     and one final on `finalize()` carrying the whole script. Word timings are derived
-    from the chunk index, so they are exact integers and reproducible.
+    from the chunk index, so they are exact integers and reproducible. It is the
+    per-stream script behind `FakePipelineAdapter`'s scripted mode, and nothing on
+    the wire calls it directly: every session runs through the engine.
 
-    This is what makes the entire protocol conformance suite runnable on a free CPU
-    runner. It is a test double that ships in the package on purpose: the protocol
-    surfaces must be testable by anyone, on any machine, forever.
+    It ships in the package on purpose: the protocol surfaces must be testable by
+    anyone, on any machine, forever, and this is what they are tested against.
     """
 
     DEFAULT_SCRIPT: ClassVar[tuple[str, ...]] = (
@@ -116,17 +118,6 @@ class StubRecognizer(Recognizer):
         ]
 
 
-def stub_recognizer_factory(
-    *, script: Sequence[str] | None = None, partial_every: int = 1
-) -> RecognizerFactory:
-    """Build a RecognizerFactory closing over a script. For tests and the null path."""
-
-    def factory(options: SessionOptions) -> Recognizer:
-        return StubRecognizer(options, script=script, partial_every=partial_every)
-
-    return factory
-
-
 class FakePipelineAdapter(PipelineAdapter):
     """Deterministic CPU stub. No CUDA, no NeMo, no torch.
 
@@ -138,8 +129,8 @@ class FakePipelineAdapter(PipelineAdapter):
     It also records every batch shape it was called with, so a test can assert the steady
     batch never changed shape without instrumenting the scheduler.
 
-    The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-    with a GPU. This fake must never be mistaken for it.
+        The NeMo adapter is ``verbatim.pipelines.cache_aware_rnnt``; this fake exists so
+    the scheduler is testable without a GPU, and must never be mistaken for it.
     """
 
     def __init__(
@@ -163,7 +154,7 @@ class FakePipelineAdapter(PipelineAdapter):
         self._script_for = script_for
         self._partial_every = partial_every
         self._texts: dict[int, list[str]] = {}
-        self._stubs: dict[int, StubRecognizer] = {}
+        self._stubs: dict[int, ScriptedTranscript] = {}
         self._last_partial: dict[int, str] = {}
         self._shapes: list[tuple[int, bool]] = []
         self._calls = 0
@@ -203,7 +194,7 @@ class FakePipelineAdapter(PipelineAdapter):
 
     def open_stream(self, stream_id: int, options: SessionOptions | None) -> None:
         """Hash mode ignores this (and the None options every tests/scheduler/ Session
-        carries). Scripted mode builds one StubRecognizer per stream; without options
+        carries). Scripted mode builds one ScriptedTranscript per stream; without options
         no script can be chosen, so that is an InvalidArgument, said loudly."""
         if not self._scripted:
             return
@@ -213,7 +204,7 @@ class FakePipelineAdapter(PipelineAdapter):
                 f"(stream {stream_id}): a script cannot be chosen without them"
             )
         script = self._script_for(options) if self._script_for is not None else None
-        self._stubs[stream_id] = StubRecognizer(
+        self._stubs[stream_id] = ScriptedTranscript(
             options, script=script, partial_every=self._partial_every
         )
 
@@ -270,8 +261,8 @@ class FakePipelineAdapter(PipelineAdapter):
         return results
 
     def _scripted_row(self, frame: PcmFrame) -> StepResult:
-        """One row through the per-stream StubRecognizer. Pad rows have no stub and no
-        transcript; their results are dropped by the tick loop either way."""
+        """One row through the per-stream ScriptedTranscript. Pad rows have no script
+        and no transcript; their results are dropped by the tick loop either way."""
         stub = self._stubs.get(frame.stream_id)
         if stub is None:
             return StepResult(
@@ -291,7 +282,7 @@ class FakePipelineAdapter(PipelineAdapter):
         words: tuple[Word, ...] = ()
         if frame.is_last:
             # A zero-valid drain frame calls only finalize(): the tail shorter than a
-            # chunk still gets its scripted final, exactly like StubRecognizer does.
+            # chunk still gets its scripted final, exactly as the script source does.
             final = stub.finalize()[0]
             final_text = final.text
             words = final.words

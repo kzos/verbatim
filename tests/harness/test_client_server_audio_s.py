@@ -13,7 +13,7 @@ from verbatim_bench.corpus import Utterance
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedOK
 
-from verbatim.pipelines.fake import stub_recognizer_factory
+from verbatim.engine import stub_engine
 from verbatim.protocols.ws.server import WsServer, WsServerConfig
 
 pytestmark = pytest.mark.cpu
@@ -31,8 +31,9 @@ async def test_client_and_real_server_agree_on_audio_s(pcm_len: int) -> None:
         text="reference for utt-0",
     )
     chunk = ChunkMode.parse("160ms")
-    server = WsServer(stub_recognizer_factory(), WsServerConfig(port=0))
-    async with server:
+    engine = stub_engine()
+    server = WsServer(engine, WsServerConfig(port=0))
+    async with engine, server:
         session = await run_session(
             server.endpoint,
             session_id="s0000",

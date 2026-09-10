@@ -1,11 +1,24 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2026 Zaheer Sheriff K
-"""``grpc.aio`` servicer for ``nvidia.riva.asr.RivaSpeechRecognition``.
+"""``grpc.aio`` servicer for ``nvidia.riva.asr.RivaSpeechRecognition``, on the engine.
 
 Implemented: ``StreamingRecognize`` (the whole product) and
 ``GetRivaSpeechRecognitionConfig`` (LiveKit's ``log_asr_models`` calls it at setup;
 omitting it breaks the plugin). ``Recognize`` (unary) returns ``UNIMPLEMENTED``
 in year 1 -- Verbatim is a streaming server.
+
+One RPC is one engine session. A reader task consumes the request stream: the
+first message's config opens the session, every ``audio_content`` is fed with live
+back-pressure, and the client's half-close ends the session. The handler itself
+forwards the engine's hypotheses as responses, stamped with the engine's own audio
+clock. Refusal at capacity is ``RESOURCE_EXHAUSTED`` with a ``retry-after-ms``
+trailer and no response written.
+
+A client cancel reaches ``grpc.aio`` as a half-close followed by cancellation of
+the handler: the request iterator ends normally and ``context.cancelled()`` is
+still false at that moment (probed, not assumed). So the reader ends the session,
+the cancelled handler then aborts it, and the abort wins for whatever the ring
+still held: no further audio of a departed client is recognised.
 """
 
 from __future__ import annotations
@@ -13,13 +26,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Final
 
 import grpc
 
-from verbatim.core.errors import ErrorCode, VerbatimError
-from verbatim.protocols.base import SAMPLE_RATE_HZ, Hypothesis, Recognizer, RecognizerFactory
+from verbatim.core.errors import ErrorCode, ResourceExhausted, VerbatimError
+from verbatim.protocols.base import EngineHandle, SessionHandle
 from verbatim.protocols.riva._gen import riva_asr_pb2, riva_asr_pb2_grpc
 from verbatim.protocols.riva.mapping import (
     RivaSessionConfig,
@@ -38,28 +51,46 @@ _STATUS_BY_CODE: Final = {
     ErrorCode.NOT_FOUND: grpc.StatusCode.NOT_FOUND,
     ErrorCode.UNIMPLEMENTED: grpc.StatusCode.UNIMPLEMENTED,
     ErrorCode.RESOURCE_EXHAUSTED: grpc.StatusCode.RESOURCE_EXHAUSTED,
+    ErrorCode.DEADLINE_EXCEEDED: grpc.StatusCode.DEADLINE_EXCEEDED,
     ErrorCode.INTERNAL: grpc.StatusCode.INTERNAL,
 }
+
+#: Trailer carrying the admission controller's retry hint on a refusal.
+RETRY_AFTER_TRAILER: Final = "retry-after-ms"
 
 
 @dataclass(frozen=True, slots=True)
 class RivaServerConfig:
-    """Listener configuration. Port 0 binds an ephemeral port for tests."""
+    """Listener configuration. Port 0 binds an ephemeral port for tests. Admission
+    and the chunk mode are the engine's, so neither is repeated here."""
 
     host: str = "0.0.0.0"
     port: int = 50051
     served_models: tuple[str, ...] = ("verbatim-stub",)
-    default_chunk_ms: int = 160
     language_code: str = "en-US"
-    max_concurrent_streams: int | None = None
+
+
+class _ProtocolError(Exception):
+    """The client broke the request grammar: INVALID_ARGUMENT."""
+
+
+_Opened = tuple[RivaSessionConfig, SessionHandle] | None
 
 
 async def _abort(context: grpc.aio.ServicerContext, exc: BaseException) -> None:
     """End the RPC with a real gRPC status: never a stack trace, never a silent hang."""
+    if isinstance(exc, ResourceExhausted):
+        await context.abort(
+            grpc.StatusCode.RESOURCE_EXHAUSTED,
+            str(exc),
+            trailing_metadata=((RETRY_AFTER_TRAILER, str(exc.retry_after_ms)),),
+        )
     if isinstance(exc, VerbatimError):
         code = _STATUS_BY_CODE[exc.code]
+    elif isinstance(exc, _ProtocolError):
+        code = grpc.StatusCode.INVALID_ARGUMENT
     else:
-        logger.exception("recognizer failed; aborting stream")
+        logger.exception("session failed; aborting stream")
         code = grpc.StatusCode.INTERNAL
     await context.abort(code, str(exc))
 
@@ -67,48 +98,26 @@ async def _abort(context: grpc.aio.ServicerContext, exc: BaseException) -> None:
 class RivaSpeechRecognitionServicer(riva_asr_pb2_grpc.RivaSpeechRecognitionServicer):
     """The Riva subset: streaming recognition plus the model-config lookup."""
 
-    def __init__(self, factory: RecognizerFactory, config: RivaServerConfig) -> None:
-        self._factory = factory
+    def __init__(self, engine: EngineHandle, config: RivaServerConfig) -> None:
+        self._engine = engine
         self._config = config
 
     def _served(self) -> list[tuple[str, int, str]]:
         return [
-            (name, self._config.default_chunk_ms, self._config.language_code)
+            (name, self._engine.chunk_ms, self._config.language_code)
             for name in self._config.served_models
         ]
 
-    async def _emit(
-        self,
-        session: RivaSessionConfig,
-        recognizer: Recognizer,
-        hypos: list[Hypothesis],
-        audio_s: float,
-    ) -> AsyncIterator[riva_asr_pb2.StreamingRecognizeResponse]:
-        """Yield one response per hypothesis, stamped with the session audio clock."""
-        for hypo in hypos:
-            if hypo.audio_processed_s == audio_s:
-                stamped = hypo
-            else:
-                stamped = replace(hypo, audio_processed_s=audio_s)
-            if stamped.is_final:
-                yield final_response(
-                    stamped,
-                    request_id=session.request_id,
-                    word_timestamps=session.options.word_timestamps,
-                )
-            elif session.options.interim_results:
-                yield partial_response(stamped, request_id=session.request_id)
-
-    async def StreamingRecognize(
+    async def _read_requests(
         self,
         request_iterator: AsyncIterator[riva_asr_pb2.StreamingRecognizeRequest],
-        context: grpc.aio.ServicerContext,
-    ) -> AsyncIterator[riva_asr_pb2.StreamingRecognizeResponse]:
-        """Config first, then PCM16 chunks; half-close flushes the final."""
+        opened: asyncio.Future[_Opened],
+    ) -> None:
+        """Consume the request stream: config opens the session, audio feeds it with
+        live back-pressure, half-close ends it. Errors before the session is open land
+        on `opened`; errors after it abort the session and propagate to the awaiter."""
         session: RivaSessionConfig | None = None
-        recognizer: Recognizer | None = None
-        buffer = bytearray()
-        real_bytes = 0  # real bytes handed to the recognizer; the audio clock
+        handle: SessionHandle | None = None
         try:
             async for request in request_iterator:
                 if "force_eou" in request.runtime_config:
@@ -119,92 +128,104 @@ class RivaSpeechRecognitionServicer(riva_asr_pb2_grpc.RivaSpeechRecognitionServi
                 which = request.WhichOneof("streaming_request")
                 if which == "streaming_config":
                     if session is not None:
-                        await context.abort(
-                            grpc.StatusCode.INVALID_ARGUMENT,
+                        raise _ProtocolError(
                             "invalid StreamingRecognizeRequest.streaming_config: "
-                            "a second streaming_config on the same stream",
+                            "a second streaming_config on the same stream"
                         )
-                    try:
-                        session = options_from_config(
-                            request.streaming_config.config,
-                            interim_results=request.streaming_config.interim_results,
-                            request_id=request.id.value,
-                            served_models=self._config.served_models,
-                            default_chunk_ms=self._config.default_chunk_ms,
-                        )
-                    except VerbatimError as exc:
-                        await _abort(context, exc)
-                        return
-                    try:
-                        recognizer = self._factory(session.options)
-                    except VerbatimError as exc:
-                        await _abort(context, exc)
-                        return
-                    except Exception as exc:
-                        await _abort(context, exc)
-                        return
+                    session = options_from_config(
+                        request.streaming_config.config,
+                        interim_results=request.streaming_config.interim_results,
+                        request_id=request.id.value,
+                        served_models=self._config.served_models,
+                        default_chunk_ms=self._engine.chunk_ms,
+                    )
+                    handle = self._engine.open_session(session.options)
+                    opened.set_result((session, handle))
                 elif which == "audio_content":
-                    if session is None or recognizer is None:
-                        await context.abort(
-                            grpc.StatusCode.INVALID_ARGUMENT,
+                    if handle is None:
+                        raise _ProtocolError(
                             "invalid StreamingRecognizeRequest.audio_content: "
-                            "audio before streaming_config",
+                            "audio before streaming_config"
                         )
-                    buffer += request.audio_content
-                    chunk_bytes = session.options.chunk_bytes
-                    while len(buffer) >= chunk_bytes:
-                        chunk = bytes(buffer[:chunk_bytes])
-                        del buffer[:chunk_bytes]
-                        real_bytes += chunk_bytes
-                        audio_s = real_bytes / 2 / SAMPLE_RATE_HZ
-                        try:
-                            hypos = recognizer.add_chunk(chunk)
-                        except VerbatimError as exc:
-                            await _abort(context, exc)
-                            return
-                        except Exception as exc:
-                            await _abort(context, exc)
-                            return
-                        async for response in self._emit(session, recognizer, hypos, audio_s):
-                            yield response
+                    pending = bytes(request.audio_content)
+                    while pending:
+                        accepted = handle.feed(pending)
+                        pending = pending[accepted:]
+                        if pending:
+                            # The ring is full: hold the remainder and stop reading
+                            # the request stream until a tick has drained it, so
+                            # HTTP/2 flow control slows the client down.
+                            await self._engine.wait_for_ticks(1)
                 # Unknown oneof branches are ignored per proto3 semantics.
-            if session is None or recognizer is None:
-                return
-            if buffer:
-                tail = bytes(buffer)
-                buffer.clear()
-                padded = tail + b"\x00" * (session.options.chunk_bytes - len(tail))
-                real_bytes += len(tail)
-                clock_s = real_bytes / 2 / SAMPLE_RATE_HZ
-                try:
-                    hypos = recognizer.add_chunk(padded)
-                except VerbatimError as exc:
-                    await _abort(context, exc)
-                    return
-                except Exception as exc:
-                    await _abort(context, exc)
-                    return
-                # The padded tail completes the chunk grid: what comes back is
-                # stamped with the clock including the tail's real bytes, never
-                # the bytes the server invented for padding.
-                async for response in self._emit(session, recognizer, hypos, clock_s):
-                    yield response
+            if handle is None:
+                opened.set_result(None)
             else:
-                clock_s = real_bytes / 2 / SAMPLE_RATE_HZ
+                handle.end()
+        except asyncio.CancelledError:
+            if not opened.done():
+                opened.cancel()
+            elif handle is not None:
+                handle.abort()
+            raise
+        except Exception as exc:
+            if not opened.done():
+                # Delivered through `opened`; the handler reports it. Not re-raised,
+                # so the task does not also end with an exception nobody retrieves.
+                opened.set_exception(exc)
+                return
+            if handle is not None:
+                handle.abort()
+            raise
+
+    async def StreamingRecognize(
+        self,
+        request_iterator: AsyncIterator[riva_asr_pb2.StreamingRecognizeRequest],
+        context: grpc.aio.ServicerContext,
+    ) -> AsyncIterator[riva_asr_pb2.StreamingRecognizeResponse]:
+        """Config first, then PCM16 chunks; half-close flushes the final."""
+        opened: asyncio.Future[_Opened] = asyncio.get_running_loop().create_future()
+        reader = asyncio.create_task(self._read_requests(request_iterator, opened))
+        handle: SessionHandle | None = None
+        try:
             try:
-                flushed = recognizer.finalize()
+                started = await opened
+            except (VerbatimError, _ProtocolError) as exc:
+                await _abort(context, exc)
+                return
+            if started is None:
+                return  # half-closed without a config: nothing to say
+            session, handle = started
+            try:
+                async for hypothesis in handle.results():
+                    if hypothesis.is_final:
+                        yield final_response(
+                            hypothesis,
+                            request_id=session.request_id,
+                            word_timestamps=session.options.word_timestamps,
+                        )
+                    elif session.options.interim_results:
+                        yield partial_response(hypothesis, request_id=session.request_id)
             except VerbatimError as exc:
                 await _abort(context, exc)
                 return
-            except Exception as exc:
+            try:
+                await reader
+            except (VerbatimError, _ProtocolError) as exc:
                 await _abort(context, exc)
                 return
-            async for response in self._emit(session, recognizer, flushed, clock_s):
-                yield response
         except asyncio.CancelledError:
             # Client went away mid-stream: drop the session, emit nothing, and let
             # the cancellation propagate so the server stays usable.
+            if handle is not None:
+                handle.abort()
             raise
+        finally:
+            if not reader.done():
+                reader.cancel()
+            elif not reader.cancelled():
+                # A reader that failed after the session died has already been acted
+                # on; retrieving its exception keeps the loop's logs honest.
+                reader.exception()
 
     async def GetRivaSpeechRecognitionConfig(
         self,
@@ -236,13 +257,16 @@ class RivaSpeechRecognitionServicer(riva_asr_pb2_grpc.RivaSpeechRecognitionServi
 class RivaServer:
     """Wraps grpc.aio.server(). Binds port 0 when config.port == 0 (tests).
 
+    The server does not own the engine: one engine may sit behind both surfaces,
+    so starting and stopping it is the caller's.
+
     Usage:
-        async with RivaServer(stub_recognizer_factory(), RivaServerConfig(port=0)) as s:
+        async with engine, RivaServer(engine, RivaServerConfig(port=0)) as s:
             ...  s.target -> "127.0.0.1:<bound port>"
     """
 
-    def __init__(self, factory: RecognizerFactory, config: RivaServerConfig | None = None) -> None:
-        self._factory = factory
+    def __init__(self, engine: EngineHandle, config: RivaServerConfig | None = None) -> None:
+        self._engine = engine
         self._config = config if config is not None else RivaServerConfig()
         self._server: grpc.aio.Server | None = None
         self._bound_port: int | None = None
@@ -263,7 +287,7 @@ class RivaServer:
         if self._server is not None:
             return
         server = grpc.aio.server()
-        servicer = RivaSpeechRecognitionServicer(self._factory, self._config)
+        servicer = RivaSpeechRecognitionServicer(self._engine, self._config)
         riva_asr_pb2_grpc.add_RivaSpeechRecognitionServicer_to_server(servicer, server)
         self._bound_port = server.add_insecure_port(f"{self._config.host}:{self._config.port}")
         await server.start()

@@ -5,8 +5,7 @@
 The GPU is needed to find out what the tick budget *is*; it is not needed to test
 what the scheduler does with it.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This module must not depend on the NeMo toolkit or on PyTorch.
+This module must not depend on the NeMo toolkit or on PyTorch.
 """
 
 from __future__ import annotations

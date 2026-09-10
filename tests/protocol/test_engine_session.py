@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Sequence
 
 import numpy as np
@@ -11,7 +12,13 @@ import pytest
 
 from verbatim.audio.pcm import decode_pcm16
 from verbatim.config import ChunkMode, EngineConfig
-from verbatim.core.errors import ErrorCode, ResourceExhausted, VerbatimError
+from verbatim.core.errors import (
+    DeadlineExceeded,
+    ErrorCode,
+    InvalidArgument,
+    ResourceExhausted,
+    VerbatimError,
+)
 from verbatim.core.registry import SessionRegistry
 from verbatim.core.session import Session
 from verbatim.core.types import PcmFrame, StepResult
@@ -467,3 +474,89 @@ async def test_endpointing_delivers_a_final_before_the_client_half_closes() -> N
         session.end()
         rest = await _collect(session)
     assert rest[-1].is_final is True
+
+
+@pytest.mark.asyncio
+async def test_open_session_refuses_a_chunk_mode_the_engine_does_not_serve() -> None:
+    """One engine serves one chunk mode. A session asking for another is refused by
+    name and reserves nothing, rather than being run on this engine's period."""
+    engine = _engine()
+    async with engine:
+        live = engine._registry.live
+        reserved = engine._tick.slots.reserved
+        with pytest.raises(InvalidArgument, match="560"):
+            engine.open_session(SessionOptions(chunk_ms=560))
+        assert engine._registry.live == live
+        assert engine._tick.slots.reserved == reserved
+
+
+@pytest.mark.asyncio
+async def test_an_idle_session_is_closed_with_deadline_exceeded_and_dropped() -> None:
+    """A session that never sends audio is closed by the engine at the idle deadline:
+    its consumer gets DEADLINE_EXCEEDED, its slot is released and the engine keeps
+    nothing of it. Both transports inherit this without a timer of their own."""
+    engine = stub_engine(idle_timeout_s=0.5, clock=ScaledMonotonicClock(100.0))
+    async with engine:
+        reserved = engine._tick.slots.reserved
+        session = engine.open_session(OPTIONS)
+        assert engine._tick.slots.reserved == reserved + 1
+        with pytest.raises(DeadlineExceeded) as raised:
+            await _collect(session)
+        assert raised.value.code is ErrorCode.DEADLINE_EXCEEDED
+        assert "no audio for" in str(raised.value)
+        assert engine._tick.slots.reserved == reserved
+        assert engine._sessions == {}
+        assert engine._queues == {}
+
+
+@pytest.mark.asyncio
+async def test_a_session_that_keeps_sending_is_not_closed_by_the_deadline() -> None:
+    engine = stub_engine(idle_timeout_s=0.5, clock=ScaledMonotonicClock(100.0))  # ~4 ticks
+    async with engine:
+        session = engine.open_session(OPTIONS)
+        consumer = asyncio.create_task(_collect(session))
+        for _ in range(6):
+            assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
+            await engine.wait_for_ticks(2)
+        session.end()
+        hypotheses = await consumer
+    assert hypotheses[-1].is_final
+    assert hypotheses[-1].audio_processed_s == pytest.approx(6 * 0.16)
+
+
+class _SlowStep(FakePipelineAdapter):
+    def __init__(self, seconds: float) -> None:
+        super().__init__(CHUNK, buckets=(1,))
+        self.seconds = seconds
+
+    def transcribe_step(
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+    ) -> list[StepResult]:
+        time.sleep(self.seconds)
+        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+
+
+@pytest.mark.asyncio
+async def test_stop_does_not_block_the_event_loop_while_joining_the_tick_thread() -> None:
+    """The join waits for the tick thread's current step, up to a period plus a step.
+    A heartbeat task on the loop must keep running through it; with the join on the
+    loop it would stall for the whole step, and so would every live socket."""
+    config = EngineConfig(chunk=CHUNK, buckets=(1,), edge_batch=1)
+    engine = Engine(config, _SlowStep(0.3), clock=ScaledMonotonicClock(100.0))
+    beats = 0
+
+    async def heartbeat() -> None:
+        nonlocal beats
+        while True:
+            await asyncio.sleep(0.01)
+            beats += 1
+
+    await engine.start()
+    await asyncio.sleep(0.05)  # the tick thread is inside a slow step by now
+    task = asyncio.create_task(heartbeat())
+    started = time.monotonic()
+    await engine.stop()
+    elapsed = time.monotonic() - started
+    task.cancel()
+    assert elapsed >= 0.1, "the join returned before the step ended; nothing was measured"
+    assert beats >= 5, f"the loop ran {beats} heartbeat(s) during a {elapsed:.2f} s join"

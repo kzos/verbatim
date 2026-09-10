@@ -7,9 +7,8 @@ capture on ``(shape, dtype, device, keep_all_outputs, drop_extra_pre_encoded,
 att_context_size, last_channel_cache_size, valid_out_len)``. Once the budget is
 full every further shape runs eager for the life of the process.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This module is pure arithmetic over configured bucket lists, so it is
-testable on CPU. This module must not depend on the NeMo toolkit or on PyTorch.
+This module is pure arithmetic over configured bucket lists, so it is testable on
+CPU. This module must not depend on the NeMo toolkit or on PyTorch.
 """
 
 from __future__ import annotations

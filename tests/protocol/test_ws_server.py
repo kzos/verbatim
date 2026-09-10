@@ -1,41 +1,119 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2026 Zaheer Sheriff K
-"""The WebSocket demo surface, driven with the `websockets` client on 127.0.0.1.
+"""The WebSocket demo surface over a real engine, driven with the `websockets` client.
 
-Every test binds port 0 so tests can run in parallel. `interim_results` off is
-exercised through the `interim_results=0` query parameter (documented in
-`parse_query`): with it set, the transport suppresses partials but still sends
-the final.
+Every test binds port 0 so tests can run in parallel. Every session runs through
+`Engine`: the transport owns no recogniser, so what these tests pin is the wire
+behaviour of one session on the engine, admission before acknowledgement, live
+back-pressure against the session's ring, the message-size cap and the idle
+deadline. `interim_results` off is exercised through the `interim_results=0`
+query parameter (documented in `parse_query`).
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 
 import pytest
 from websockets.asyncio.client import ClientConnection, connect
-from websockets.exceptions import ConnectionClosedOK, InvalidStatus
+from websockets.exceptions import ConnectionClosed, ConnectionClosedOK, InvalidStatus
 
-from verbatim.pipelines.fake import StubRecognizer, stub_recognizer_factory
-from verbatim.protocols.base import Hypothesis, Recognizer, SessionOptions
-from verbatim.protocols.ws.server import WsServer, WsServerConfig
+from verbatim.config import ChunkMode, EngineConfig
+from verbatim.core.types import PcmFrame, StepResult
+from verbatim.engine import Engine, stub_engine
+from verbatim.pipelines.fake import FakePipelineAdapter
+from verbatim.protocols.base import EngineHandle, Hypothesis, SessionHandle, SessionOptions
+from verbatim.protocols.ws.server import DEFAULT_MAX_MESSAGE_BYTES, WsServer, WsServerConfig
+from verbatim.scheduler.clock import ScaledMonotonicClock
 
 pytestmark = pytest.mark.cpu
 
 FULL_SCRIPT = "the quick brown fox jumps over the lazy dog"
+CHUNK = ChunkMode(160)
 
 
 def _chunk(chunk_ms: int = 160) -> bytes:
     return b"\x00" * (chunk_ms * 16 * 2)
 
 
-def _server() -> WsServer:
-    return WsServer(stub_recognizer_factory(), WsServerConfig(port=0))
+class _RecordingSession(SessionHandle):
+    """A pass-through handle that records what the transport asked the engine for."""
+
+    def __init__(self, inner: SessionHandle, log: list[tuple[str, int]]) -> None:
+        self._inner = inner
+        self._log = log
+
+    @property
+    def options(self) -> SessionOptions:
+        return self._inner.options
+
+    def feed(self, pcm: bytes) -> int:
+        accepted = self._inner.feed(pcm)
+        self._log.append(("feed", accepted))
+        return accepted
+
+    def end(self) -> None:
+        self._log.append(("end", 0))
+        self._inner.end()
+
+    def abort(self) -> None:
+        self._log.append(("abort", 0))
+        self._inner.abort()
+
+    def results(self) -> AsyncIterator[Hypothesis]:
+        return self._inner.results()
+
+
+class _RecordingEngine(EngineHandle):
+    """The stub engine behind a recorder: the transport is tested through the
+    public handle interface and nothing else."""
+
+    def __init__(self, inner: Engine) -> None:
+        self.inner = inner
+        self.log: list[tuple[str, int]] = []
+
+    @property
+    def chunk_ms(self) -> int:
+        return self.inner.chunk_ms
+
+    def open_session(self, options: SessionOptions) -> SessionHandle:
+        return _RecordingSession(self.inner.open_session(options), self.log)
+
+    async def wait_for_ticks(self, n: int) -> None:
+        self.log.append(("wait", n))
+        await self.inner.wait_for_ticks(n)
+
+    def calls(self, name: str) -> list[int]:
+        return [value for kind, value in self.log if kind == name]
+
+
+@asynccontextmanager
+async def _server(
+    config: WsServerConfig | None = None,
+    *,
+    engine: Engine | None = None,
+    **engine_kwargs: object,
+) -> AsyncIterator[WsServer]:
+    inner = engine if engine is not None else stub_engine(**engine_kwargs)  # type: ignore[arg-type]
+    async with inner, WsServer(inner, config or WsServerConfig(port=0)) as server:
+        yield server
+
+
+@asynccontextmanager
+async def _recording_server(
+    config: WsServerConfig | None = None, **engine_kwargs: object
+) -> AsyncIterator[tuple[WsServer, _RecordingEngine]]:
+    inner = stub_engine(**engine_kwargs)  # type: ignore[arg-type]
+    engine = _RecordingEngine(inner)
+    async with inner, WsServer(engine, config or WsServerConfig(port=0)) as server:
+        yield server, engine
 
 
 async def _recv_json(ws: ClientConnection) -> dict:
-    raw = await ws.recv()
+    raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
     assert isinstance(raw, str)
     return json.loads(raw)
 
@@ -44,7 +122,7 @@ async def _collect_until_close(ws: ClientConnection) -> list[dict]:
     frames = []
     try:
         while True:
-            raw = await ws.recv()
+            raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
             assert isinstance(raw, str)
             frames.append(json.loads(raw))
     except ConnectionClosedOK:
@@ -52,20 +130,38 @@ async def _collect_until_close(ws: ClientConnection) -> list[dict]:
     return frames
 
 
+async def _settle(server: WsServer) -> None:
+    for _ in range(500):
+        if server.live_sessions == 0:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"{server.live_sessions} session(s) still live")
+
+
 async def test_session_frame_is_first() -> None:
     config = WsServerConfig(port=0, invariance_class="test-class")
-    server = WsServer(stub_recognizer_factory(), config)
-    async with server, connect(f"{server.endpoint}?chunk_ms=560") as ws:
+    async with _server(config) as server, connect(f"{server.endpoint}?chunk_ms=160") as ws:
         frame = await _recv_json(ws)
     assert frame["type"] == "session"
     assert frame["id"]
-    assert frame["chunk_ms"] == 560
+    assert frame["chunk_ms"] == 160
     assert frame["invariance_class"] == "test-class"
 
 
+async def test_a_chunk_ms_the_engine_does_not_serve_is_refused_before_a_session_frame() -> None:
+    """One engine serves one chunk mode; a session asking for another gets the error
+    the protocol has, not a silent substitution and not a session it cannot have."""
+    async with _server() as server, connect(f"{server.endpoint}?chunk_ms=560") as ws:
+        frame = await _recv_json(ws)
+        with pytest.raises(ConnectionClosedOK):
+            await asyncio.wait_for(ws.recv(), timeout=5.0)
+    assert frame["type"] == "error"
+    assert frame["code"] == "INVALID_ARGUMENT"
+    assert "560" in frame["message"]
+
+
 async def test_one_partial_per_chunk() -> None:
-    server = _server()
-    async with server, connect(server.endpoint) as ws:
+    async with _server() as server, connect(server.endpoint) as ws:
         await _recv_json(ws)
         partials = []
         for _ in range(5):
@@ -83,8 +179,7 @@ async def test_one_partial_per_chunk() -> None:
 
 
 async def test_partial_bytes_are_buffered_until_a_chunk_completes() -> None:
-    server = _server()
-    async with server, connect(server.endpoint) as ws:
+    async with _server() as server, connect(server.endpoint) as ws:
         await _recv_json(ws)
         for _ in range(9):
             await ws.send(b"\x00" * 512)
@@ -97,8 +192,7 @@ async def test_partial_bytes_are_buffered_until_a_chunk_completes() -> None:
 
 
 async def test_end_produces_exactly_one_final_and_closes() -> None:
-    server = _server()
-    async with server, connect(server.endpoint) as ws:
+    async with _server() as server, connect(server.endpoint) as ws:
         await _recv_json(ws)
         await ws.send(_chunk())
         await _recv_json(ws)
@@ -110,8 +204,7 @@ async def test_end_produces_exactly_one_final_and_closes() -> None:
 
 
 async def test_trailing_partial_chunk_is_padded_but_only_real_bytes_are_counted() -> None:
-    server = _server()
-    async with server, connect(server.endpoint) as ws:
+    async with _server() as server, connect(server.endpoint) as ws:
         await _recv_json(ws)
         await ws.send(_chunk())
         await ws.send(_chunk())
@@ -125,9 +218,23 @@ async def test_trailing_partial_chunk_is_padded_but_only_real_bytes_are_counted(
     assert finals[0]["audio_s"] == pytest.approx(0.35125)
 
 
+async def test_audio_s_is_the_engines_clock_not_a_byte_counter() -> None:
+    """The transport keeps no clock. Bytes received are not bytes recognised once a
+    ring sits between the socket and the pipeline: after `end`, the final is stamped
+    with what the engine consumed, which for a mid-chunk tail is every real sample."""
+    async with _recording_server() as (server, engine), connect(server.endpoint) as ws:
+        await _recv_json(ws)
+        await ws.send(_chunk() + b"\x00" * 1000)
+        await ws.send('{"type": "end"}')
+        frames = await _collect_until_close(ws)
+    finals = [f for f in frames if f["type"] == "final"]
+    assert len(finals) == 1
+    assert finals[0]["audio_s"] == pytest.approx((2560 + 500) / 16000)
+    assert sum(engine.calls("feed")) == len(_chunk()) + 1000
+
+
 async def test_words_only_when_requested() -> None:
-    server = _server()
-    async with server:
+    async with _server() as server:
         async with connect(f"{server.endpoint}?words=1") as ws:
             await _recv_json(ws)
             await ws.send(_chunk())
@@ -135,7 +242,7 @@ async def test_words_only_when_requested() -> None:
             await ws.send('{"type": "end"}')
             frames = await _collect_until_close(ws)
         async with connect(f"{server.endpoint}?words=0") as ws:
-            raw_session = await ws.recv()
+            raw_session = await asyncio.wait_for(ws.recv(), timeout=5.0)
             assert isinstance(raw_session, str)
             await ws.send(_chunk())
             await _recv_json(ws)
@@ -143,7 +250,7 @@ async def test_words_only_when_requested() -> None:
             raws = []
             try:
                 while True:
-                    raw = await ws.recv()
+                    raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
                     assert isinstance(raw, str)
                     raws.append(raw)
             except ConnectionClosedOK:
@@ -155,8 +262,7 @@ async def test_words_only_when_requested() -> None:
 
 
 async def test_interim_results_false_suppresses_partials() -> None:
-    server = _server()
-    async with server, connect(f"{server.endpoint}?interim_results=0") as ws:
+    async with _server() as server, connect(f"{server.endpoint}?interim_results=0") as ws:
         await _recv_json(ws)
         await ws.send(_chunk())
         await ws.send(_chunk())
@@ -168,11 +274,10 @@ async def test_interim_results_false_suppresses_partials() -> None:
 
 
 async def test_bad_chunk_ms_gets_an_error_frame_then_a_clean_close() -> None:
-    server = _server()
-    async with server, connect(f"{server.endpoint}?chunk_ms=100") as ws:
+    async with _server() as server, connect(f"{server.endpoint}?chunk_ms=100") as ws:
         frame = await _recv_json(ws)
         with pytest.raises(ConnectionClosedOK):
-            await ws.recv()
+            await asyncio.wait_for(ws.recv(), timeout=5.0)
         await ws.wait_closed()
         assert ws.close_code == 1000
     assert frame["type"] == "error"
@@ -180,8 +285,7 @@ async def test_bad_chunk_ms_gets_an_error_frame_then_a_clean_close() -> None:
 
 
 async def test_junk_text_frame_errors_without_closing() -> None:
-    server = _server()
-    async with server, connect(server.endpoint) as ws:
+    async with _server() as server, connect(server.endpoint) as ws:
         await _recv_json(ws)
         await ws.send('{"type":"start"}')
         error = await _recv_json(ws)
@@ -193,8 +297,7 @@ async def test_junk_text_frame_errors_without_closing() -> None:
 
 
 async def test_wrong_path_is_rejected() -> None:
-    server = _server()
-    async with server:
+    async with _server() as server:
         with pytest.raises(InvalidStatus):
             async with connect(f"ws://127.0.0.1:{server.port}/nope"):
                 pass
@@ -203,11 +306,10 @@ async def test_wrong_path_is_rejected() -> None:
 async def test_concurrent_sessions_do_not_interfere() -> None:
     scripts = {f"lang-{i}": (f"alpha{i}", f"beta{i}", f"gamma{i}") for i in range(8)}
 
-    def factory(options: SessionOptions) -> Recognizer:
-        return StubRecognizer(options, script=scripts[options.language_code])
+    def script_for(options: SessionOptions) -> Sequence[str]:
+        return scripts[options.language_code]
 
-    server = WsServer(factory, WsServerConfig(port=0))
-    async with server:
+    async with _server(script_for=script_for) as server:
 
         async def run_session(i: int) -> str:
             async with connect(f"{server.endpoint}?lang=lang-{i}") as ws:
@@ -226,67 +328,138 @@ async def test_concurrent_sessions_do_not_interfere() -> None:
         assert text == " ".join(scripts[f"lang-{i}"])
 
 
-async def test_disconnect_without_end_emits_no_final() -> None:
-    finalize_calls: list[str] = []
-
-    class RecordingStub(StubRecognizer):
-        def finalize(self) -> list[Hypothesis]:
-            finalize_calls.append("finalize")
-            return super().finalize()
-
-    def factory(options: SessionOptions) -> Recognizer:
-        return RecordingStub(options)
-
-    server = WsServer(factory, WsServerConfig(port=0))
-    async with server, connect(server.endpoint) as ws:
+async def test_disconnect_without_end_aborts_the_session_and_emits_no_final() -> None:
+    """A client that leaves without `end` gets no final: the transport aborts, never
+    ends, and the engine's abort frame yields nothing (pinned in the engine suite)."""
+    async with _recording_server() as (server, engine), connect(server.endpoint) as ws:
         await _recv_json(ws)
         await ws.send(_chunk())
         partial = await _recv_json(ws)
         await ws.close()
         await ws.wait_closed()
-    for _ in range(100):
-        if server.live_sessions == 0:
-            break
-        await asyncio.sleep(0.01)
+        await _settle(server)
     assert server.live_sessions == 0
     assert server.sessions_total == 1
     assert partial["type"] == "partial"
-    assert finalize_calls == []
+    assert engine.calls("abort") == [0]
+    assert engine.calls("end") == []
 
 
-async def test_a_large_binary_frame_is_accepted() -> None:
-    server = _server()
-    async with server, connect(server.endpoint, max_size=None) as ws:
+async def test_refusal_at_capacity_is_one_error_frame_and_no_session_frame() -> None:
+    """Admission comes before acknowledgement. The ninth connection on the default
+    bucket of eight gets RESOURCE_EXHAUSTED with the retry hint, then a clean close,
+    and never a `session` frame it could mistake for an open session."""
+    async with _server() as server:
+        held = [await connect(server.endpoint) for _ in range(8)]
+        try:
+            for ws in held:
+                assert (await _recv_json(ws))["type"] == "session"
+            async with connect(server.endpoint) as refused:
+                frames = await _collect_until_close(refused)
+                assert refused.close_code == 1000
+        finally:
+            for ws in held:
+                await ws.close()
+        await _settle(server)
+    assert [f["type"] for f in frames] == ["error"]
+    assert frames[0]["code"] == "RESOURCE_EXHAUSTED"
+    assert frames[0]["message"].startswith("session refused: ")
+    assert "retry after 160 ms" in frames[0]["message"]
+    assert server.sessions_total == 8
+
+
+async def test_back_pressure_holds_the_remainder_and_drops_nothing() -> None:
+    """A message larger than the session's ring is fed over several ticks: `feed`
+    accepts short, the reader waits one tick and offers the rest, and every sample
+    reaches the engine. The wait is what stops the socket being read meanwhile."""
+    config = WsServerConfig(port=0, max_message_bytes=DEFAULT_MAX_MESSAGE_BYTES)
+    message = b"\x00" * (2 * 16000 * 2)  # two seconds against a half-second ring
+    async with (
+        _recording_server(config, ring_seconds=0.5) as (server, engine),
+        connect(server.endpoint) as ws,
+    ):
         await _recv_json(ws)
-        await ws.send(b"\x00" * (5120 * 300))
+        await ws.send(message)
+        await ws.send('{"type": "end"}')
+        frames = await _collect_until_close(ws)
+    finals = [f for f in frames if f["type"] == "final"]
+    assert len(finals) == 1
+    assert finals[0]["audio_s"] == pytest.approx(2.0)
+    assert len([f for f in frames if f["type"] == "partial"]) == 13  # 12 full chunks + tail
+    feeds = engine.calls("feed")
+    assert sum(feeds) == len(message)
+    assert feeds[0] < len(message), "the first feed should have been short: the ring is smaller"
+    assert len(engine.calls("wait")) >= len(feeds) - 1
+
+
+async def test_a_message_at_the_cap_is_accepted() -> None:
+    async with _server() as server, connect(server.endpoint, max_size=None) as ws:
+        await _recv_json(ws)
+        await ws.send(b"\x00" * DEFAULT_MAX_MESSAGE_BYTES)
         await ws.send('{"type": "end"}')
         frames = await _collect_until_close(ws)
         assert ws.close_code == 1000
     finals = [f for f in frames if f["type"] == "final"]
     assert len(finals) == 1
+    assert finals[0]["audio_s"] == pytest.approx(3.0)
 
 
-async def test_recognizer_exception_becomes_an_error_frame() -> None:
-    class Flaky(Recognizer):
-        def __init__(self, options: SessionOptions) -> None:
-            self._options = options
-            self._chunks = 0
+async def test_a_message_over_the_cap_closes_with_1009_and_frees_the_session() -> None:
+    """The framing layer refuses the message before its payload is read, with close
+    code 1009 (message too big). No error frame can precede that: sending one would
+    mean reading the payload the cap exists to refuse. The session is aborted."""
+    config = WsServerConfig(port=0, max_message_bytes=DEFAULT_MAX_MESSAGE_BYTES)
+    async with _recording_server(config) as (server, engine):
+        async with connect(server.endpoint, max_size=None) as ws:
+            await _recv_json(ws)
+            await ws.send(b"\x00" * (DEFAULT_MAX_MESSAGE_BYTES + 2))
+            with pytest.raises(ConnectionClosed):
+                await asyncio.wait_for(ws.recv(), timeout=5.0)
+            assert ws.close_code == 1009
+        await _settle(server)
+    assert engine.calls("abort") == [0]
+    assert engine.calls("feed") == []
 
-        @property
-        def options(self) -> SessionOptions:
-            return self._options
 
-        def add_chunk(self, pcm: bytes) -> list[Hypothesis]:
-            self._chunks += 1
-            if self._chunks == 2:
+@pytest.mark.parametrize("max_message_bytes", [0, 1])
+def test_a_cap_below_one_sample_is_a_config_error(max_message_bytes: int) -> None:
+    with pytest.raises(ValueError, match="max_message_bytes"):
+        WsServerConfig(port=0, max_message_bytes=max_message_bytes)
+
+
+async def test_an_idle_session_is_closed_with_deadline_exceeded() -> None:
+    """A client that opens a session and never sends audio is told DEADLINE_EXCEEDED
+    and closed; the engine enforces it, so the deadline is the same on both wires."""
+    async with _server(idle_timeout_s=0.5) as server, connect(server.endpoint) as ws:
+        assert (await _recv_json(ws))["type"] == "session"
+        frames = await _collect_until_close(ws)
+        assert ws.close_code == 1000
+    assert [f["type"] for f in frames] == ["error"]
+    assert frames[0]["code"] == "DEADLINE_EXCEEDED"
+    await _settle(server)
+
+
+class _Flaky(FakePipelineAdapter):
+    """Raises inside the second step that carries a real (non-pad) row."""
+
+    def __init__(self) -> None:
+        super().__init__(CHUNK, buckets=(8,), scripted=True, script_for=lambda _o: None)
+        self.real_steps = 0
+
+    def transcribe_step(
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+    ) -> list[StepResult]:
+        if any(frame.stream_id > 0 for frame in frames):
+            self.real_steps += 1
+            if self.real_steps == 2:
                 raise RuntimeError("boom")
-            return []
+        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
 
-        def finalize(self) -> list[Hypothesis]:
-            return []
 
-    server = WsServer(Flaky, WsServerConfig(port=0))
-    async with server, connect(server.endpoint) as ws:
+async def test_a_pipeline_exception_becomes_an_error_frame() -> None:
+    config = EngineConfig(chunk=CHUNK, buckets=(8,))
+    engine = Engine(config, _Flaky(), clock=ScaledMonotonicClock(100.0))
+    async with _server(engine=engine) as server, connect(server.endpoint) as ws:
         await _recv_json(ws)
         await ws.send(_chunk())
         await ws.send(_chunk())

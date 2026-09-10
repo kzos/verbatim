@@ -50,7 +50,7 @@ def test_no_ceiling_when_uncalibrated() -> None:
     assert controller.decide(BUCKET - 1).admitted is True
     decision = controller.decide(BUCKET)
     assert decision.admitted is False
-    assert decision.reason == "RESOURCE_EXHAUSTED"
+    assert decision.reason == f"session refused: {BUCKET} live sessions fill the largest bucket"
 
 
 def test_admits_below_the_ceiling() -> None:
@@ -62,7 +62,7 @@ def test_rejects_at_the_ceiling() -> None:
     controller = _controller(_config(calibrated_ceiling=4))
     decision = controller.decide(4)
     assert decision.admitted is False
-    assert decision.reason == "RESOURCE_EXHAUSTED"
+    assert decision.reason == "session refused: 4 live sessions at the ceiling of 4"
     assert decision.retry_after_ms > 0
 
 
@@ -73,7 +73,7 @@ def test_rejects_when_slots_are_exhausted_even_below_the_ceiling() -> None:
     controller = AdmissionController(config, slots)
     decision = controller.decide(0)
     assert decision.admitted is False
-    assert decision.reason == "RESOURCE_EXHAUSTED"
+    assert decision.reason == "session refused: no free slot"
 
 
 def test_ceiling_never_exceeds_the_calibrated_value() -> None:
@@ -227,4 +227,4 @@ def test_uncalibrated_admission_still_stops_at_the_largest_bucket() -> None:
     assert controller.decide(BUCKET - 1).admitted is True
     decision = controller.decide(BUCKET)
     assert decision.admitted is False
-    assert decision.reason == "RESOURCE_EXHAUSTED"
+    assert decision.reason == f"session refused: {BUCKET} live sessions fill the largest bucket"

@@ -24,11 +24,10 @@ same window, so a two-second hiccup on a 128-stream calibration left a
 one-stream server for the life of the process, with every health signal clean,
 and refused admissions for thirty seconds after the hiccup was over.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. Here ``gpu_step``, ``host``, ``edge_step`` and ``emit`` arrive as plain
-numbers on ``TickStats``: there is no timing measurement and no benchmark here,
-only the EWMA and window arithmetic the runtime values will feed. This module
-must not depend on the NeMo toolkit or on PyTorch.
+Here ``gpu_step``, ``host``, ``edge_step`` and ``emit`` arrive as plain numbers on
+``TickStats``: there is no timing measurement and no benchmark here, only the
+EWMA and window arithmetic the runtime values feed. This module must not depend
+on the NeMo toolkit or on PyTorch.
 """
 
 from __future__ import annotations
@@ -187,25 +186,34 @@ class AdmissionController:
 
     def decide(self, live: int) -> AdmissionDecision:
         """Admit iff ``live < ceiling`` (when calibrated) and a slot is free and the
-        degradation ladder is not holding admissions; otherwise ``RESOURCE_EXHAUSTED``
-        with a retry-after hint of one tick period."""
+        degradation ladder is not holding admissions; otherwise a refusal whose
+        ``reason`` names which limit bound, with a retry-after hint of one tick
+        period. The reason reaches the wire as the error text, so it says what
+        happened rather than repeating the status code."""
         hint = self._config.chunk.ms
         if self._slots.free() < 1:
             return AdmissionDecision(
-                admitted=False, reason="RESOURCE_EXHAUSTED", retry_after_ms=hint
+                admitted=False, reason="session refused: no free slot", retry_after_ms=hint
             )
         buckets = self._config.buckets
         assert buckets is not None
         if live >= max(buckets):
             return AdmissionDecision(
-                admitted=False, reason="RESOURCE_EXHAUSTED", retry_after_ms=hint
+                admitted=False,
+                reason=f"session refused: {live} live sessions fill the largest bucket",
+                retry_after_ms=hint,
             )
         if self.degradation_level >= 1:
             return AdmissionDecision(
-                admitted=False, reason="RESOURCE_EXHAUSTED", retry_after_ms=hint
+                admitted=False,
+                reason=f"session refused: admissions held at degradation level "
+                f"{self.degradation_level}",
+                retry_after_ms=hint,
             )
         if self._ceiling is not None and live >= self._ceiling:
             return AdmissionDecision(
-                admitted=False, reason="RESOURCE_EXHAUSTED", retry_after_ms=hint
+                admitted=False,
+                reason=f"session refused: {live} live sessions at the ceiling of {self._ceiling}",
+                retry_after_ms=hint,
             )
         return AdmissionDecision(admitted=True)

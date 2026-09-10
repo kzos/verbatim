@@ -1,28 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2026 Zaheer Sheriff K
-"""Protocol surfaces and the doors into the server: ``Recognizer`` and the engine handles.
+"""Protocol surfaces and the doors into the server: the engine handles.
 
 The ABCs exist so an operator can carry a private protocol adapter without
 forking, and so the fake pipeline plus the conformance suite can test protocols
 with no GPU.
 
-This module is home to two interfaces, side by side. ``Recognizer`` is what every
-protocol surface talks to today: one instance per session. It is deliberately
-synchronous and deliberately tiny, because the real adapter over NeMo's
-cache-aware pipeline is driven from a dedicated tick thread, not from the event
-loop; a transport that needs to call a blocking recognizer dispatches it to a
-worker. ``EngineHandle`` / ``SessionHandle`` are the asynchronous result contract
-that replaces it: a non-blocking ``feed`` plus a ``results`` async iterator fed
-from one engine-owned queue.
-
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU.
+``EngineHandle`` and ``SessionHandle`` are the one way a transport runs a session:
+a synchronous, non-blocking ``feed`` plus a ``results`` async iterator fed from one
+engine-owned queue. There is no other. The synchronous per-session recognizer the
+transports once called on the event loop is gone, because a blocking recognizer on
+the loop is head-of-line blocking for every other session, and because a tick
+scheduler cannot batch what it is not handed.
 """
 
 from __future__ import annotations
 
 import abc
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Final
 
@@ -34,8 +29,6 @@ __all__ = [
     "VALID_CHUNK_MS",
     "EngineHandle",
     "Hypothesis",
-    "Recognizer",
-    "RecognizerFactory",
     "SessionHandle",
     "SessionOptions",
     "Word",
@@ -93,42 +86,6 @@ class SessionOptions:
     def chunk_bytes(self) -> int:
         """Bytes per chunk of PCM16LE mono: chunk_samples * 2."""
         return self.chunk_samples * 2
-
-
-class Recognizer(abc.ABC):
-    """What every protocol surface talks to. One instance per session.
-
-    Deliberately synchronous and deliberately tiny. The real adapter over NeMo's
-    cache-aware pipeline is a later task and is driven from a dedicated tick thread,
-    not from the event loop; a transport that needs to call a blocking recognizer
-    dispatches it to a worker. Implementations here must be non-blocking.
-    """
-
-    @property
-    @abc.abstractmethod
-    def options(self) -> SessionOptions: ...
-
-    @abc.abstractmethod
-    def add_chunk(self, pcm: bytes) -> list[Hypothesis]:
-        """Consume exactly `options.chunk_bytes` of PCM16LE and return what is ready.
-
-        Returns zero or more hypotheses in emission order. A tick that produces
-        nothing returns an empty list -- that is normal, not an error. Raises
-        InvalidArgument if `len(pcm) != options.chunk_bytes`: the caller owns
-        chunking, and a recognizer that silently accepted a short buffer would make
-        chunk boundaries depend on the transport.
-        """
-
-    @abc.abstractmethod
-    def finalize(self) -> list[Hypothesis]:
-        """Flush. Returns the remaining hypotheses, the last of which has is_final=True.
-
-        Called once, after the last `add_chunk`. Calling `add_chunk` afterwards raises
-        InvalidArgument.
-        """
-
-
-RecognizerFactory = Callable[[SessionOptions], Recognizer]
 
 
 class SessionHandle(abc.ABC):
@@ -191,3 +148,9 @@ class EngineHandle(abc.ABC):
         """Admit and register a session. Synchronous, O(1), safe to call from the asyncio
         loop. Raises ResourceExhausted (with retry_after_ms) when refused; nothing is
         reserved in that case."""
+
+    @abc.abstractmethod
+    async def wait_for_ticks(self, n: int) -> None:
+        """Return after `n` further ticks have completed. A transport whose `feed` was
+        accepted short waits one tick here before offering the remainder again; it
+        reads nothing from its socket meanwhile, which is the back-pressure."""

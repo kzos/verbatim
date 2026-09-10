@@ -10,8 +10,7 @@ the ``[70, *]`` family and has no 320 ms mode.
 The SLO is ``p95 partial latency <= chunk + 150 ms``. The concurrency ceiling is
 never typed in: it is calibrated against a measured tick budget.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This module holds validated configuration only: no model, no timing
+This module holds validated configuration only: no model, no timing
 measurement, no number presented as observed. This module must not depend on
 the NeMo toolkit or on PyTorch.
 """
@@ -81,6 +80,12 @@ class EngineConfig:
     is the end-of-utterance silence NeMo's endpointer waits for when a session does
     not carry its own; 0 disables endpointing and a final then comes only at
     half-close.
+
+    ``idle_timeout_s`` is the longest a live session may go without a chunk of audio
+    before the engine closes it with ``DEADLINE_EXCEEDED`` and frees its slot. It is
+    counted in ticks on the engine's own clock, so it lives here rather than in
+    either transport and both wires inherit it. ``None`` disables it, which is what
+    the CPU test harness does; a server should not.
     """
 
     chunk: ChunkMode
@@ -95,6 +100,7 @@ class EngineConfig:
     elastic_buckets: bool = False
     pipeline: str = "fake"
     stop_history_eou_ms: int = 800
+    idle_timeout_s: float | None = 30.0
 
     def __post_init__(self) -> None:
         buckets = self.buckets
@@ -139,6 +145,12 @@ class EngineConfig:
             raise ConfigError("pipeline must name a registered adapter")
         if isinstance(self.stop_history_eou_ms, bool) or self.stop_history_eou_ms < 0:
             raise ConfigError(f"stop_history_eou_ms must be >= 0, got {self.stop_history_eou_ms!r}")
+        if self.idle_timeout_s is not None and (
+            isinstance(self.idle_timeout_s, bool) or not self.idle_timeout_s > 0
+        ):
+            raise ConfigError(
+                f"idle_timeout_s must be positive or None, got {self.idle_timeout_s!r}"
+            )
         assert_graph_budget({self.chunk.ms: buckets}, self.max_graphs)
 
     @property

@@ -17,6 +17,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 __all__ = [
+    "DeadlineExceeded",
     "ErrorCode",
     "InvalidArgument",
     "NotFound",
@@ -38,6 +39,7 @@ class ErrorCode(StrEnum):
     NOT_FOUND = "NOT_FOUND"
     UNIMPLEMENTED = "UNIMPLEMENTED"
     RESOURCE_EXHAUSTED = "RESOURCE_EXHAUSTED"
+    DEADLINE_EXCEEDED = "DEADLINE_EXCEEDED"
     INTERNAL = "INTERNAL"
 
 
@@ -70,6 +72,13 @@ class Unimplemented(VerbatimError):
 
     def __init__(self, message: str) -> None:
         super().__init__(message, ErrorCode.UNIMPLEMENTED)
+
+
+class DeadlineExceeded(VerbatimError):
+    """A session that sent no audio for longer than the engine's idle deadline."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, ErrorCode.DEADLINE_EXCEEDED)
 
 
 class ResourceExhausted(VerbatimError):

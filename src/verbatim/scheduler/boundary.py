@@ -4,11 +4,11 @@
 
 The day-45 gate requires the eager step fraction to stay at or below 2 %.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU: its final (``is_last``) sub-batch is never captured, which is why
+NeMo's pipeline never captures a final (``is_last``) sub-batch, which is why
 finals are peeled off here instead of mixed into the steady batch. This module is
-batch assembly and counters only. This module must not depend on the NeMo toolkit
-or on PyTorch.
+batch assembly and counters only, tested against the CPU fake in
+``verbatim.pipelines.fake``. This module must not depend on the NeMo toolkit or
+on PyTorch.
 """
 
 from __future__ import annotations

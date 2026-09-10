@@ -7,8 +7,7 @@ length is split across two conversions with a one-byte carry: without it an
 odd-length message would drop or misalign a sample, making chunk boundaries a
 function of packetisation.
 
-The real adapter over NeMo's cache-aware pipeline is a LATER TASK, on a machine
-with a GPU. This is plain sample arithmetic with no model behind it.
+This is plain sample arithmetic with no model behind it.
 """
 
 from __future__ import annotations
