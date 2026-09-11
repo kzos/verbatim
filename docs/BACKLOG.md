@@ -211,7 +211,24 @@ promised date — that is for triage once an entry becomes an issue.
   A6000 figure above on a server that does no work at all. **The finding this leaves open is the next
   entry.**
 
-- `bench/src/verbatim_bench/client.py::_run_session_inner` — **the seeded frame jitter shapes no send
+- ~~`bench/src/verbatim_bench/client.py::_run_session_inner` — **the seeded frame jitter shapes no send
+  and only corrupts the slip measurement.**~~ **Closed 2026-09-11: the jitter is on the wire.** Frame
+  `i` is sent at `t0 + i * frame_period + jitter_i` and graded against that same deadline, one draw per
+  frame in frame order, so a seed reproduces the schedule; chunk-sized framing draws none. The pair
+  re-taken across this change and nothing else, six sessions of one 34 s utterance against the null
+  server at 20 ms frames and a 160 ms chunk, 10,200 frames a side, pooled slip in ms:
+
+  | | p50 | p95 | p99 | max | frames exactly zero |
+  |---|---|---|---|---|---|
+  | before | 1.56 | 10.57 | 11.67 | 12.60 | 42 % |
+  | after | 0.71 | 1.26 | 1.86 | 2.62 | none |
+
+  The 42 percent of frames scoring exactly zero is the artefact stated plainly: a slip of
+  `max(0, ε − J)` is clamped to zero whenever the draw lands late. Afterwards the pacing gate does not
+  fire against the null server, and fires only when the generator misses the schedule it set itself,
+  which is what it exists to catch. The original entry below is kept for the reasoning.
+
+  - `bench/src/verbatim_bench/client.py::_run_session_inner` — **the seeded frame jitter shapes no send
   and only corrupts the slip measurement.** The send loop sleeps to `t0 + frame_index * frame_period_s`
   and then grades that send against `t0 + frame_index * frame_period_s + jitter`, where `jitter` is a
   fresh draw in ±`FRAME_JITTER_MS`. Nothing schedules on the jittered deadline, so the offset never

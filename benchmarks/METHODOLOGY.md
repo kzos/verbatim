@@ -22,7 +22,7 @@ The rung uses `WARM_UP_S = 60`, `WINDOW_S = 180`, `WARM_UP_READING_S = 30`, `WAR
 
 The ladder uses `LADDER_N0_FRACTION_OF_C = 0.5`, `LADDER_N0_WITHOUT_CEILING = 16`, `LADDER_MULTIPLIER = 1.15`, `LADDER_RESOLUTION = 0.02`, and `LADDER_INVALID_RUNGS_TO_ABORT = 2`. Its seeds are `SEEDS = (20260914, 20260915, 20260916)`, in that order and distinct, and `S_REPEATS = 3`.
 
-The workload constants are `SESSION_PROFILE = "m180"`, `PACING_PROFILE = "uniform"`, `FRAME_MS = 20`, `FRAME_JITTER_MS = 10` in either direction with seeded jitter, and `CHUNK_MODES_DAY21 = (160, 560)`.
+The workload constants are `SESSION_PROFILE = "m180"`, `PACING_PROFILE = "uniform"`, `FRAME_MS = 20`, `FRAME_JITTER_MS = 10` in either direction with seeded jitter, and `CHUNK_MODES_DAY21 = (160, 560)`. The jitter is a property of the workload and therefore of the wire: frame `i` is **sent** at `t0 + i * frame_period + jitter_i` and its pacing slip is graded against that same deadline, one draw per frame in frame order, so a seed reproduces the schedule. A deadline the sender does not schedule on would perturb only the metric, which is not a workload.
 
 The ceiling constants are `CEILING_BATCH_SIZES = (32, 128)`, `CEILING_NUM_SLOTS_EQUALS_BATCH = true`, `CEILING_WARMUP_STEPS = 1`, `CEILING_RUN_STEPS = 3`, `CEILING_MEDIAN_OF = 5`, `CEILING_MIN_INPUT_STREAMS_PER_BATCH_SLOT = 4`, and `CEILING_RTFX_CROSS_CHECK = 0.02`. The kill constants are `KILL_RULE_1_THRESHOLD = 0.7`, `KILL_RULE_2_THRESHOLD = 0.5`, `F_MAINTAINER_RERUN_ABOVE = 1.1`, and `WER_WINDOW_ABSOLUTE = 0.1`.
 

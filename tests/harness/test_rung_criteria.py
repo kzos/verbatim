@@ -355,21 +355,18 @@ def test_a_reference_is_refused_unless_it_describes_this_run() -> None:
         assert not reference.describes(**coordinates)  # type: ignore[arg-type]
 
 
-async def test_the_canonical_framing_the_harness_ships_misses_the_frozen_pacing_tolerance(
+async def test_the_canonical_framing_the_harness_ships_is_not_invalidated_by_its_own_jitter(
     tmp_path,
 ) -> None:
     """The gate on the configuration the project actually publishes, end to end.
 
-    Measured against the null server on 2026-09-11, a load sending the frozen 20 ms
-    frames has a pooled pacing-slip p99 above the frozen 5 ms tolerance, so every rung
-    comes back invalid and two consecutive invalid rungs abort the ladder as host unfit.
-    The same load at one frame per measurement chunk, which draws no jitter, has a p99
-    well inside the tolerance: the term is the generator's own seeded frame jitter and
-    not the server, which is why the rest of the ladder tests run that framing.
-
-    The number this leaves standing is the one the backlog reported from the live server:
-    no run the harness has taken is valid, and the ladder now says so instead of writing
-    `valid=True`.
+    Until 2026-09-11 a load sending the frozen 20 ms frames drew a jitter offset for
+    each frame's deadline while sleeping to the unjittered one, so the pooled
+    pacing-slip p99 was the jitter constant and every canonical rung came back invalid
+    for pacing whatever the box did. The jitter is now on the wire and the slip is
+    graded against the deadline the sender slept to, so a rung's pacing validity is
+    the generator's own lateness on this box: against the null server a one-stream
+    rung is not invalid for pacing, and the ladder gets to evaluate its criteria.
     """
     from test_ladder import FAST_RUNG
     from test_ladder import SEED as LADDER_SEED
@@ -399,19 +396,12 @@ async def test_the_canonical_framing_the_harness_ships_misses_the_frozen_pacing_
             str(out_dir),
             *canonical_framing,
         ]
-        rc = await asyncio.get_running_loop().run_in_executor(None, main, argv)
-    assert rc == 2
+        await asyncio.get_running_loop().run_in_executor(None, main, argv)
     payload = json.loads((out_dir / "ladder.json").read_text(encoding="utf-8"))
-    assert payload["aborted"] is True
-    assert payload["abort_reason"] == "host unfit"
-    assert payload["ending_criterion"] == Criterion.INVALID_HOST.value
     assert payload["config"]["frame_ms"] == constants.FRAME_MS
     assert payload["rungs"]
     for rung in payload["rungs"]:
-        assert rung["valid"] is False
-        assert rung["invalid_reason"] == InvalidReason.PACING_SLIP.value
-        assert rung["criteria_evaluated"] == []
-        assert rung["passed"] is False
+        assert rung["invalid_reason"] != InvalidReason.PACING_SLIP.value
 
 
 async def test_a_ladder_given_a_batch1_reference_evaluates_word_error_rate(tmp_path) -> None:
