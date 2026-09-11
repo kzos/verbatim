@@ -46,6 +46,21 @@ can exceed a threshold taken below it; that shows as rungs invalid for pressure,
 silent pass, and the answer is to re-calibrate higher and record why, never to raise the
 number by hand.
 
+**Or against the server under test, which is where the row is taken.** On a box that
+serves and measures at once, the clean baseline is not the null floor: it includes the
+server, whose work is what a row exists to measure, and a threshold taken without it has
+no room for it. The first capacity search showed exactly that: the null floor gave 0.40,
+the idle box alone stalls 0.32, the generator adds about 0.07, and the server under test
+about 0.02, so a real rung at 16 streams read 0.42 and was rejected by the five percent
+the server costs. Given an ``endpoint``, the calibration runs the complete measurement,
+generator and server together, at ``CALIBRATION_REFERENCE_N`` streams, with the same
+rule. The reference is what bounds the circularity: a threshold taken with the server
+running absorbs whatever pressure that server causes, so it must be taken in a state
+shown healthy by a different instrument, not assumed healthy by this one. Six streams
+was measured independently at a p95 of 193.7 ms against a 310 ms budget, 116 ms of
+margin, before this calibration existed. The record names the mode, the endpoint and
+the reference, so a reader can tell a null-floor threshold from one taken under test.
+
 **No warm-up by default.** A rung's warm-up is the convergence protocol at N: the window
 opens when two consecutive readings of the server's p95 agree within a fraction. The
 null server answers in a fraction of a millisecond, so that fraction is noise and the
@@ -71,6 +86,7 @@ import math
 import os
 import time
 from collections.abc import Callable, Sequence
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -95,6 +111,7 @@ from verbatim_bench.nullserver import NullServer, NullServerConfig
 from verbatim_bench.pace import LoadSpec
 
 __all__ = [
+    "CALIBRATION_REFERENCE_N",
     "NULL_FLOOR_NS",
     "PRECISION_PCT",
     "QUIET_LOADAVG_MAX_FRACTION_OF_CPUSET",
@@ -112,6 +129,10 @@ __all__ = [
 PRECISION_PCT: Final = 0.01
 #: The concurrencies the null floor is driven at: the frozen document's own numbers.
 NULL_FLOOR_NS: Final = (constants.LADDER_N0_WITHOUT_CEILING, *constants.CEILING_BATCH_SIZES)
+#: The concurrency a calibration against the server under test runs at: a state shown
+#: healthy by a different instrument (six streams at p95 193.7 ms against a 310 ms
+#: budget), which is what bounds the circularity of calibrating with the server running.
+CALIBRATION_REFERENCE_N: Final = 6
 #: One time constant of the one-minute load average the quiet test reads. The pressure
 #: estimator no longer needs the wait: a counter delta over a window has no memory.
 QUIET_OBSERVATION_S: Final = 60.0
@@ -325,6 +346,9 @@ class CalibrationRecord:
     canonical: bool
     quiet: QuietReading
     windows: tuple[WindowReading, ...]
+    mode: str = "null-floor"
+    endpoint: str | None = None
+    server_pid: int | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -353,7 +377,15 @@ class CalibrationRecord:
                 "tree_clean": self.harness_tree_clean,
             },
             "load": {
-                "server": "the harness's own null server (verbatim_bench.nullserver)",
+                "mode": self.mode,
+                "server": (
+                    "the harness's own null server (verbatim_bench.nullserver)"
+                    if self.endpoint is None
+                    else f"the server under test at {self.endpoint}"
+                ),
+                "endpoint": self.endpoint,
+                "server_pid": self.server_pid,
+                "reference_n": CALIBRATION_REFERENCE_N if self.endpoint is not None else None,
                 "manifest": self.manifest,
                 "ns": list(self.ns),
                 "windows_per_n": len(self.seeds),
@@ -422,7 +454,8 @@ def _reading(result: Any, host: HostWindow, *, n: int, seed: int) -> WindowReadi
 async def calibrate(
     *,
     manifest: Path,
-    ns: Sequence[int] = NULL_FLOOR_NS,
+    endpoint: str | None = None,
+    ns: Sequence[int] | None = None,
     seeds: Sequence[int] = constants.SEEDS,
     window_s: float = constants.WINDOW_S,
     warm_up_s: float | None = None,
@@ -443,8 +476,17 @@ async def calibrate(
     sleep: Callable[[float], None] = time.sleep,
     precision: float = PRECISION_PCT,
 ) -> CalibrationRecord:
-    """Observe the box quiet, run the null floor once per seed at each N with the window
-    recorder, and reduce the pressure series to the two thresholds with their provenance."""
+    """Observe the box quiet, run the floor once per seed at each N with the window recorder,
+    and reduce the windows' pressure to the two thresholds with their provenance. Without
+    an ``endpoint`` the floor is the harness's null server at ``NULL_FLOOR_NS``; with one it
+    is the server under test at ``CALIBRATION_REFERENCE_N``, which then needs ``server_pid``."""
+    if ns is None:
+        ns = NULL_FLOOR_NS if endpoint is None else (CALIBRATION_REFERENCE_N,)
+    if endpoint is not None and server_pid is None:
+        raise CalibrationRefusal(
+            "a calibration against the server under test needs its pid, so its CPU is in "
+            "the record and its compute process is not counted foreign"
+        )
     if cgroupfs is None:
         cgroupfs = own_cgroup(procfs)
     quiet = observe_quiet(
@@ -465,10 +507,14 @@ async def calibrate(
         except (IndexError, ValueError, OSError):
             gpu_facts = None
     windows: list[WindowReading] = []
-    async with NullServer(NullServerConfig()) as server:
+    async with AsyncExitStack() as stack:
+        if endpoint is None:
+            target = (await stack.enter_async_context(NullServer(NullServerConfig()))).endpoint
+        else:
+            target = endpoint
         for n, seed in ((n, seed) for n in ns for seed in seeds):
             spec = LoadSpec(
-                endpoint=server.endpoint,
+                endpoint=target,
                 manifest=Path(manifest),
                 sessions=n,
                 chunk=ChunkMode.parse(160),
@@ -496,7 +542,7 @@ async def calibrate(
             host = recorder.finish()
             if host is None or result.warm_up_converged is False:
                 raise CalibrationRefusal(
-                    f"the null-floor run at N={n} with seed {seed} held no window: warm-up "
+                    f"the calibration run at N={n} with seed {seed} held no window: warm-up "
                     f"converged={result.warm_up_converged}; the calibration measures the "
                     "window a rung measures and nothing else"
                 )
@@ -526,13 +572,18 @@ async def calibrate(
         frame_ms=frame_ms,
         pacing_profile=constants.PACING_PROFILE,
         interval_s=interval_s,
-        # Canonical: the frozen window, framing and seeds. The warm-up is not part of
-        # it; the floor has none by design, and the record names what ran.
+        mode="null-floor" if endpoint is None else "under-test",
+        endpoint=endpoint,
+        server_pid=server_pid,
+        # Canonical: the frozen window, framing and seeds, and the mode's own N. The
+        # warm-up is not part of it; the floor has none by design, and the record names
+        # what ran.
         canonical=(
             float(window_s) == float(constants.WINDOW_S)
             and frame_ms == constants.FRAME_MS
             and tuple(seeds) == tuple(constants.SEEDS)
-            and tuple(ns) == tuple(NULL_FLOOR_NS)
+            and tuple(ns)
+            == (tuple(NULL_FLOOR_NS) if endpoint is None else (CALIBRATION_REFERENCE_N,))
         ),
         quiet=quiet,
         windows=tuple(windows),
