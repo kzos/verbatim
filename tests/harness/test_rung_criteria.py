@@ -501,3 +501,19 @@ def test_a_reference_that_does_not_describe_the_run_is_a_usage_error(tmp_path) -
     # And a reference without the coordinates to check it against is refused outright.
     assert main(base) == 1
     assert not (Path(tmp_path / "out") / "ladder.json").exists()
+
+
+def test_the_client_cpu_gate_reads_a_percentage_as_a_percentage() -> None:
+    """The record's client CPU is a percentage of the cpuset. A generator at three quarters
+    of one percent is within a fifty-percent budget; one at sixty percent is not. Both
+    ends are pinned so no single wrong conversion can satisfy them: a heuristic that read
+    small values as fractions accepted 60.0 and rejected 0.75, and threw out the first
+    capacity search's every rung."""
+    from test_ladder import _counters
+
+    assert rung_validity(_counters(client_cpu_pct_of_cpuset=0.75), fake_gpu_facts(), 1.0) is None
+    assert rung_validity(_counters(client_cpu_pct_of_cpuset=49.9), fake_gpu_facts(), 1.0) is None
+    assert (
+        rung_validity(_counters(client_cpu_pct_of_cpuset=60.0), fake_gpu_facts(), 1.0)
+        is InvalidReason.CLIENT_CPU
+    )

@@ -299,7 +299,7 @@ def test_verify_flags_a_nonzero_throttle_count() -> None:
 
 def test_verify_flags_client_cpu_over_budget() -> None:
     doc = make_v2_doc()
-    doc["host"]["client_cpu_pct_of_cpuset"] = 0.9
+    doc["host"]["client_cpu_pct_of_cpuset"] = 90.0  # a percentage: ninety, not nine tenths
     stamp_checksum(doc)
     assert "CLIENT_CPU_OVER_BUDGET" in _codes(verify_document(doc))
 
@@ -419,3 +419,16 @@ def test_v2_document_with_all_four_hashes_and_equal_true_passes() -> None:
     report = verify_document(make_v2_doc())
     assert "INVARIANCE_UNDER_FOUR_HASHES" not in _codes(report)
     assert report.ok
+
+
+def test_a_client_under_one_percent_of_its_cpuset_is_within_budget() -> None:
+    """`client_cpu_pct_of_cpuset` is a percentage. 0.75 is three quarters of one percent,
+    not seventy-five percent, and the verifier must not read it as over a fifty-percent
+    budget; the first capacity search's every rung was thrown out that way."""
+    doc = make_v2_doc()
+    doc["host"]["client_cpu_pct_of_cpuset"] = 0.75
+    stamp_checksum(doc)
+    assert "CLIENT_CPU_OVER_BUDGET" not in _codes(verify_document(doc))
+    doc["host"]["client_cpu_pct_of_cpuset"] = 60.0
+    stamp_checksum(doc)
+    assert "CLIENT_CPU_OVER_BUDGET" in _codes(verify_document(doc))
