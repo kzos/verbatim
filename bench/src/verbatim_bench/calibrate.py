@@ -18,12 +18,19 @@ framing against the harness's own null server, so a run that shows more pressure
 the floor showed is a run whose host was doing more than the floor's host was, and that
 is the condition to reject.
 
-**On the gate's own estimator.** ``rung_validity`` compares what ``HostSampler.stop`` read
-of ``/proc/pressure/cpu`` at the window's close: ``avg60`` (``avg10`` where absent) for
-``some`` and ``full``. The calibration samples the same file and field at an interval
-across each null-floor window, the same window a rung samples, and the threshold is the
-maximum over every sample of every window, rounded up to ``PRECISION_PCT``. No safety
-factor: a factor would be an unfrozen constant chosen by hand, the thing this avoids.
+**On the gate's own estimator, which is exact.** ``rung_validity`` compares what
+``HostSampler.stop`` computed for the window: the delta of ``/proc/pressure/cpu``'s
+monotonic ``total`` stall counters over the window, as a percentage of it, for ``some`` and
+for ``full`` each from its own counter. That is the window's pressure and nothing else: no
+time constant, no decay, no memory of what came before the window opened. The earlier
+estimator, ``avg60`` read at the close, was an exponentially decaying average that carried
+the minute before the window into it; it let the tail of a test suite that had ended
+seconds before a calibration set a threshold of 0.46 where the quiet box gives 0.01, and it
+would have let a rung be invalidated by pressure that ended before its window opened. The
+``avg60`` samples are still polled inside every window and kept in the record as context
+while the two are compared. The threshold is the maximum over every clean window's
+pressure, rounded up to ``PRECISION_PCT``. No safety factor: a factor would be an unfrozen
+constant chosen by hand, the thing this avoids.
 
 **Over the concurrencies the method contemplates.** Client-side pressure rises with N, so a
 threshold calibrated at one low N would reject an honest run at a higher one: a guard that
@@ -48,7 +55,9 @@ profile. Pass ``warm_up_s`` to run the protocol anyway; the record says which wa
 
 **It refuses on a box that is not quiet.** A calibration taken under load would silently
 raise the bar for every future run and nothing downstream could detect it. Before the
-runs, with the generator not running, the box is observed for ``QUIET_OBSERVATION_S``:
+runs, with the generator not running, the box is observed for ``QUIET_OBSERVATION_S``, one
+time constant of the load average it reads, and its own pressure over that observation is
+recorded from the same counters. During it:
 steal must be at most ``STEAL_PCT_MAX``, the cgroup throttling delta at most
 ``CGROUP_THROTTLED_DELTA_MAX``, the one-minute load average at most
 ``QUIET_LOADAVG_MAX_FRACTION_OF_CPUSET`` of the effective cpuset (a tenth), and no compute process
@@ -103,7 +112,9 @@ __all__ = [
 PRECISION_PCT: Final = 0.01
 #: The concurrencies the null floor is driven at: the frozen document's own numbers.
 NULL_FLOOR_NS: Final = (constants.LADDER_N0_WITHOUT_CEILING, *constants.CEILING_BATCH_SIZES)
-QUIET_OBSERVATION_S: Final = 10.0
+#: One time constant of the one-minute load average the quiet test reads. The pressure
+#: estimator no longer needs the wait: a counter delta over a window has no memory.
+QUIET_OBSERVATION_S: Final = 60.0
 #: A tenth of the cpuset: on a 48-CPU box a load average of 4.8, which the box's own
 #: services sit under and a paced load of even a few streams does not.
 QUIET_LOADAVG_MAX_FRACTION_OF_CPUSET: Final = 0.1
@@ -128,6 +139,10 @@ class QuietReading:
     psi_full: float | None
     foreign_gpu_pids: tuple[int, ...]
     refusal: str | None
+    psi_some_start: float | None = None
+    psi_full_start: float | None = None
+    psi_some_window_pct: float | None = None
+    psi_full_window_pct: float | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -138,8 +153,12 @@ class QuietReading:
             "loadavg_1m": self.loadavg_1m,
             "cpuset_size": self.cpuset_size,
             "loadavg_max_fraction_of_cpuset": QUIET_LOADAVG_MAX_FRACTION_OF_CPUSET,
-            "psi_some": self.psi_some,
-            "psi_full": self.psi_full,
+            "psi_some_window_pct": self.psi_some_window_pct,
+            "psi_full_window_pct": self.psi_full_window_pct,
+            "avg60_some_start": self.psi_some_start,
+            "avg60_full_start": self.psi_full_start,
+            "avg60_some_end": self.psi_some,
+            "avg60_full_end": self.psi_full,
             "foreign_gpu_pids": list(self.foreign_gpu_pids),
             "quiet": self.refusal is None,
             "refusal": self.refusal,
@@ -160,6 +179,7 @@ def observe_quiet(
     if cgroupfs is None:
         cgroupfs = own_cgroup(procfs)
     sampler = HostSampler(server_pid=None, client_pid=os.getpid(), procfs=procfs, cgroupfs=cgroupfs)
+    some_start, full_start = _read_pressure_avg(procfs)
     sampler.start()
     sleep(duration_s)
     counters = sampler.stop()
@@ -203,6 +223,10 @@ def observe_quiet(
         psi_full=full,
         foreign_gpu_pids=foreign,
         refusal=refusal,
+        psi_some_start=some_start,
+        psi_full_start=full_start,
+        psi_some_window_pct=counters.psi_cpu_some_avg,
+        psi_full_window_pct=counters.psi_cpu_full_avg,
     )
 
 
@@ -215,6 +239,8 @@ class WindowReading:
     window_open_s: float
     window_close_s: float
     warm_up_converged: bool | None
+    psi_some_window_pct: float | None
+    psi_full_window_pct: float | None
     psi_samples: int
     psi_some_max: float | None
     psi_full_max: float | None
@@ -238,11 +264,13 @@ class WindowReading:
             "window_open_s": self.window_open_s,
             "window_close_s": self.window_close_s,
             "warm_up_converged": self.warm_up_converged,
-            "psi_samples": self.psi_samples,
-            "psi_some_max": self.psi_some_max,
-            "psi_full_max": self.psi_full_max,
-            "psi_some_at_close": self.psi_some_at_close,
-            "psi_full_at_close": self.psi_full_at_close,
+            "psi_some_window_pct": self.psi_some_window_pct,
+            "psi_full_window_pct": self.psi_full_window_pct,
+            "avg60_samples": self.psi_samples,
+            "avg60_some_max": self.psi_some_max,
+            "avg60_full_max": self.psi_full_max,
+            "avg60_some_at_close": self.psi_some_at_close,
+            "avg60_full_at_close": self.psi_full_at_close,
             "client_cpu_pct_of_cpuset": self.client_cpu_pct_of_cpuset,
             "pacing_slip_p99_ms": self.pacing_slip_p99_ms,
         }
@@ -257,10 +285,10 @@ def ceil_to_precision(value: float, precision: float = PRECISION_PCT) -> float:
 def thresholds_from(
     windows: Sequence[WindowReading], *, precision: float = PRECISION_PCT
 ) -> tuple[float, float]:
-    """The two thresholds: the maximum over every clean window's maximum, rounded up."""
+    """The two thresholds: the maximum over every clean window's pressure, rounded up."""
     clean = [w for w in windows if w.clean]
-    somes = [w.psi_some_max for w in clean if w.psi_some_max is not None]
-    fulls = [w.psi_full_max for w in clean if w.psi_full_max is not None]
+    somes = [w.psi_some_window_pct for w in clean if w.psi_some_window_pct is not None]
+    fulls = [w.psi_full_window_pct for w in clean if w.psi_full_window_pct is not None]
     if not clean or not somes or not fulls:
         raise CalibrationRefusal(
             "no pressure samples inside any clean window: the box exposes no "
@@ -305,8 +333,10 @@ class CalibrationRecord:
                 "PSI_CPU_SOME_MAX_PCT": self.psi_cpu_some_max_pct,
                 "PSI_CPU_FULL_MAX_PCT": self.psi_cpu_full_max_pct,
                 "precision_pct": self.precision_pct,
-                "rule": "ceiling to precision of the maximum over every sample of every "
-                "null-floor window, on /proc/pressure/cpu avg60 (avg10 where absent), no factor",
+                "rule": "ceiling to precision of the maximum over every clean null-floor "
+                "window's pressure, the delta of /proc/pressure/cpu's total stall counter over "
+                "the window as a percentage of it, some and full each from its own counter, "
+                "no factor; avg60 samples recorded as context only",
             },
             "taken_at": self.taken_at,
             "box": {
@@ -373,6 +403,8 @@ def _reading(result: Any, host: HostWindow, *, n: int, seed: int) -> WindowReadi
         window_open_s=host.open_s,
         window_close_s=host.close_s,
         warm_up_converged=result.warm_up_converged,
+        psi_some_window_pct=host.counters.psi_cpu_some_avg,
+        psi_full_window_pct=host.counters.psi_cpu_full_avg,
         psi_samples=host.psi.samples,
         psi_some_max=host.psi.some_max,
         psi_full_max=host.psi.full_max,

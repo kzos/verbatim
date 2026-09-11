@@ -14,6 +14,8 @@ from verbatim_bench.env import (
     EnvironmentRefusal,
     FakeGpuProbe,
     HostSampler,
+    _read_pressure_totals,
+    _window_pressure_pct,
     box_id,
     collect,
     fake_gpu_facts,
@@ -449,3 +451,45 @@ def test_only_compute_processes_count_as_compute_processes() -> None:
     )
     (gpu,) = parse_smi_xml(document)
     assert gpu.compute_process_pids == (11, 33, 44)
+
+
+def test_pressure_totals_are_read_per_line(tmp_path: Path) -> None:
+    procfs = tmp_path / "proc"
+    _write(
+        procfs / "pressure" / "cpu",
+        "some avg10=0.00 avg60=0.06 avg300=0.02 total=4598379692\n"
+        "full avg10=0.00 avg60=0.00 avg300=0.00 total=17\n",
+    )
+    assert _read_pressure_totals(procfs) == (4598379692, 17)
+    assert _read_pressure_totals(tmp_path / "nowhere") == (None, None)
+    assert _window_pressure_pct(1_000_000, 1_050_000, 10.0) == pytest.approx(0.5)
+    assert _window_pressure_pct(None, 5, 10.0) is None
+    assert _window_pressure_pct(5, 3, 10.0) == 0.0  # a counter never runs backwards; clamp
+
+
+def test_host_sampler_reports_the_windows_stall_fraction_from_the_counter_delta(
+    tmp_path: Path,
+) -> None:
+    """The window's pressure is the stall counter's delta over the window, exact: nothing
+    that stalled before the window opened is in it, however recent."""
+    procfs = _fake_host_tree(tmp_path)
+    cgroupfs = tmp_path / "cgroup"
+    _write(
+        procfs / "pressure" / "cpu",
+        "some avg10=9.00 avg60=9.00 avg300=9.00 total=1000000\n"
+        "full avg10=9.00 avg60=9.00 avg300=9.00 total=500000\n",
+    )
+    now = [100.0]
+    sampler = HostSampler(
+        server_pid=None, client_pid=None, procfs=procfs, cgroupfs=cgroupfs, clock=lambda: now[0]
+    )
+    sampler.start()
+    now[0] = 110.0  # a ten-second window
+    _write(
+        procfs / "pressure" / "cpu",
+        "some avg10=9.00 avg60=9.00 avg300=9.00 total=1050000\n"
+        "full avg10=9.00 avg60=9.00 avg300=9.00 total=502000\n",
+    )
+    counters = sampler.stop()
+    assert counters.psi_cpu_some_avg == pytest.approx(0.5)  # 50 ms stalled of 10 s
+    assert counters.psi_cpu_full_avg == pytest.approx(0.02)

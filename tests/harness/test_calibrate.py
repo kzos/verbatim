@@ -13,6 +13,7 @@ from test_env import _fake_box_tree, _fake_host_tree, _write, _write_pid_stat
 from verbatim_bench import constants
 from verbatim_bench.calibrate import (
     PRECISION_PCT,
+    QUIET_OBSERVATION_S,
     CalibrationRefusal,
     WindowReading,
     calibrate,
@@ -39,6 +40,8 @@ def _window(
         window_open_s=10.0,
         window_close_s=11.0,
         warm_up_converged=True,
+        psi_some_window_pct=some,
+        psi_full_window_pct=full,
         psi_samples=3,
         psi_some_max=some,
         psi_full_max=full,
@@ -158,9 +161,12 @@ async def test_calibration_runs_the_null_floor_and_writes_provenance(tmp_path: P
         repo_root=Path(__file__).resolve().parents[2],
         sleep=lambda s: None,
     )
-    # The thresholds are the ceiling of the maximum the fake pressure file showed.
-    assert record.psi_cpu_some_max_pct == pytest.approx(0.12)
-    assert record.psi_cpu_full_max_pct == pytest.approx(0.03)
+    # The fake counters never advance, so the windows' pressure is exactly zero and the
+    # thresholds are zero; the avg60 context still shows the fake file's 0.12 and 0.03.
+    assert record.psi_cpu_some_max_pct == 0.0
+    assert record.psi_cpu_full_max_pct == 0.0
+    assert all(w.psi_some_window_pct == pytest.approx(0.0) for w in record.windows)
+    assert all(w.psi_some_max == pytest.approx(0.12) for w in record.windows)
     assert len(record.windows) == 4  # two concurrencies, two seeds each
     assert [w.n for w in record.windows] == [1, 1, 2, 2]
     assert all(w.psi_samples >= 3 for w in record.windows)
@@ -169,12 +175,14 @@ async def test_calibration_runs_the_null_floor_and_writes_provenance(tmp_path: P
     assert record.quiet.refusal is None
     doc = record.to_json_dict()
     assert doc["schema"] == "vb-psi-calibration/1"
-    assert doc["thresholds"]["PSI_CPU_SOME_MAX_PCT"] == pytest.approx(0.12)
+    assert doc["thresholds"]["PSI_CPU_SOME_MAX_PCT"] == 0.0
+    assert doc["windows"][0]["psi_some_window_pct"] == pytest.approx(0.0)
+    assert doc["windows"][0]["avg60_some_max"] == pytest.approx(0.12)
     assert doc["box"]["boot_id"] == "boot-1234"
     assert doc["load"]["ns"] == [1, 2] and doc["load"]["seeds"] == list(record.seeds)
     assert doc["load"]["clean_windows"] == 4 and doc["load"]["unclean_windows"] == []
     assert doc["harness"]["version"]
-    assert "PSI_CPU_SOME_MAX_PCT: Final[float | None] = 0.12" in record.constants_lines()
+    assert "PSI_CPU_SOME_MAX_PCT: Final[float | None] = 0.0" in record.constants_lines()
     json.dumps(doc)
 
 
@@ -219,3 +227,26 @@ def test_the_cli_writes_the_record_and_prints_the_two_lines(tmp_path: Path, caps
     assert doc["quiet"]["quiet"] is True
     assert "PSI_CPU_SOME_MAX_PCT: Final[float | None] = " in out
     assert "not canonical" in out
+
+
+def test_the_quiet_observation_is_one_load_average_time_constant() -> None:
+    """The pressure estimator is a counter delta and needs no wait; the observation's
+    length is for the one-minute load average it reads."""
+    assert QUIET_OBSERVATION_S == 60.0
+
+
+def test_observe_quiet_records_both_ends_of_the_pressure_decay(tmp_path: Path) -> None:
+    procfs, cgroupfs = _quiet_tree(tmp_path)
+    seen: list[str] = []
+
+    def sleep(_: float) -> None:
+        seen.append("slept")
+        _write(procfs / "pressure" / "cpu", PRESSURE.replace("avg60=0.12", "avg60=0.01"))
+
+    reading = observe_quiet(duration_s=1.0, procfs=procfs, cgroupfs=cgroupfs, sleep=sleep)
+    assert seen == ["slept"]
+    assert reading.psi_some_start == pytest.approx(0.12)
+    assert reading.psi_some == pytest.approx(0.01)
+    doc = reading.to_json_dict()
+    assert doc["avg60_some_start"] == pytest.approx(0.12)
+    assert doc["psi_some_window_pct"] == pytest.approx(0.0)  # a static counter: no stall
