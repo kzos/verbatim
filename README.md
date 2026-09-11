@@ -5,7 +5,11 @@
 > ### There is no working server here yet
 >
 > Both wires now run every session through the tick-scheduled engine, with admission, live back-pressure
-> and an idle deadline. On 2026-09-11 `verbatim serve` ran against a real NeMo pipeline on an A6000 for
+> and an idle deadline. **The first load run happened on 2026-09-11 and produced no publishable number:**
+> the server sits on its own latency budget at every concurrency tested, so the ladder's three seeds
+> disagreed by a factor of three and the reported stream count is noise, not capacity. Tripling the load
+> moved p95 by 19 ms. That is a finding about a fixed floor, and the eager encoder step is the suspect.
+> On 2026-09-11 `verbatim serve` ran against a real NeMo pipeline on an A6000 for
 > the first time, transcribed real audio with word timings and shut down cleanly. **Nothing here has been
 > benchmarked**, and the first run surfaced a problem worth reading before anything else:
 > [DR-0003](docs/decisions/0003-serve-defaults-to-the-precision-that-loses-invariance.md) — the server
