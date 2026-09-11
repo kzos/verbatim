@@ -542,7 +542,11 @@ this month was mutation-tested by someone other than its author.
 What does not run: the NeMo adapter has **never executed against NeMo**. Everything it knows was read
 from NeMo's source and tested against a fake standing at NeMo's own seam. The first real `serve` on a GPU
 is the next thing that should happen, and a *successful* first build would be the surprising outcome.
-CUDA graph capture, G.711, resampling, health endpoints and the worker pool do not exist.
+CUDA graph capture and the worker pool do not exist. G.711 and resampling now do: both wires take
+`LINEAR_PCM`, `MULAW` and `ALAW` at nine wire rates from 8 kHz to 48 kHz, decoded and resampled off
+the event loop so the engine still sees only 16 kHz PCM16. `FLAC` and `OGGOPUS` stay
+`UNIMPLEMENTED`, because no codec for them ships. The health endpoints exist too, and are described
+above.
 
 Also here: the vendored Riva protos and their generated stubs; the benchmark harness with its frozen
 methodology; and the probes under [`probes/`](probes/) that produced most of the measurements on this

@@ -62,20 +62,40 @@ def test_encoding_unspecified_is_invalid_argument() -> None:
         _map(_config(encoding=ENC.ENCODING_UNSPECIFIED))
 
 
-@pytest.mark.parametrize("encoding", [ENC.FLAC, ENC.MULAW, ENC.ALAW, ENC.OGGOPUS])
-def test_compressed_encodings_are_unimplemented(encoding: int) -> None:
-    with pytest.raises(Unimplemented):
+@pytest.mark.parametrize("encoding", [ENC.FLAC, ENC.OGGOPUS])
+def test_codec_encodings_are_unimplemented(encoding: int) -> None:
+    with pytest.raises(Unimplemented, match="encoding"):
         _map(_config(encoding=encoding))
+
+
+@pytest.mark.parametrize(("encoding", "name"), [(ENC.MULAW, "MULAW"), (ENC.ALAW, "ALAW")])
+def test_g711_encodings_are_honoured_on_the_wire(encoding: int, name: str) -> None:
+    """The recognizer still sees PCM16 at 16 kHz; the wire format rides on the options
+    for the transport's decoder."""
+    out = _map(_config(encoding=encoding, sample_rate_hertz=8000))
+    assert out.options.wire_encoding == name
+    assert out.options.wire_sample_rate_hz == 8000
+    assert out.options.sample_rate_hz == 16000
+    assert out.ignored == ()
 
 
 def test_zero_sample_rate_means_16k() -> None:
     out = _map(_config(sample_rate_hertz=0))
     assert out.options.sample_rate_hz == 16000
+    assert out.options.wire_sample_rate_hz == 16000
 
 
-def test_other_sample_rates_are_unimplemented() -> None:
-    with pytest.raises(Unimplemented, match="sample_rate_hertz"):
-        _map(_config(sample_rate_hertz=8000))
+@pytest.mark.parametrize("rate", [8000, 44100, 48000])
+def test_served_rates_are_honoured_on_the_wire(rate: int) -> None:
+    out = _map(_config(sample_rate_hertz=rate))
+    assert out.options.wire_sample_rate_hz == rate
+    assert out.options.sample_rate_hz == 16000
+
+
+def test_an_unserved_rate_is_invalid_argument_naming_the_field() -> None:
+    with pytest.raises(InvalidArgument, match="sample_rate_hertz") as excinfo:
+        _map(_config(sample_rate_hertz=7000))
+    assert "8000" in str(excinfo.value)
 
 
 def test_multichannel_is_unimplemented() -> None:

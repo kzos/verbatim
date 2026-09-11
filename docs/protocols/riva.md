@@ -36,8 +36,8 @@ than a refusal for the operators this serves.
 
 | Field | Status | Behaviour |
 |---|---|---|
-| `encoding` | **`LINEAR_PCM` honoured; every other encoding rejected today** | `LINEAR_PCM` is a buffer view with no decoder. `MULAW`, `ALAW`, `FLAC` and `OGGOPUS` raise `UNIMPLEMENTED` (`mapping.py`: "audio decoders are a later task"), they are **not** served. `ENCODING_UNSPECIFIED` and anything else → `INVALID_ARGUMENT`. The decoders remain the intent; the row says what ships. |
-| `sample_rate_hertz` | **16 kHz only** | `16000`, or `0` meaning 16000. Any other rate raises `UNIMPLEMENTED` ("the resampler is a later task"). There is no decode worker thread. |
+| `encoding` | **`LINEAR_PCM`, `MULAW` and `ALAW` served** | G.711 is expanded to PCM16 by table in a worker thread, so the engine still sees only 16 kHz PCM16. `FLAC` and `OGGOPUS` raise `UNIMPLEMENTED`, because the server carries no codec for them. `ENCODING_UNSPECIFIED` and anything else → `INVALID_ARGUMENT` naming the field. |
+| `sample_rate_hertz` | **8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100 and 48000 served** | Resampled to 16 kHz by a polyphase filter with per-session state, in a worker thread off the event loop. `0` means 16000. Any unlisted rate → `INVALID_ARGUMENT` naming the field. The resampler looks a few samples ahead, so a chunk arriving as exactly one message completes with the next message or the flush; the watermark is unaffected. |
 | `audio_channel_count` | honoured / rejected | `> 1` is downmixed, unless `enable_separate_recognition_per_channel` → `UNIMPLEMENTED` |
 | `language_code` | honoured | for prompt-conditioned checkpoints; an unknown code → `INVALID_ARGUMENT` listing the valid keys. Ignored for monolingual checkpoints. |
 | `model` | honoured / rejected | must be `""` or the served model name/alias; otherwise `NOT_FOUND` |

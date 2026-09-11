@@ -31,6 +31,7 @@ from typing import Final
 
 import grpc
 
+from verbatim.audio.decoder import WireDecoder, wire_decoder
 from verbatim.core.errors import ErrorCode, ResourceExhausted, VerbatimError
 from verbatim.protocols.base import EngineHandle, SessionHandle
 from verbatim.protocols.riva._gen import riva_asr_pb2, riva_asr_pb2_grpc
@@ -109,6 +110,28 @@ class RivaSpeechRecognitionServicer(riva_asr_pb2_grpc.RivaSpeechRecognitionServi
             for name in self._config.served_models
         ]
 
+    async def _feed(self, handle: SessionHandle, pending: bytes) -> bool:
+        """Feed PCM16 16 kHz bytes with live back-pressure. False once the session is
+        over from the engine's side, when the caller must stop reading."""
+        try:
+            while pending:
+                accepted = handle.feed(pending)
+                pending = pending[accepted:]
+                if pending:
+                    # The ring is full: hold the remainder and stop reading
+                    # the request stream until a tick has drained it, so
+                    # HTTP/2 flow control slows the client down.
+                    await self._engine.wait_for_ticks(1)
+        except (VerbatimError, RuntimeError):
+            # The session is over from the engine's side: a step failure
+            # (INTERNAL), the idle deadline (DEADLINE_EXCEEDED) or the
+            # engine stopping under a parked reader (UNAVAILABLE). The
+            # engine has already queued that outcome on the result stream.
+            # Aborting here would race the thread's last tick into a clean
+            # end that reads as a finished utterance.
+            return False
+        return True
+
     async def _read_requests(
         self,
         request_iterator: AsyncIterator[riva_asr_pb2.StreamingRecognizeRequest],
@@ -119,6 +142,8 @@ class RivaSpeechRecognitionServicer(riva_asr_pb2_grpc.RivaSpeechRecognitionServi
         on `opened`; errors after it abort the session and propagate to the awaiter."""
         session: RivaSessionConfig | None = None
         handle: SessionHandle | None = None
+        decoder: WireDecoder | None = None
+        loop = asyncio.get_running_loop()
         try:
             async for request in request_iterator:
                 if "force_eou" in request.runtime_config:
@@ -141,6 +166,9 @@ class RivaSpeechRecognitionServicer(riva_asr_pb2_grpc.RivaSpeechRecognitionServi
                         default_chunk_ms=self._engine.chunk_ms,
                     )
                     handle = self._engine.open_session(session.options)
+                    decoder = wire_decoder(
+                        session.options.wire_encoding, session.options.wire_sample_rate_hz
+                    )
                     opened.set_result((session, handle))
                 elif which == "audio_content":
                     if handle is None:
@@ -149,27 +177,21 @@ class RivaSpeechRecognitionServicer(riva_asr_pb2_grpc.RivaSpeechRecognitionServi
                             "audio before streaming_config"
                         )
                     pending = bytes(request.audio_content)
-                    try:
-                        while pending:
-                            accepted = handle.feed(pending)
-                            pending = pending[accepted:]
-                            if pending:
-                                # The ring is full: hold the remainder and stop reading
-                                # the request stream until a tick has drained it, so
-                                # HTTP/2 flow control slows the client down.
-                                await self._engine.wait_for_ticks(1)
-                    except (VerbatimError, RuntimeError):
-                        # The session is over from the engine's side: a step failure
-                        # (INTERNAL), the idle deadline (DEADLINE_EXCEEDED) or the
-                        # engine stopping under a parked reader (UNAVAILABLE). The
-                        # engine has already queued that outcome on the result stream.
-                        # Aborting here would race the thread's last tick into a clean
-                        # end that reads as a finished utterance.
+                    if decoder is not None:
+                        # G.711 expansion and resampling run in a worker thread, never
+                        # on the loop: a slow client's decode must not stall every
+                        # session's reader.
+                        pending = await loop.run_in_executor(None, decoder.decode, pending)
+                    if not await self._feed(handle, pending):
                         return
                 # Unknown oneof branches are ignored per proto3 semantics.
             if handle is None:
                 opened.set_result(None)
             else:
+                if decoder is not None:
+                    tail = await loop.run_in_executor(None, decoder.flush)
+                    if not await self._feed(handle, tail):
+                        return
                 handle.end()
         except asyncio.CancelledError:
             if not opened.done():

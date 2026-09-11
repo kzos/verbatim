@@ -21,6 +21,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Final
 
+from verbatim.audio.decoder import WIRE_ENCODINGS
+from verbatim.audio.resample import SUPPORTED_RATES
 from verbatim.core.errors import InvalidArgument
 from verbatim.core.types import Word
 
@@ -62,14 +64,34 @@ class SessionOptions:
     #: End-of-utterance silence in milliseconds for this session, or None for the
     #: engine default. Carried into NeMo's per-stream request options by the adapter.
     stop_history_eou_ms: int | None = None
+    #: How the audio arrives on the wire. The recognizer always sees PCM16 at
+    #: `sample_rate_hz`; a G.711 encoding or another rate is expanded and resampled
+    #: by the transport, in a worker thread, before `feed`. Part of comparability:
+    #: G.711 and a resample change the audio a transcript was made from.
+    wire_encoding: str = "LINEAR_PCM"
+    wire_sample_rate_hz: int = SAMPLE_RATE_HZ
 
     def __post_init__(self) -> None:
-        """Raise InvalidArgument for a chunk_ms outside VALID_CHUNK_MS, naming the
-        field and listing the valid values. A silent substitution would produce a
-        transcript nobody can attribute to a configuration."""
+        """Raise InvalidArgument for a chunk_ms outside VALID_CHUNK_MS, a wire encoding
+        or wire rate not served, naming the field and listing the valid values. A
+        silent substitution would produce a transcript nobody can attribute to a
+        configuration."""
         if self.chunk_ms not in VALID_CHUNK_MS:
             valid = ", ".join(str(v) for v in VALID_CHUNK_MS)
             raise InvalidArgument(f"invalid chunk_ms {self.chunk_ms!r}: must be one of {valid}")
+        if self.wire_encoding not in WIRE_ENCODINGS:
+            names = ", ".join(WIRE_ENCODINGS)
+            raise InvalidArgument(
+                f"invalid wire_encoding {self.wire_encoding!r}: must be one of {names}"
+            )
+        if (
+            isinstance(self.wire_sample_rate_hz, bool)
+            or self.wire_sample_rate_hz not in SUPPORTED_RATES
+        ):
+            rates = ", ".join(str(r) for r in SUPPORTED_RATES)
+            raise InvalidArgument(
+                f"invalid wire_sample_rate_hz {self.wire_sample_rate_hz!r}: must be one of {rates}"
+            )
         if self.stop_history_eou_ms is not None and (
             isinstance(self.stop_history_eou_ms, bool) or self.stop_history_eou_ms < 0
         ):

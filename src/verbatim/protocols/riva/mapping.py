@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
+from verbatim.audio.resample import SUPPORTED_RATES
 from verbatim.core.errors import InvalidArgument, NotFound, Unimplemented
 from verbatim.protocols.base import VALID_CHUNK_MS, Hypothesis, SessionOptions
 from verbatim.protocols.riva._gen import riva_asr_pb2, riva_audio_pb2
@@ -33,12 +34,15 @@ DEFAULT_STOP_HISTORY_EOU_MS: Final = 800
 
 _VALID_CHUNK_MS_STR: Final = ", ".join(str(v) for v in VALID_CHUNK_MS)
 
-_COMPRESSED_ENCODINGS: Final = {
-    riva_audio_pb2.AudioEncoding.FLAC: "FLAC",
+_G711_ENCODINGS: Final = {
     riva_audio_pb2.AudioEncoding.MULAW: "MULAW",
     riva_audio_pb2.AudioEncoding.ALAW: "ALAW",
+}
+_CODEC_ENCODINGS: Final = {
+    riva_audio_pb2.AudioEncoding.FLAC: "FLAC",
     riva_audio_pb2.AudioEncoding.OGGOPUS: "OGGOPUS",
 }
+_SUPPORTED_RATES_STR: Final = ", ".join(str(r) for r in SUPPORTED_RATES)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,22 +73,29 @@ def options_from_config(
         logger.info("session %r: ignoring %s: %s", request_id, field, message)
 
     encoding = config.encoding
-    if encoding != riva_audio_pb2.AudioEncoding.LINEAR_PCM:
-        name = _COMPRESSED_ENCODINGS.get(encoding)
-        if name is not None:
-            raise Unimplemented(
-                f"unsupported encoding {name} in field 'encoding': "
-                "audio decoders are a later task; only LINEAR_PCM is served"
-            )
+    if encoding == riva_audio_pb2.AudioEncoding.LINEAR_PCM:
+        wire_encoding = "LINEAR_PCM"
+    elif encoding in _G711_ENCODINGS:
+        wire_encoding = _G711_ENCODINGS[encoding]
+    elif encoding in _CODEC_ENCODINGS:
+        raise Unimplemented(
+            f"unsupported encoding {_CODEC_ENCODINGS[encoding]} in field 'encoding': "
+            "FLAC and OGGOPUS are codecs this server does not carry; "
+            "LINEAR_PCM, MULAW and ALAW are served"
+        )
+    else:
         raise InvalidArgument(
-            f"invalid encoding {encoding} in field 'encoding': expected LINEAR_PCM (1)"
+            f"invalid encoding {encoding} in field 'encoding': "
+            "expected LINEAR_PCM (1), MULAW (3) or ALAW (20)"
         )
 
-    sample_rate = config.sample_rate_hertz
-    if sample_rate not in (0, 16000):
-        raise Unimplemented(
-            f"unsupported sample_rate_hertz {sample_rate}: "
-            "the resampler is a later task; only 16000 (or 0, meaning 16000) is served"
+    # 0 means 16000, the rate both target plugins send. Anything else that is served
+    # is resampled to 16000 by the transport, in a worker thread, before the ring.
+    sample_rate = config.sample_rate_hertz or 16000
+    if sample_rate not in SUPPORTED_RATES:
+        raise InvalidArgument(
+            f"invalid sample_rate_hertz {sample_rate}: "
+            f"must be one of {_SUPPORTED_RATES_STR} (0 means 16000)"
         )
 
     channels = config.audio_channel_count
@@ -190,6 +201,8 @@ def options_from_config(
         word_timestamps=bool(config.enable_word_time_offsets),
         model=model,
         stop_history_eou_ms=stop_history_eou_ms,
+        wire_encoding=wire_encoding,
+        wire_sample_rate_hz=sample_rate,
     )
     return RivaSessionConfig(
         options=options,

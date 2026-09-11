@@ -90,6 +90,41 @@ def test_parse_query_ignores_unknown_parameters() -> None:
     assert options.chunk_ms == 160
 
 
+def test_parse_query_defaults_the_wire_to_pcm16_at_16k() -> None:
+    options = parse_query("chunk_ms=160")
+    assert options.wire_encoding == "LINEAR_PCM"
+    assert options.wire_sample_rate_hz == 16000
+
+
+def test_parse_query_reads_encoding_and_sample_rate() -> None:
+    options = parse_query("encoding=MuLaw&sample_rate_hz=8000")
+    assert options.wire_encoding == "MULAW"
+    assert options.wire_sample_rate_hz == 8000
+    assert options.sample_rate_hz == 16000  # the recognizer's rate, not the wire's
+    assert parse_query("encoding=alaw").wire_encoding == "ALAW"
+    assert parse_query("encoding=linear-pcm").wire_encoding == "LINEAR_PCM"
+
+
+@pytest.mark.parametrize("query", ["encoding=flac", "encoding=", "encoding=oggopus"])
+def test_parse_query_rejects_an_encoding_not_served(query: str) -> None:
+    with pytest.raises(InvalidArgument, match="encoding"):
+        parse_query(query)
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["sample_rate_hz=8001", "sample_rate_hz=016000", "sample_rate_hz=16k", "sample_rate_hz="],
+)
+def test_parse_query_rejects_an_unserved_or_non_canonical_rate(query: str) -> None:
+    with pytest.raises(InvalidArgument, match="sample_rate_hz"):
+        parse_query(query)
+
+
+def test_parse_query_rejects_a_duplicated_encoding() -> None:
+    with pytest.raises(InvalidArgument, match="duplicated"):
+        parse_query("encoding=mulaw&encoding=alaw")
+
+
 @pytest.mark.parametrize("query", ["chunk_ms=100", "chunk_ms=abc"])
 def test_parse_query_rejects_a_bad_chunk_ms(query: str) -> None:
     with pytest.raises(InvalidArgument, match="chunk_ms"):

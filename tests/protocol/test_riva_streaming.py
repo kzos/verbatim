@@ -12,6 +12,7 @@ before any response, live back-pressure and the idle deadline.
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from itertools import pairwise
@@ -19,6 +20,7 @@ from itertools import pairwise
 import grpc
 import pytest
 
+from verbatim.audio.decoder import WireDecoder
 from verbatim.config import ChunkMode, EngineConfig
 from verbatim.core.types import PcmFrame, StepResult
 from verbatim.engine import Engine, stub_engine
@@ -613,3 +615,45 @@ def test_every_error_code_has_a_grpc_status() -> None:
 
     assert set(_STATUS_BY_CODE) == set(ErrorCode)
     assert _STATUS_BY_CODE[ErrorCode.UNAVAILABLE] is grpc.StatusCode.UNAVAILABLE
+
+
+async def test_mulaw_at_8k_streams_through_the_decoder() -> None:
+    """Five 160 ms chunks of 8 kHz mu-law reach the engine as five 16 kHz chunks; the
+    resampler's tail is fed on half-close, so the fifth chunk completes before the
+    final, and audio_processed counts the recognizer's seconds."""
+    config = _config_message(recognition={"encoding": ENC.MULAW, "sample_rate_hertz": 8000})
+    chunks = [_audio_message(b"\xff" * 1280) for _ in range(5)]
+    async with _server() as server:
+        responses = await _collect(server.target, [config, *chunks])
+    partials = _partials(responses)
+    finals = _finals(responses)
+    assert [r.results[0].audio_processed for r in partials] == pytest.approx(
+        [0.16, 0.32, 0.48, 0.64, 0.80]
+    )
+    assert len(finals) == 1
+    assert finals[0].results[0].audio_processed == pytest.approx(0.80)
+
+
+async def test_the_wire_decoder_runs_off_the_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    loop_thread = threading.current_thread()
+    seen: list[threading.Thread] = []
+    original = WireDecoder.decode
+
+    def spy(self: WireDecoder, payload: bytes) -> bytes:
+        seen.append(threading.current_thread())
+        return original(self, payload)
+
+    monkeypatch.setattr(WireDecoder, "decode", spy)
+    config = _config_message(recognition={"encoding": ENC.ALAW, "sample_rate_hertz": 8000})
+    async with _server() as server:
+        await _collect(server.target, [config, _audio_message(b"\x55" * 1280)])
+    assert len(seen) == 1
+    assert seen[0] is not loop_thread
+
+
+async def test_a_codec_encoding_aborts_with_unimplemented() -> None:
+    async with _server() as server:
+        with pytest.raises(grpc.aio.AioRpcError) as excinfo:
+            await _collect(server.target, [_config_message(recognition={"encoding": ENC.FLAC})])
+    assert excinfo.value.code() == grpc.StatusCode.UNIMPLEMENTED
+    assert "FLAC" in excinfo.value.details()
