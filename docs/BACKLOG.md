@@ -228,7 +228,22 @@ promised date — that is for triage once an entry becomes an issue.
   fire against the null server, and fires only when the generator misses the schedule it set itself,
   which is what it exists to catch. The original entry below is kept for the reasoning.
 
-  - `bench/src/verbatim_bench/pace.py` — **the load generator is the binding constraint on this box, not
+  - `bench/src/verbatim_bench/` — **the two pressure thresholds are ill-posed as frozen absolute levels,
+  and no further calibration fixes it.** Every reading taken on 2026-09-11 and 2026-09-12 falls between
+  0.22 and 0.42 percent of a window stalled, while the idle box alone reads 0.325. Load moves the figure
+  less than the background does and not monotonically: 128 streams stalls the box less than 16. Three
+  calibrations produced 0.4 (null floor, 16 streams), 0.38 (real server, 6 streams) and a run needing
+  0.42 (real server, 16 streams), so a single frozen level admits or rejects by which window it was
+  taken in. System-wide CPU pressure cannot separate the measurement's own stall from the machine's
+  background when the measurement contributes less than the background varies.
+  Three ways out: scope the measurement to our own cgroup so the background drops out, which is the
+  technically right one; drop the pair as a gate and rely on steal, cgroup throttling, client CPU, load
+  average and throttle events, which all work; or make the constant a ratio against an idle observation
+  taken in the same box session, which matches the methodology's habit of re-measuring the floor but
+  changes the frozen document. **Until one is chosen, no ladder on this box can produce a row**, and the
+  other validity checks are unaffected.
+
+- `bench/src/verbatim_bench/pace.py` — **the load generator is the binding constraint on this box, not
   the server.** Measured 2026-09-11 while calibrating the pressure thresholds, nine 180 s null-floor
   windows at three concurrencies: pacing slip p99 is 2.5 ms at 16 streams, 3.9 to 5.4 ms at 32 with one
   window in three over the frozen 5.0 tolerance, and **33 to 38 ms at 128**. Nothing failed, no session
