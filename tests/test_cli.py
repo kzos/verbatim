@@ -13,8 +13,12 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
+import subprocess
+import sys
 import threading
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -360,3 +364,94 @@ def test_serve_runs_the_fake_pipeline_end_to_end_until_told_to_stop() -> None:
     assert "[verbatim] ready" in captured.out
     assert "[verbatim] stopped" in captured.out
     assert f"riva grpc    127.0.0.1:{found.grpc_port}" in captured.out
+
+
+# --- item 3: the banner and the precision that loses batch invariance ---
+
+
+def test_the_banner_says_the_default_precision_was_measured_to_fail_invariance() -> None:
+    """Decision record 0003, item 4: bfloat16 is the default and the precision at which
+    batch invariance was measured to fail, and the operator reads that in the banner
+    with the counts and the record, not in a document."""
+    captured = _Captured()
+    assert main([*NEMO, "--eager"], hooks=_hooks(captured, report=RELEASED_REPORT)) == EXIT_OK
+    assert "precision    bfloat16 (the default): batch invariance MEASURED TO FAIL" in captured.out
+    assert "287 of 2,939" in captured.out and "264 on a B300" in captured.out
+    assert "docs/decisions/0003" in captured.out
+    assert "--compute-dtype float32" in captured.out
+
+
+def test_the_banner_at_float32_states_the_measured_counts_and_does_not_warn() -> None:
+    captured = _Captured()
+    argv = [*NEMO, "--eager", "--compute-dtype", "float32"]
+    assert main(argv, hooks=_hooks(captured, report=RELEASED_REPORT)) == EXIT_OK
+    assert "MEASURED TO FAIL" not in captured.out
+    assert "precision    float32:" in captured.out
+    assert "6 of 2,939" in captured.out and "docs/decisions/0003" in captured.out
+
+
+def test_the_banner_says_an_unmeasured_precision_is_unmeasured() -> None:
+    """float16 was never measured: the banner must not claim a count for it, and must
+    still say what the measured precision did."""
+    captured = _Captured()
+    argv = [*NEMO, "--eager", "--compute-dtype", "float16"]
+    assert main(argv, hooks=_hooks(captured, report=RELEASED_REPORT)) == EXIT_OK
+    assert "precision    float16: not measured at this precision" in captured.out
+    assert "MEASURED TO FAIL at bfloat16" in captured.out
+
+
+def test_the_fake_pipeline_has_no_precision_line() -> None:
+    captured = _Captured()
+    ready = threading.Event()
+
+    def on_ready(found: Endpoints, request_shutdown: Callable[[], None]) -> None:
+        ready.set()
+        request_shutdown()
+
+    hooks = Hooks(
+        inspect_runtime=lambda: NO_NEMO_REPORT,
+        on_ready=on_ready,
+        stdout=captured.stdout,
+        stderr=captured.stderr,
+    )
+    argv = [*FAKE, "--host", "127.0.0.1", "--ws-port", "0", "--grpc-port", "0"]
+    assert main(argv, hooks=hooks) == EXIT_OK
+    assert ready.is_set()
+    assert "precision" not in captured.out
+
+
+# --- item 4: the module entry points run the console script ---
+
+SRC = Path(__file__).resolve().parents[1] / "src"
+
+
+def _run_module(*args: str) -> subprocess.CompletedProcess[str]:
+    """`python -m ...` with this tree's `src` first on the path: a subprocess does not
+    inherit pytest's conftest, and the editable install may point at another tree."""
+    env = {**os.environ, "PYTHONPATH": str(SRC)}
+    return subprocess.run(
+        [sys.executable, "-m", *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+        check=False,
+    )
+
+
+def test_python_m_verbatim_cli_is_the_console_script() -> None:
+    """A module entry point that silently prints nothing and returns 0 is something
+    people hit and do not report. Without arguments it refuses with the usage; with
+    --help it prints the subcommands."""
+    proc = _run_module("verbatim.cli")
+    assert proc.returncode != 0, "no arguments must not be a silent success"
+    assert "usage:" in (proc.stderr + proc.stdout)
+    proc = _run_module("verbatim.cli", "--help")
+    assert proc.returncode == 0, proc.stderr
+    assert "serve" in proc.stdout and "doctor" in proc.stdout
+
+
+def test_python_m_verbatim_is_the_console_script_too() -> None:
+    proc = _run_module("verbatim", "--help")
+    assert proc.returncode == 0, proc.stderr
+    assert "serve" in proc.stdout and "doctor" in proc.stdout
