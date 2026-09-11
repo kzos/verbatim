@@ -93,6 +93,7 @@ class WsServer:
         self._engine = engine
         self._config = config if config is not None else WsServerConfig()
         self._server: Server | None = None
+        self._handlers: set[asyncio.Task[None]] = set()
         self._live = 0
         self._total = 0
 
@@ -126,11 +127,30 @@ class WsServer:
             max_size=self._config.max_message_bytes,
         )
 
-    async def stop(self) -> None:
+    async def stop(self, grace: float = 5.0) -> None:
+        """Close the listener and every connection, then wait up to ``grace`` seconds
+        for the handlers to return; whatever is still running after that is cancelled.
+
+        A handler ends when its session's result stream ends, which the engine
+        guarantees. The bound is for the day it does not: a listener whose shutdown
+        waits on every session ending by itself would hold the process open past
+        SIGTERM, and a test of such an engine would hang instead of fail.
+        """
         server, self._server = self._server, None
-        if server is not None:
-            server.close()
-            await server.wait_closed()
+        if server is None:
+            return
+        server.close()
+        try:
+            await asyncio.wait_for(server.wait_closed(), timeout=grace)
+        except TimeoutError:
+            logger.warning(
+                "%d session handler(s) still running %.1f s after close; cancelling",
+                len(self._handlers),
+                grace,
+            )
+            for task in list(self._handlers):
+                task.cancel()
+            await asyncio.wait_for(server.wait_closed(), timeout=grace)
 
     async def __aenter__(self) -> WsServer:
         await self.start()
@@ -180,6 +200,9 @@ class WsServer:
 
         self._live += 1
         self._total += 1
+        task = asyncio.current_task()
+        if task is not None:
+            self._handlers.add(task)
         writer: asyncio.Task[None] | None = None
         try:
             await ws.send(
@@ -196,6 +219,10 @@ class WsServer:
             await writer
         except ConnectionClosed:
             pass
+        except asyncio.CancelledError:
+            # The listener gave up waiting for this session to end (see `stop`).
+            session.abort()
+            raise
         except Exception as exc:  # a session never dies unexplained
             logger.exception("unexpected session failure; closing session")
             session.abort()
@@ -203,6 +230,8 @@ class WsServer:
         finally:
             if writer is not None and not writer.done():
                 writer.cancel()
+            if task is not None:
+                self._handlers.discard(task)
             self._live -= 1
 
     async def _read_audio(self, ws: ServerConnection, session: SessionHandle) -> None:

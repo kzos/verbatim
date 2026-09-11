@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
@@ -539,3 +540,45 @@ async def test_a_client_mid_stream_gets_unavailable_and_close_1001_when_the_engi
     assert all(frame["type"] == "partial" for frame in frames[:-1])
     assert frames[-1] == {"type": "error", "code": "UNAVAILABLE", "message": frames[-1]["message"]}
     assert "shutting down" in frames[-1]["message"]
+
+
+class _StuckSession(_RecordingSession):
+    """A session whose result stream never ends: the engine failed to end it."""
+
+    async def results(self) -> AsyncIterator[Hypothesis]:
+        await asyncio.Event().wait()
+        yield Hypothesis(text="", is_final=False, audio_processed_s=0.0)  # pragma: no cover
+
+
+class _StuckEngine(_RecordingEngine):
+    def open_session(self, options: SessionOptions) -> SessionHandle:
+        return _StuckSession(self.inner.open_session(options), self.log)
+
+
+async def test_the_listener_stops_within_its_grace_when_a_session_never_ends() -> None:
+    """A handler whose result stream never ends must not hold the listener's shutdown
+    open: after the grace the handler is cancelled, its session aborted, and `stop()`
+    returns. Without the bound an engine that failed to end one session would keep
+    the process alive past SIGTERM, and a test of that engine hangs instead of
+    failing, which is how round 5's mutation table lost a row."""
+    engine = _StuckEngine(stub_engine())
+    server = WsServer(engine, WsServerConfig(port=0))
+    await server.start()
+    async with connect(server.endpoint) as ws:
+        assert (await _recv_json(ws))["type"] == "session"
+        await ws.send(_chunk())
+        await ws.send('{"type": "end"}')  # the reader ends the session and returns
+        for _ in range(500):
+            if engine.calls("end"):
+                break
+            await asyncio.sleep(0.01)
+        assert engine.calls("end") == [0], "the reader must have half-closed before stop()"
+        started = time.monotonic()
+        await asyncio.wait_for(server.stop(grace=0.5), timeout=5.0)
+        elapsed = time.monotonic() - started
+        frames = await _collect_until_any_close(ws)
+        assert ws.close_code == 1001  # the listener's own going-away close
+    assert 0.5 <= elapsed < 5.0, f"stop() took {elapsed:.2f} s against a 0.5 s grace"
+    assert frames == []
+    assert server.live_sessions == 0
+    assert engine.calls("abort") == [0], "the cancelled handler drops the session it was holding"
