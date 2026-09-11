@@ -484,6 +484,7 @@ def test_a_reference_that_does_not_describe_the_run_is_a_usage_error(tmp_path) -
     )
     base = [
         "ladder",
+        "--no-host-record",
         "--endpoint",
         "ws://127.0.0.1:1/v1/stream",
         "--manifest",

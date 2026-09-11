@@ -90,12 +90,15 @@ def _build_parser() -> argparse.ArgumentParser:
     ladder.add_argument("--out", type=Path, required=True)
     ladder.add_argument(
         "--host-record",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=(
             "sample the host and the GPU across every rung's window and judge validity "
             "over the whole record (METHODOLOGY section 7), which is also the only way a "
-            "rung evaluates thermal (section 56). Needs --server-pid. While the pressure "
-            "thresholds are unfrozen every sampled rung is invalid, as the document says"
+            "rung evaluates thermal (section 56). The default since the pressure "
+            "thresholds were calibrated (DR-0007); needs --server-pid. --no-host-record "
+            "runs the ladder from its load alone: the pacing threshold only, and no rung "
+            "can pass because thermal is never evaluated"
         ),
     )
     ladder.add_argument(
@@ -415,8 +418,9 @@ def _ladder(args: argparse.Namespace) -> int:
     if args.host_record:
         if args.server_pid is None:
             print(
-                "verbatim-bench: --host-record needs --server-pid: the server's own compute "
-                "process must be told apart from a foreign one"
+                "verbatim-bench: the host record needs --server-pid, so the server's own "
+                "compute process is told apart from a foreign one; pass it, or "
+                "--no-host-record to run the ladder from its load alone"
             )
             return 1
         if args.gpu_sample_interval_s is not None:
