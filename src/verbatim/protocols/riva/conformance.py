@@ -48,17 +48,20 @@ CONFORMANCE: Final[tuple[FieldRule, ...]] = (
         "RecognitionConfig",
         "encoding",
         FieldStatus.REJECTED,
-        "LINEAR_PCM is honoured; FLAC, MULAW, ALAW and OGGOPUS abort with "
-        "UNIMPLEMENTED (decoders are a later task); ENCODING_UNSPECIFIED or any "
-        "other value aborts with INVALID_ARGUMENT naming encoding.",
+        "LINEAR_PCM, MULAW and ALAW are honoured (G.711 is expanded by table in a "
+        "worker thread before the ring); FLAC and OGGOPUS abort with UNIMPLEMENTED "
+        "(codecs the server does not carry); ENCODING_UNSPECIFIED or any other value "
+        "aborts with INVALID_ARGUMENT naming encoding.",
         ("livekit", "pipecat"),
     ),
     FieldRule(
         "RecognitionConfig",
         "sample_rate_hertz",
         FieldStatus.REJECTED,
-        "16000 (or 0, meaning 16000) is honoured; any other value aborts with "
-        "UNIMPLEMENTED (the resampler is a later task).",
+        "8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100 and 48000 are "
+        "honoured (0 means 16000; any rate but 16000 is resampled to 16000 in a worker "
+        "thread before the ring); any other value aborts with INVALID_ARGUMENT naming "
+        "sample_rate_hertz.",
         ("livekit", "pipecat"),
     ),
     FieldRule(

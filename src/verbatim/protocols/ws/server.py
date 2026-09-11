@@ -38,6 +38,7 @@ from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 
+from verbatim.audio.decoder import WireDecoder, wire_decoder
 from verbatim.core.errors import ErrorCode, InvalidArgument, ResourceExhausted, VerbatimError
 from verbatim.protocols.base import SAMPLE_RATE_HZ, EngineHandle, SessionHandle, SessionOptions
 from verbatim.protocols.health import HealthReporter
@@ -229,7 +230,8 @@ class WsServer:
                 ).to_json()
             )
             writer = asyncio.create_task(self._write_results(ws, session, options))
-            await self._read_audio(ws, session)
+            decoder = wire_decoder(options.wire_encoding, options.wire_sample_rate_hz)
+            await self._read_audio(ws, session, decoder)
             # end() or abort() has been called, so the engine's results end after the
             # drain frame and the writer closes the socket when it has sent the last.
             await writer
@@ -250,12 +252,20 @@ class WsServer:
                 self._handlers.discard(task)
             self._live -= 1
 
-    async def _read_audio(self, ws: ServerConnection, session: SessionHandle) -> None:
+    async def _read_audio(
+        self, ws: ServerConnection, session: SessionHandle, decoder: WireDecoder | None
+    ) -> None:
         """Feed the socket into the session until the client ends or leaves.
+
+        With a `decoder` (G.711 or a wire rate other than 16 kHz) every binary
+        message is expanded and resampled in a worker thread first, and the
+        resampler's tail is fed before `end()`. Without one the bytes on the wire
+        are the bytes the ring takes.
 
         Returns only after `end()` or `abort()` has been called on the session, so the
         caller can wait for the results to run out.
         """
+        loop = asyncio.get_running_loop()
         while True:
             try:
                 message = await ws.recv()
@@ -265,22 +275,11 @@ class WsServer:
                 return
             if isinstance(message, bytes):
                 pending = bytes(message)
-                try:
-                    while pending:
-                        accepted = session.feed(pending)
-                        pending = pending[accepted:]
-                        if pending:
-                            # The ring is full. Hold the remainder and do not read the
-                            # socket again until a tick has drained it: live
-                            # back-pressure, through the peer's own flow control.
-                            await self._engine.wait_for_ticks(1)
-                except (VerbatimError, RuntimeError):
-                    # The session is over from the engine's side: a step failure
-                    # (INTERNAL), the idle deadline (DEADLINE_EXCEEDED) or the engine
-                    # stopping under a parked reader (UNAVAILABLE). The engine has
-                    # already queued that outcome and the writer tells the client.
-                    # Aborting here would race the thread's last tick into a clean
-                    # close that reads as a finished utterance.
+                if decoder is not None:
+                    # Never on the loop: a table lookup is cheap, a polyphase resample
+                    # is not, and a slow client's decode must not stall every session.
+                    pending = await loop.run_in_executor(None, decoder.decode, pending)
+                if not await self._feed(session, pending):
                     return
             else:
                 try:
@@ -290,8 +289,34 @@ class WsServer:
                         ErrorFrame(code=ErrorCode.INVALID_ARGUMENT, message=str(exc)).to_json()
                     )
                     continue
+                if decoder is not None:
+                    tail = await loop.run_in_executor(None, decoder.flush)
+                    if not await self._feed(session, tail):
+                        return
                 session.end()
                 return
+
+    async def _feed(self, session: SessionHandle, pending: bytes) -> bool:
+        """Feed PCM16 16 kHz bytes with live back-pressure. False once the session is
+        over from the engine's side, when the caller must stop reading."""
+        try:
+            while pending:
+                accepted = session.feed(pending)
+                pending = pending[accepted:]
+                if pending:
+                    # The ring is full. Hold the remainder and do not read the
+                    # socket again until a tick has drained it: live
+                    # back-pressure, through the peer's own flow control.
+                    await self._engine.wait_for_ticks(1)
+        except (VerbatimError, RuntimeError):
+            # The session is over from the engine's side: a step failure
+            # (INTERNAL), the idle deadline (DEADLINE_EXCEEDED) or the engine
+            # stopping under a parked reader (UNAVAILABLE). The engine has
+            # already queued that outcome and the writer tells the client.
+            # Aborting here would race the thread's last tick into a clean
+            # close that reads as a finished utterance.
+            return False
+        return True
 
     @staticmethod
     async def _write_results(

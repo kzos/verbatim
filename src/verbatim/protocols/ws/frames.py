@@ -19,8 +19,10 @@ from dataclasses import dataclass
 from typing import Final, Literal
 from urllib.parse import parse_qsl
 
+from verbatim.audio.decoder import WIRE_ENCODINGS
+from verbatim.audio.resample import SUPPORTED_RATES
 from verbatim.core.errors import ErrorCode, InvalidArgument
-from verbatim.protocols.base import VALID_CHUNK_MS, SessionOptions, Word
+from verbatim.protocols.base import SAMPLE_RATE_HZ, VALID_CHUNK_MS, SessionOptions, Word
 
 __all__ = [
     "ErrorFrame",
@@ -36,7 +38,16 @@ _VALID_CHUNK_MS_STR: Final = ", ".join(str(v) for v in VALID_CHUNK_MS)
 # digits the way `\d` and `int()` do.
 _CANONICAL_UINT_RE: Final = re.compile(r"[0-9]+")
 # Query keys whose second occurrence is an error rather than an override.
-_SINGLETON_PARAMS: Final = ("chunk_ms", "lang", "words", "interim_results")
+_SINGLETON_PARAMS: Final = (
+    "chunk_ms",
+    "lang",
+    "words",
+    "interim_results",
+    "encoding",
+    "sample_rate_hz",
+)
+_SUPPORTED_RATES_STR: Final = ", ".join(str(r) for r in SUPPORTED_RATES)
+_WIRE_ENCODINGS_STR: Final = ", ".join(e.lower() for e in WIRE_ENCODINGS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,7 +155,10 @@ def parse_query(raw_query: str) -> SessionOptions:
 
     Known parameters: ``chunk_ms`` (one of 80/160/560/1120), ``lang`` (a language
     code such as ``en-US``), ``words`` (``1`` asks for word timings on finals),
-    ``interim_results`` (``0`` suppresses partials; the final is still sent).
+    ``interim_results`` (``0`` suppresses partials; the final is still sent),
+    ``encoding`` (``linear_pcm``, the default, ``mulaw`` or ``alaw``) and
+    ``sample_rate_hz`` (one of the served rates; the default is 16000, and any other
+    served rate is resampled to 16000 before the ring).
     """
     query = raw_query[1:] if raw_query.startswith("?") else raw_query
     pairs = parse_qsl(query, keep_blank_values=True)
@@ -178,9 +192,33 @@ def parse_query(raw_query: str) -> SessionOptions:
     if "interim_results" in params:
         interim_results = _parse_bool_param("interim_results", params["interim_results"])
 
+    wire_encoding = "LINEAR_PCM"
+    if "encoding" in params:
+        raw = params["encoding"]
+        wire_encoding = raw.strip().upper().replace("-", "_")
+        if wire_encoding not in WIRE_ENCODINGS:
+            raise InvalidArgument(
+                f"invalid query parameter encoding={raw!r}: expected one of {_WIRE_ENCODINGS_STR}"
+            )
+
+    wire_sample_rate_hz = SAMPLE_RATE_HZ
+    if "sample_rate_hz" in params:
+        raw = params["sample_rate_hz"]
+        canonical = _CANONICAL_UINT_RE.fullmatch(raw) is not None and not (
+            len(raw) > 1 and raw.startswith("0")
+        )
+        if not canonical or int(raw) not in SUPPORTED_RATES:
+            raise InvalidArgument(
+                f"invalid query parameter sample_rate_hz={raw!r}: "
+                f"expected one of {_SUPPORTED_RATES_STR}"
+            )
+        wire_sample_rate_hz = int(raw)
+
     return SessionOptions(
         chunk_ms=chunk_ms,
         language_code=language_code,
         interim_results=interim_results,
         word_timestamps=word_timestamps,
+        wire_encoding=wire_encoding,
+        wire_sample_rate_hz=wire_sample_rate_hz,
     )

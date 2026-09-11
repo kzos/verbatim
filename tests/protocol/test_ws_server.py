@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
@@ -22,6 +23,7 @@ import pytest
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, ConnectionClosedOK, InvalidStatus
 
+from verbatim.audio.decoder import WireDecoder
 from verbatim.config import ChunkMode, EngineConfig
 from verbatim.core.types import PcmFrame, StepResult
 from verbatim.engine import Engine, stub_engine
@@ -582,3 +584,60 @@ async def test_the_listener_stops_within_its_grace_when_a_session_never_ends() -
     assert frames == []
     assert server.live_sessions == 0
     assert engine.calls("abort") == [0], "the cancelled handler drops the session it was holding"
+
+
+def _mulaw_silence_8k(chunk_ms: int = 160) -> bytes:
+    """One chunk of mu-law silence at 8 kHz: chunk_ms * 8 bytes, which resample to one
+    16 kHz chunk (0xFF is the mu-law zero)."""
+    return b"\xff" * (chunk_ms * 8)
+
+
+async def test_mulaw_at_8k_is_expanded_and_resampled_before_the_ring() -> None:
+    """Five 160 ms chunks of 8 kHz mu-law are five chunks of 16 kHz audio to the engine,
+    and the watermark counts the recognizer's seconds. The resampler looks a few samples
+    ahead, so the fifth chunk completes on the flush that `end` triggers, which is why
+    the frames are read to the close rather than one per send."""
+    query = "?encoding=mulaw&sample_rate_hz=8000"
+    async with _server() as server, connect(f"{server.endpoint}{query}") as ws:
+        await _recv_json(ws)
+        for _ in range(5):
+            await ws.send(_mulaw_silence_8k())
+        await ws.send(json.dumps({"type": "end"}))
+        frames = await _collect_until_close(ws)
+    partials = [f for f in frames if f["type"] == "partial"]
+    finals = [f for f in frames if f["type"] == "final"]
+    assert [p["audio_s"] for p in partials] == pytest.approx([0.16, 0.32, 0.48, 0.64, 0.80])
+    assert len(finals) == 1
+    assert finals[0]["audio_s"] == pytest.approx(0.80)
+
+
+async def test_the_wire_decoder_runs_off_the_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A slow client's decode must not stall every session's reader: expansion and
+    resampling run in a worker thread, never on the loop's thread."""
+    loop_thread = threading.current_thread()
+    seen: list[threading.Thread] = []
+    original = WireDecoder.decode
+
+    def spy(self: WireDecoder, payload: bytes) -> bytes:
+        seen.append(threading.current_thread())
+        return original(self, payload)
+
+    monkeypatch.setattr(WireDecoder, "decode", spy)
+    query = "?encoding=alaw&sample_rate_hz=8000"
+    async with _server() as server, connect(f"{server.endpoint}{query}") as ws:
+        await _recv_json(ws)
+        await ws.send(b"\x55" * 1280)
+        await ws.send(b"\x55" * 1280)
+        await _recv_json(ws)
+    assert len(seen) == 2
+    assert all(thread is not loop_thread for thread in seen)
+
+
+async def test_an_encoding_not_served_is_refused_before_a_session_frame() -> None:
+    async with _server() as server, connect(f"{server.endpoint}?encoding=flac") as ws:
+        frame = await _recv_json(ws)
+        with pytest.raises(ConnectionClosedOK):
+            await asyncio.wait_for(ws.recv(), timeout=5.0)
+    assert frame["type"] == "error"
+    assert frame["code"] == "INVALID_ARGUMENT"
+    assert "encoding" in frame["message"]
