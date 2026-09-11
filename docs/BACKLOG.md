@@ -140,6 +140,19 @@ promised date — that is for triage once an entry becomes an issue.
   number describing this project's own measured behaviour belongs only in a row under `rows/`, so the
   check is that no unfrozen numeric claim about Verbatim's performance appears in the document at all.
 
+- `bench/src/verbatim_bench/cli.py::_make_rung` — **the ladder never runs the window it reports.** The
+  rung executor builds its `LoadSpec` without `window_s`, which in `run_load` takes the branch that runs
+  each slot exactly once, and it overrides `ramp_s` to zero. `warm_up_s` reaches no measurement anywhere:
+  every use outside `constants.py` stores, stamps, compares or serialises it. Measured on 2026-09-11
+  against the live A6000 bfloat16 server, a six-stream rung is 15.1 s of wall clock and 106 latency
+  samples whose p95 is the sixth-worst; with the window applied the same rung is 188.6 s and 4,798
+  samples. Four repeats of one identical rung give p95 values of 289.8, 320.3, 302.6 and 301.8 ms against
+  the 310 ms threshold, so its verdict is not repeatable. The `canonical_window` flag is
+  `args.warm_up_s == WARM_UP_S and args.window_s == WINDOW_S`, true whenever nothing was overridden, so
+  it certifies the arguments and not the run. Fix: pass the window through, decide what the warm-up does
+  operationally or delete it, derive `canonical_window` from the executed load, and guard it with a test
+  that reddens against today's `_make_rung`. Until then no ladder output is a capacity.
+
 
 - ~~`bench/src/verbatim_bench/verify.py::_check_pacing_slip` — the summary's `pacing_slip_ms` percentiles
   can only be checked for internal ordering (`p50 <= p95 <= max`), never recomputed from the underlying

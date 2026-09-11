@@ -24,6 +24,7 @@ is built to fix must not depend on the server. What they establish is that the d
 | `duration_mechanism.py` | Is the length-coupling explanation a measured relationship? | only weakly; see the caveat below |
 | `nemo_biasing_repro.py` | The upstream registry defects, reproduced without a checkpoint | filed as NVIDIA-NeMo/Speech#16236 |
 | `fixed_shape_contents.py` | With the batch shape pinned, do the batch contents reach the target's output? | 0 text and 0 timing differences in 1,024 |
+| `ladder_rung_anatomy.py` | Does the load ladder run the window it reports, and is one rung's verdict repeatable? | No, and no: a six-stream rung is 15.1 s and 106 samples, and four repeats give 289.8, 320.3, 302.6, 301.8 ms against a 310 ms threshold |
 
 ## Running them
 

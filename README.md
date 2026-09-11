@@ -5,14 +5,15 @@
 > ### There is no working server here yet
 >
 > Both wires now run every session through the tick-scheduled engine, with admission, live back-pressure
-> and an idle deadline. **The first load run happened on 2026-09-11 and produced no publishable number:**
-> the server sits on its own latency budget at every concurrency tested, so the ladder's seeds disagreed
-> and the reported stream count describes the search rather than the server. Tripling the load moved p95
-> by 19 ms. Repeating it on a B300 **on the graph path** lowered the median p95 from 303 ms to 273
-> against a 310 ms budget, a real improvement that does not clear the problem, and exposed what is
-> underneath: the latency is **bimodal**, clustering near 265 ms or near 321 ms with nothing between.
-> Something discrete adds about 50 ms to the tail on some runs. Until that is found, a concurrency
-> ladder cannot measure this server, because its pass/fail line falls between the two modes.
+> and an idle deadline. **The first load runs happened on 2026-09-11 and produced no publishable number,
+> because the load generator was measuring something other than what it reported.** The ladder's rung
+> executor builds its load spec without the frozen 180-second window, so a rung streamed one utterance
+> down each slot and stopped: fifteen seconds of wall clock and 106 latency samples, while every rung
+> was stamped `canonical_window: true` from a comparison of command-line arguments against constants.
+> Four repeats of one identical rung give p95 values of 289.8, 320.3, 302.6 and 301.8 ms against a
+> 310 ms budget, three passes and a failure from the same inputs. An earlier reading of these runs as a
+> **bimodal** latency, and a 30 ms improvement attributed to the graph path, are both withdrawn: a
+> single rung repeated on one machine covers that whole gap.
 > On 2026-09-11 `verbatim serve` ran against a real NeMo pipeline on an A6000 for
 > the first time, transcribed real audio with word timings and shut down cleanly. **Nothing here has been
 > benchmarked**, and the first run surfaced a problem worth reading before anything else:

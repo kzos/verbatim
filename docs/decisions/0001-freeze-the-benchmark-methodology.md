@@ -53,3 +53,15 @@ seeing a number is visible in this directory rather than invisible in a diff.
   rather than deleted so the overclaim is visible.
 - Kill-gate thresholds are read against this document, so amending a condition after seeing a number is
   visible in the history of [`KILL.md`](../../KILL.md) rather than invisible in a definition.
+- **The frozen window and warm-up reached no measurement at all, found 2026-09-11.** `WINDOW_S = 180`
+  and `WARM_UP_S = 60` are carried into the ladder, stamped onto every rung, compared against the
+  operator's arguments, and serialised. Neither is passed to the load generator. The rung executor in
+  `bench/src/verbatim_bench/cli.py` builds its `LoadSpec` without `window_s`, which takes the branch
+  that runs each slot once, and overrides `ramp_s` to zero. A six-stream rung is therefore 15.1 s of
+  wall clock and 106 latency samples, and its p95 is the sixth-worst of them. The first rung run with
+  the window actually applied took 188.6 s and produced 4,798 samples.
+  The `canonical_window` flag that certifies this is `args.warm_up_s == WARM_UP_S and args.window_s ==
+  WINDOW_S`, which is true whenever nothing was overridden and says nothing about the run. That is the
+  third guard in this family found unable to fail, after the freeze test above and the frozen schema
+  version that no code read. **The freeze binds what an operator may type. It does not yet bind what
+  the harness does with it, and this is the difference.**
