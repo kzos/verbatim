@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import json
 from pathlib import Path
 
 import pytest
@@ -13,8 +15,10 @@ from verbatim_bench.client import ChunkMode, run_session
 from verbatim_bench.corpus import Utterance
 from verbatim_bench.env import HostCounters, fake_gpu_facts
 from verbatim_bench.ladder import (
+    RUNG_PASS_CRITERIA,
     Criterion,
     InvalidReason,
+    LadderResult,
     Rung,
     RungPlan,
     Sensitivity,
@@ -32,6 +36,7 @@ from verbatim_bench.results import percentile
 pytestmark = pytest.mark.cpu
 
 SEED = 20260914
+EVERY_CRITERION = tuple(sorted(RUNG_PASS_CRITERIA, key=lambda criterion: criterion.value))
 
 
 def _rung(
@@ -44,13 +49,25 @@ def _rung(
     invalid_reason: InvalidReason | None = None,
     warm_up_s: float = constants.WARM_UP_S,
     canonical: bool = True,
+    criteria_evaluated: tuple[Criterion, ...] | None = None,
 ) -> Rung:
-    return Rung(
+    """A rung double for the search tests, which need only passes and fails.
+
+    `passed` is derived on `Rung` rather than stored, so the double has to declare what
+    it evaluated. A rung that passed, and one that failed on a criterion the methodology
+    names, evaluated all of them; a rung that is invalid, or that never converged,
+    established nothing. The assertion below keeps the double from claiming a state the
+    real type cannot hold. What a partially evaluating rung reports is the subject of the
+    criteria tests, not of these.
+    """
+    if criteria_evaluated is None:
+        named = criterion is not None and criterion in RUNG_PASS_CRITERIA
+        criteria_evaluated = EVERY_CRITERION if (passed or named) else ()
+    rung = Rung(
         n=n,
         seed=seed,
         p95_ms=10.0 if passed else 10000.0,
         wer_vs_batch1=None,
-        passed=passed,
         first_failing_criterion=criterion if not passed else None,
         valid=valid,
         invalid_reason=invalid_reason,
@@ -58,8 +75,11 @@ def _rung(
         sessions_refused=1 if criterion is Criterion.INTEGRITY_REFUSED else 0,
         sessions_dropped=0,
         sessions_without_final=0,
+        criteria_evaluated=criteria_evaluated,
         canonical_window=canonical,
     )
+    assert rung.passed is passed
+    return rung
 
 
 def _threshold_runner(n_star: int, criterion: Criterion = Criterion.LATENCY):
@@ -357,12 +377,15 @@ def test_ladder_against_the_capacity_limited_null_server() -> None:
             samples = [v for s in sessions for v in s.partial_ms]
             p95 = percentile(samples, 95) if samples else float("inf")
             passed = p95 <= threshold_ms
+            # A double again: this rung really does measure latency, but it declares the
+            # whole criteria set because the assertion below is about the search finding
+            # the null server's capacity. A rung declaring only what it measured could
+            # not pass, which is the point of the criteria tests.
             return Rung(
                 n=n,
                 seed=seed,
                 p95_ms=float(p95),
                 wer_vs_batch1=None,
-                passed=bool(passed),
                 first_failing_criterion=None if passed else Criterion.LATENCY,
                 valid=True,
                 invalid_reason=None,
@@ -370,6 +393,7 @@ def test_ladder_against_the_capacity_limited_null_server() -> None:
                 sessions_refused=0,
                 sessions_dropped=0,
                 sessions_without_final=0,
+                criteria_evaluated=EVERY_CRITERION,
                 canonical_window=False,
             )
 
@@ -396,3 +420,151 @@ def test_ladder_uses_only_frozen_constants() -> None:
     ).read_text()
     assert "0.7" not in text
     assert "1.15" not in text or "LADDER_MULTIPLIER" in text
+
+
+def _partial_rung(n: int = 8, **overrides) -> Rung:
+    """A rung shaped like the one the harness can actually produce today."""
+    fields: dict = {
+        "n": n,
+        "seed": SEED,
+        "p95_ms": 10.0,
+        "wer_vs_batch1": None,
+        "first_failing_criterion": None,
+        "valid": True,
+        "invalid_reason": None,
+        "warm_up_s": float(constants.WARM_UP_S),
+        "sessions_refused": 0,
+        "sessions_dropped": 0,
+        "sessions_without_final": 0,
+        "criteria_evaluated": (Criterion.LATENCY, Criterion.INTEGRITY_REFUSED),
+        "canonical_window": True,
+    }
+    fields.update(overrides)
+    return Rung(**fields)
+
+
+def test_rung_pass_criteria_are_the_ones_the_methodology_names() -> None:
+    named = {
+        Criterion.LATENCY,
+        Criterion.WER,
+        Criterion.INTEGRITY_REFUSED,
+        Criterion.INTEGRITY_DROPPED,
+        Criterion.INTEGRITY_NO_FINAL,
+        Criterion.THERMAL,
+    }
+    assert named == RUNG_PASS_CRITERIA
+    # Neither names a criterion of the run: one is a rung that produced no window, the
+    # other a host that was unfit to measure on.
+    assert Criterion.UNSTABLE not in RUNG_PASS_CRITERIA
+    assert Criterion.INVALID_HOST not in RUNG_PASS_CRITERIA
+
+
+def test_a_rung_that_evaluated_only_latency_and_refusals_does_not_pass() -> None:
+    rung = _partial_rung()
+    assert rung.passed is False
+    # Nothing evaluated failed, so nothing is named. Naming an unevaluated criterion here
+    # would report a failure for a measurement nobody took.
+    assert rung.first_failing_criterion is None
+    assert rung.criteria_unevaluated == {
+        Criterion.WER,
+        Criterion.INTEGRITY_DROPPED,
+        Criterion.INTEGRITY_NO_FINAL,
+        Criterion.THERMAL,
+    }
+
+
+def test_a_rung_passes_only_once_every_criterion_was_evaluated_and_met() -> None:
+    rung = _partial_rung(criteria_evaluated=EVERY_CRITERION)
+    assert rung.passed is True
+    assert rung.criteria_unevaluated == frozenset()
+    one_short = _partial_rung(criteria_evaluated=EVERY_CRITERION[:-1])
+    assert one_short.passed is False
+    assert one_short.first_failing_criterion is None
+
+
+def test_an_evaluated_criterion_that_failed_is_still_named() -> None:
+    rung = _partial_rung(
+        p95_ms=10000.0,
+        first_failing_criterion=Criterion.LATENCY,
+        criteria_evaluated=EVERY_CRITERION,
+    )
+    assert rung.passed is False
+    assert rung.first_failing_criterion is Criterion.LATENCY
+
+
+def test_criteria_evaluated_round_trips_through_to_json_list() -> None:
+    result = LadderResult(
+        rungs=(_partial_rung(), _partial_rung(10, criteria_evaluated=EVERY_CRITERION)),
+        s=None,
+        ending_criterion=None,
+        s_per_seed={},
+        aborted=False,
+        abort_reason=None,
+        sensitivity=None,
+    )
+    rows = result.to_json_list()
+    assert rows[0]["criteria_evaluated"] == ["latency", "integrity:refused"]
+    assert rows[0]["passed"] is False
+    assert rows[0]["first_failing_criterion"] is None
+    assert rows[1]["criteria_evaluated"] == [criterion.value for criterion in EVERY_CRITERION]
+    assert rows[1]["passed"] is True
+    # The host-fitness vocabulary is untouched by an unevaluated criterion.
+    assert rows[0]["valid"] is True
+    assert rows[0]["invalid_reason"] is None
+
+
+def test_a_ladder_of_partially_evaluated_rungs_reports_no_passing_rung() -> None:
+    def _run(plan: RungPlan) -> Rung:
+        return _partial_rung(plan.n)
+
+    outcome = run_ladder(_run, n0=4, seeds=(SEED,))
+    assert outcome.s == 0
+    assert outcome.rungs
+    assert not any(rung.passed for rung in outcome.rungs)
+    assert outcome.ending_criterion is None
+
+
+async def test_the_rung_executor_declares_only_the_criteria_it_established(tmp_path) -> None:
+    """The defect DR-0004 names, checked at the executor that has it.
+
+    The rung this harness can run today measures latency and counts refusals. Word error
+    rate, dropped streams, missing finals and throttle events are written as literals by
+    nobody: they are simply absent from what the rung claims, so the rung cannot report a
+    pass, and it names no failing criterion because nothing it evaluated failed.
+    """
+    # Same-directory import, not `tests.harness.test_pace`; see the note in test_schema_v2.
+    from test_pace import make_manifest, make_wav
+    from verbatim_bench.cli import main
+
+    wav = tmp_path / "utt.wav"
+    make_wav(wav, 0.5)
+    manifest = make_manifest(tmp_path / "m.jsonl", [wav], ["utt-0"])
+    out_dir = tmp_path / "ladder-out"
+    async with NullServer(NullServerConfig()) as server:
+        argv = [
+            "ladder",
+            "--endpoint",
+            server.endpoint,
+            "--manifest",
+            str(manifest),
+            "--arm",
+            "a",
+            "--n0",
+            "1",
+            "--seeds",
+            str(SEED),
+            "--out",
+            str(out_dir),
+        ]
+        rc = await asyncio.get_running_loop().run_in_executor(None, main, argv)
+    assert rc == 0
+    payload = json.loads((out_dir / "ladder.json").read_text(encoding="utf-8"))
+    assert payload["rungs"]
+    for rung in payload["rungs"]:
+        assert rung["criteria_evaluated"] == ["latency", "integrity:refused"]
+        assert rung["passed"] is False
+        assert rung["first_failing_criterion"] is None
+        # Host fitness is a separate question and this host was fine.
+        assert rung["valid"] is True
+        assert rung["invalid_reason"] is None
+    assert payload["s"] == 0

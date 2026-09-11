@@ -1,0 +1,1845 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:verbatim:schema:vb-results:3",
+  "title": "vb-results/3 results row",
+  "description": "One measured row with environment, ladder and comparability blocks. Identical to vb-results/2 except that a ladder rung records which criteria it evaluated.",
+  "type": "object",
+  "required": [
+    "schema",
+    "harness",
+    "arm",
+    "checkpoint",
+    "env",
+    "config",
+    "result",
+    "sessions",
+    "date"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "vb-results/3"
+    },
+    "harness": {
+      "type": "object",
+      "required": [
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "git": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "client_floor_p95_ms": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tag": {
+          "type": "string"
+        },
+        "tree_clean": {
+          "type": "boolean"
+        },
+        "container_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "arm": {
+      "type": "object",
+      "required": [
+        "name",
+        "surface"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "container_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "surface": {
+          "enum": [
+            "websocket",
+            "riva-grpc",
+            "openai-realtime",
+            "file"
+          ]
+        },
+        "status": {
+          "enum": [
+            "measured",
+            "not_run",
+            "invalid"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "platform_bound",
+            "checkpoint_unloadable",
+            "converted_artifact_unavailable",
+            "adapter_not_built",
+            "engine_build_unavailable",
+            "harness_incomplete",
+            "contributed_not_built",
+            "permission_not_granted",
+            "budget",
+            null
+          ]
+        },
+        "panel": {
+          "enum": [
+            "main",
+            "not_comparable",
+            "not_measured",
+            "vendor"
+          ]
+        },
+        "dtype_class": {
+          "type": "string"
+        },
+        "kill_rule": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "arm_id": {
+          "type": "string"
+        }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "required": [
+        "hf_id",
+        "revision",
+        "file_sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "hf_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "converted_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "converter_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "env": {
+      "type": "object",
+      "required": [
+        "die",
+        "sm",
+        "vram_gb",
+        "driver",
+        "cuda",
+        "nemo",
+        "torch",
+        "cpu_sets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "die": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sm": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vram_gb": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "driver": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cuda": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nemo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "torch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cpu_sets": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "required": [
+        "chunk_ms",
+        "frame_ms",
+        "corpus_id",
+        "manifest",
+        "seed",
+        "sessions",
+        "pacing_profile",
+        "paced_real_time",
+        "x_ms",
+        "endpoint",
+        "words",
+        "compute_dtype",
+        "att_context"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "chunk_ms": {
+          "type": "integer"
+        },
+        "frame_ms": {
+          "type": "integer"
+        },
+        "corpus_id": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "manifest": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "sessions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pacing_profile": {
+          "enum": [
+            "uniform",
+            "burst",
+            "diurnal"
+          ]
+        },
+        "paced_real_time": {
+          "type": "boolean"
+        },
+        "x_ms": {
+          "type": "integer"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "words": {
+          "type": "boolean"
+        },
+        "compute_dtype": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "att_context": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "session_profile": {
+          "type": "string"
+        },
+        "canonical_window": {
+          "type": "boolean"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "latency_ms",
+        "sessions_started",
+        "sessions_completed",
+        "sessions_failed",
+        "chunks_sent",
+        "partials_received",
+        "finals_received",
+        "wall_clock_s",
+        "pacing_slip_ms"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "streams": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "streams_runs": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "latency_ms": {
+          "type": "object",
+          "required": [
+            "first_partial",
+            "partial",
+            "final"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "first_partial": {
+              "type": "object",
+              "required": [
+                "p50",
+                "p95",
+                "p99",
+                "n"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "p50": {
+                  "type": "number"
+                },
+                "p95": {
+                  "type": "number"
+                },
+                "p99": {
+                  "type": "number"
+                },
+                "n": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "partial": {
+              "type": "object",
+              "required": [
+                "p50",
+                "p95",
+                "p99",
+                "n"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "p50": {
+                  "type": "number"
+                },
+                "p95": {
+                  "type": "number"
+                },
+                "p99": {
+                  "type": "number"
+                },
+                "n": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "final": {
+              "type": "object",
+              "required": [
+                "p50",
+                "p95",
+                "p99",
+                "n"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "p50": {
+                  "type": "number"
+                },
+                "p95": {
+                  "type": "number"
+                },
+                "p99": {
+                  "type": "number"
+                },
+                "n": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "sessions_started": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sessions_completed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sessions_failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "chunks_sent": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partials_received": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "finals_received": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "wall_clock_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "pacing_slip_ms": {
+          "type": "object",
+          "required": [
+            "p50",
+            "p95",
+            "max"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "p50": {
+              "type": "number"
+            },
+            "p95": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            }
+          }
+        },
+        "invariance": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "hash_1": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "hash_32a": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "hash_32b": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "hash_max": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "equal": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        },
+        "eager_step_fraction": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "fraction_of_ceiling": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "stream_id",
+          "server_session_id",
+          "started_at_s",
+          "chunks",
+          "audio_s",
+          "first_partial_ms",
+          "final_ms",
+          "partial_ms",
+          "final_text",
+          "reference_text",
+          "error"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "stream_id": {
+            "type": "string"
+          },
+          "server_session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at_s": {
+            "type": "number"
+          },
+          "chunks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "audio_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "first_partial_ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "final_ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "partial_ms": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "partials_received": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "final_text": {
+            "type": "string"
+          },
+          "reference_text": {
+            "type": "string"
+          },
+          "words": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "w",
+                "s",
+                "e"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "w": {
+                  "type": "string"
+                },
+                "s": {
+                  "type": "integer"
+                },
+                "e": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pacing_slip_samples": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "checksum": {
+      "type": "object",
+      "required": [
+        "algorithm",
+        "key_id",
+        "value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "hmac-sha256"
+        },
+        "key_id": {
+          "const": "vb-results-1"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "date": {
+      "type": "string"
+    },
+    "box": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gpu_uuid": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "gpu_pci_bus_id": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "gpu_serial_if_readable": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "boot_id": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "cpu_model": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "cpu_flags_hypervisor": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "microcode": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "sockets": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "cores_physical": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "threads_logical": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "numa_nodes": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "cgroup_cpu_max": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "cpuset_effective": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "memory_max": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "virtualisation": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "container_runtime": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "kernel": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "clocksource": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "monotonic_resolution_ns": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "timerslack_ns": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "single_thread_score": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "container_digest": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        }
+      }
+    },
+    "gpu": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "uuid": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "sm": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "vram_total_gb": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "driver": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "nvml_version": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "cuda_driver_version": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "vbios": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "pci_bus_id": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "serial": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "pcie_gen_current": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "pcie_gen_max": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "pcie_width_current": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "pcie_width_max": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "persistence_mode": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "compute_mode": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "mig_mode": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "ecc_current": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "ecc_pending": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "power_limit_w": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "power_limit_default_w": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "power_limit_min_w": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "power_limit_max_w": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "clock_sm_mhz": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "clock_mem_mhz": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "clock_sm_max_mhz": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "clock_sm_app_mhz": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "temperature_c": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "temperature_slowdown_c": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "temperature_shutdown_c": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "throttle_reasons": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "compute_process_pids": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "foreign_processes_count": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "energy_counter_available": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "util_pct": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        }
+      }
+    },
+    "sw": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "python": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "torch": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "torch_cuda_build": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "cudnn": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "toolkit_version": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "toolkit_git_sha": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "tf32_matmul": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "tf32_cudnn": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "deterministic_algorithms": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "env_CUBLAS_WORKSPACE_CONFIG": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "env_CUDA_VISIBLE_DEVICES": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "pip_freeze_sha256": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "steal_pct_window": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "psi_cpu_some_avg_window": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "psi_cpu_full_avg_window": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "cgroup_nr_throttled_delta": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "cgroup_throttled_usec_delta": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "loadavg_start": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "loadavg_end": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "server_cpu_pct_of_cpuset": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "server_hottest_thread_pct": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "server_threads": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "client_cpu_pct_of_cpuset": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "client_processes": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "server_cpu_s_per_stream_hour": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "pacing_slip_ms": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        }
+      }
+    },
+    "cal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "null_floor_p95_ms": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "null_floor_client_cpu_pct": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "aa_repeat": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        }
+      }
+    },
+    "sensitivity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "server_cpuset_halved_pass": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "client_cpuset_halved_pass": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "c_cpuset_halved_rtfx": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "host_bound": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "client_limited": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        }
+      }
+    },
+    "ceiling": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "c_runs": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "median": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "batch_sizes": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "input_streams": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "input_streams_per_slot": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "rtfx_cross_check": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "box_id": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "dtype_class": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "die": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "cpuset_halved_rtfx": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        }
+      }
+    },
+    "ladder": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A rung. criteria_evaluated lists the criteria this rung actually established; passed is true only when every criterion the methodology names appears there and was met; first_failing_criterion names a criterion that was evaluated and failed, never one that was not evaluated.",
+        "additionalProperties": false,
+        "properties": {
+          "n": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "p95_ms": {
+            "type": "number"
+          },
+          "wer_vs_batch1": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "first_failing_criterion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "latency",
+              "wer",
+              "integrity:refused",
+              "integrity:dropped",
+              "integrity:no_final",
+              "thermal",
+              "unstable",
+              "invalid_host",
+              null
+            ]
+          },
+          "criteria_evaluated": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "latency",
+                "wer",
+                "integrity:refused",
+                "integrity:dropped",
+                "integrity:no_final",
+                "thermal",
+                "unstable",
+                "invalid_host"
+              ]
+            }
+          },
+          "valid": {
+            "type": "boolean"
+          },
+          "invalid_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "warm_up_s": {
+            "type": "number"
+          },
+          "sessions_refused": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sessions_dropped": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sessions_without_final": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "canonical_window": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "declared": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+        ]
+      }
+    }
+  }
+}

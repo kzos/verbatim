@@ -179,8 +179,10 @@ class RunResult:
         pacing_profile: str | None = None,
         canonical_window: bool = True,
     ) -> dict[str, Any]:
-        """Emit the ``vb-results/2`` document: everything v1 carries plus the
-        environment, ladder and comparability blocks. Never renames a v1 key."""
+        """Emit the row document at the frozen ``SCHEMA_VERSION_FOR_RUN``: everything
+        v1 carries plus the environment, ladder and comparability blocks. Never renames
+        a v1 key, so every version from ``vb-results/2`` on shares this builder and the
+        stamped version follows the frozen constant rather than a literal here."""
         from verbatim_bench import __version__, constants
         from verbatim_bench.canonical import stamp_checksum
 

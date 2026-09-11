@@ -22,11 +22,14 @@ from typing import Any, Final
 
 SCHEMA_ID: Final = "vb-results/1"
 SCHEMA_ID_V2: Final = "vb-results/2"
+SCHEMA_ID_V3: Final = "vb-results/3"
 SCHEMA_RELATIVE_PATH: Final = Path("benchmarks/schema/row.schema.json")
 SCHEMA_RELATIVE_PATH_V2: Final = Path("benchmarks/schema/row.schema.v2.json")
+SCHEMA_RELATIVE_PATH_V3: Final = Path("benchmarks/schema/row.schema.v3.json")
 SCHEMA_FILES: Final = {
     SCHEMA_ID: SCHEMA_RELATIVE_PATH,
     SCHEMA_ID_V2: SCHEMA_RELATIVE_PATH_V2,
+    SCHEMA_ID_V3: SCHEMA_RELATIVE_PATH_V3,
 }
 
 

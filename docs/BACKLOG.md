@@ -211,8 +211,15 @@ promised date — that is for triage once an entry becomes an issue.
   Three of the missing checks need no new collection: `SessionResult` already carries
   `finals_received`, `pacing_slip_ms` and `final_text`/`reference_text`.
   **The first fix is not any of these checks. It is that a rung must not report `passed=True` for a
-  criterion it did not evaluate**, which turns four hardcoded passes into an honest invalid. Every
-  ladder output this project has produced would come back invalid under that rule, which is correct.
+  criterion it did not evaluate.** **Done 2026-09-11** by
+  [DR-0004](decisions/0004-a-rung-records-which-criteria-it-evaluated.md): a rung now records
+  `criteria_evaluated`, `passed` is derived from it rather than stored, and every ladder output this
+  project has produced comes back `passed: false`, which is correct. The route this entry proposed for
+  it, turning the four hardcoded passes into an honest *invalid*, was rejected there: `valid` and
+  `invalid_reason` name host fitness, and a criterion nobody evaluated is not a host being unfit. What
+  stays open is the checks themselves. `Criterion.WER`, `INTEGRITY_DROPPED`, `INTEGRITY_NO_FINAL` and
+  `THERMAL` are still unreachable, all eight `InvalidReason` values are still dead, and a rung that
+  refuses to overclaim is correct while incomplete but still measures nothing but latency.
 
 - `bench/src/verbatim_bench/cli.py::_make_rung` — the ladder reports the **secondary** latency metric
   as though it were the primary. `LATENCY_PRIMARY = "word_emission"`, with `chunk_watermark` as the

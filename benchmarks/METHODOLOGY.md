@@ -16,7 +16,7 @@ The secondary latency is `chunk_watermark`. For chunk `i` covering audio `[a_i, 
 
 ## 3. Constants
 
-Every value in this section is a declared input, definition, threshold, or procedure constant, not a measurement. The run schema constant is `SCHEMA_VERSION_FOR_RUN = "vb-results/2"`. The latency constants are `LATENCY_PRIMARY = "word_emission"`, `LATENCY_SECONDARY = "chunk_watermark"`, `LATENCY_FALLBACK_IF_PRIMARY_UNAVAILABLE = "chunk_watermark"`, `LATENCY_DELETED = "first_partial_after_send"`, and `X_MS = 150`.
+Every value in this section is a declared input, definition, threshold, or procedure constant, not a measurement. The run schema constant is `SCHEMA_VERSION_FOR_RUN = "vb-results/3"`. The latency constants are `LATENCY_PRIMARY = "word_emission"`, `LATENCY_SECONDARY = "chunk_watermark"`, `LATENCY_FALLBACK_IF_PRIMARY_UNAVAILABLE = "chunk_watermark"`, `LATENCY_DELETED = "first_partial_after_send"`, and `X_MS = 150`.
 
 The rung uses `WARM_UP_S = 60`, `WINDOW_S = 180`, `WARM_UP_READING_S = 30`, `WARM_UP_CONVERGENCE = 0.10`, and `WARM_UP_CAP_S = 120`. Two consecutive readings of the reading length within 10 percent open the window; failure to converge by the cap fails the rung as `unstable`.
 
@@ -81,7 +81,7 @@ Only one arm runs at a time per box. Every row carries `box_id`. `C` and the nul
 
 ## 9. Schema version and harness tag
 
-The environment-record schema version used by a run is `vb-results/2`. No field is added after the run to explain a result. One committed harness tag runs every arm in a table. If a bug is found mid-run, the harness tag is bumped and every arm is re-run; the fix is never applied to only one arm.
+The environment-record schema version used by a run is `vb-results/3`. No field is added after the run to explain a result. One committed harness tag runs every arm in a table. If a bug is found mid-run, the harness tag is bumped and every arm is re-run; the fix is never applied to only one arm.
 
 ## 10. Comparability
 
@@ -151,7 +151,7 @@ A slower die lowers `C`, so `F` rises for every host-bound arm; an A6000 pass is
   "PACING_SLIP_P99_MAX_MS": 5.0,
   "PSI_CPU_FULL_MAX_PCT": null,
   "PSI_CPU_SOME_MAX_PCT": null,
-  "SCHEMA_VERSION_FOR_RUN": "vb-results/2",
+  "SCHEMA_VERSION_FOR_RUN": "vb-results/3",
   "SEEDS": [
     20260914,
     20260915,

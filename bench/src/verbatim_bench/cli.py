@@ -210,7 +210,7 @@ def _ladder(args: argparse.Namespace) -> int:
     def _make_rung(plan: RungPlan) -> Rung:
         from verbatim_bench.ladder import Criterion
 
-        async def _once() -> list[float]:
+        async def _once() -> tuple[list[float], int, object]:
             spec = LoadSpec(
                 endpoint=args.endpoint,
                 manifest=Path(args.manifest),
@@ -227,19 +227,27 @@ def _ladder(args: argparse.Namespace) -> int:
 
         samples, refused, _ = asyncio.run(_once())
         p95 = percentile(samples, 95) if samples else float("inf")
-        passed = refused == 0 and p95 <= threshold_ms
-        criterion = None if passed else Criterion.LATENCY
+        # Only two of the criteria a rung must meet are established here: latency, and
+        # then only when the window produced samples to take a p95 of, and the refused
+        # half of integrity, which is counted for every session. Word error rate, drops,
+        # missing finals and throttle events are not evaluated, so they are not listed
+        # and this rung cannot report a pass for them.
+        criteria: list[Criterion] = []
+        if samples:
+            criteria.append(Criterion.LATENCY)
+        criteria.append(Criterion.INTEGRITY_REFUSED)
+        criterion: Criterion | None = None
         if refused:
-            from verbatim_bench.ladder import Criterion as _Criterion
-
-            criterion = _Criterion.INTEGRITY_REFUSED
+            criterion = Criterion.INTEGRITY_REFUSED
+        elif samples and p95 > threshold_ms:
+            criterion = Criterion.LATENCY
         return Rung(
             n=plan.n,
             seed=plan.seed,
             p95_ms=float(p95),
             wer_vs_batch1=None,
-            passed=bool(passed),
             first_failing_criterion=criterion,
+            criteria_evaluated=tuple(criteria),
             valid=True,
             invalid_reason=None,
             warm_up_s=float(args.warm_up_s),

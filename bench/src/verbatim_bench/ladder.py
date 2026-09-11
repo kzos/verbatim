@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Any
+from typing import Any, Final
 
 from verbatim_bench import constants
 from verbatim_bench.env import GpuFacts, HostCounters
@@ -28,6 +28,24 @@ class Criterion(StrEnum):
     THERMAL = "thermal"
     UNSTABLE = "unstable"
     INVALID_HOST = "invalid_host"
+
+
+#: The four criteria the frozen methodology names for a rung to pass, written in the
+#: vocabulary of `Criterion`. Its third criterion, integrity, is three values here,
+#: because a stream can be refused, dropped, or end without a final transcript.
+#: `UNSTABLE` and `INVALID_HOST` are deliberately absent: they name a rung that produced
+#: no measurement window and a host that was unfit to measure on, neither of which is a
+#: criterion the run is asked to establish.
+RUNG_PASS_CRITERIA: Final = frozenset(
+    {
+        Criterion.LATENCY,
+        Criterion.WER,
+        Criterion.INTEGRITY_REFUSED,
+        Criterion.INTEGRITY_DROPPED,
+        Criterion.INTEGRITY_NO_FINAL,
+        Criterion.THERMAL,
+    }
+)
 
 
 class InvalidReason(StrEnum):
@@ -56,11 +74,25 @@ class RungPlan:
 
 @dataclass(frozen=True, slots=True)
 class Rung:
+    """One rung, which reports a pass only for the criteria it actually established.
+
+    `criteria_evaluated` lists what this rung established. `passed` is derived from it
+    rather than stored, so a rung cannot be constructed that claims a criterion nobody
+    evaluated: a pass needs every criterion in `RUNG_PASS_CRITERIA` evaluated and none
+    of them failed.
+
+    `first_failing_criterion` keeps its meaning unchanged. It names a criterion that was
+    evaluated and failed, and stays `None` when nothing evaluated has failed, including
+    when almost nothing was evaluated. It never reports an unevaluated criterion.
+
+    `valid` and `invalid_reason` are untouched and keep naming host fitness. An
+    unevaluated criterion is not a host problem and is never filed as one.
+    """
+
     n: int
     seed: int
     p95_ms: float
     wer_vs_batch1: float | None
-    passed: bool
     first_failing_criterion: Criterion | None
     valid: bool
     invalid_reason: InvalidReason | None
@@ -68,7 +100,18 @@ class Rung:
     sessions_refused: int
     sessions_dropped: int
     sessions_without_final: int
+    criteria_evaluated: tuple[Criterion, ...] = ()
     canonical_window: bool = True
+
+    @property
+    def criteria_unevaluated(self) -> frozenset[Criterion]:
+        """The pass criteria this rung never established."""
+        return RUNG_PASS_CRITERIA - set(self.criteria_evaluated)
+
+    @property
+    def passed(self) -> bool:
+        """True only when every pass criterion was evaluated and none of them failed."""
+        return not self.criteria_unevaluated and self.first_failing_criterion is None
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +159,7 @@ class LadderResult:
                     if rung.first_failing_criterion is not None
                     else None
                 ),
+                "criteria_evaluated": [criterion.value for criterion in rung.criteria_evaluated],
                 "valid": rung.valid,
                 "invalid_reason": rung.invalid_reason.value if rung.invalid_reason else None,
                 "warm_up_s": rung.warm_up_s,

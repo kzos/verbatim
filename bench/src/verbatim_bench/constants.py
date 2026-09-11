@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION_FOR_RUN: Final = "vb-results/2"
+SCHEMA_VERSION_FOR_RUN: Final = "vb-results/3"
 
 # Latency
 LATENCY_PRIMARY: Final = "word_emission"
