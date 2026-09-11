@@ -250,8 +250,9 @@ def _settings(args: argparse.Namespace) -> ServeSettings:
         raise _Refused(EXIT_CONFIG, str(exc)) from exc
 
 
-def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapter, list[str]]:
-    """The pipeline adapter for these settings, and the banner lines that describe it.
+def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapter, list[str], str]:
+    """The pipeline adapter for these settings, the banner lines that describe it, and
+    how the encoder step runs ("fake", "eager" or "graph path") for the health endpoints.
 
     The order is deliberate: the runtime is inspected and the graph path decided
     before any model is loaded, so a refusal costs nothing, and the config guards
@@ -263,10 +264,14 @@ def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapt
             adapter = registry.build_for(config)
         except (ConfigError, VerbatimError) as exc:
             raise _Refused(EXIT_CONFIG, str(exc)) from exc
-        return adapter, [
-            "pipeline     FAKE: scripted transcripts, nothing is recognised; for wiring "
-            "and harness checks only",
-        ]
+        return (
+            adapter,
+            [
+                "pipeline     FAKE: scripted transcripts, nothing is recognised; for wiring "
+                "and harness checks only",
+            ],
+            "fake",
+        )
 
     report = hooks.inspect_runtime()
     if not report.usable:
@@ -321,13 +326,18 @@ def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapt
         if use_graphs
         else "EAGER encoder step, by --eager"
     )
-    return adapter, [
-        f"pipeline     NeMo cache-aware RNNT, {settings.compute_dtype} on cuda:{settings.device_id}"
-        + (f" ({report.device_name})" if report.device_name else ""),
-        f"nemo         {report.nemo_version}, torch {report.torch_version}",
-        f"chunk mode   {settings.chunk.ms} ms (att_context_size {att_context})",
-        f"graphs       {graphs}",
-    ]
+    return (
+        adapter,
+        [
+            f"pipeline     NeMo cache-aware RNNT, {settings.compute_dtype} "
+            f"on cuda:{settings.device_id}"
+            + (f" ({report.device_name})" if report.device_name else ""),
+            f"nemo         {report.nemo_version}, torch {report.torch_version}",
+            f"chunk mode   {settings.chunk.ms} ms (att_context_size {att_context})",
+            f"graphs       {graphs}",
+        ],
+        "graph path" if use_graphs else "eager",
+    )
 
 
 def _precision_lines(settings: ServeSettings) -> list[str]:
@@ -380,7 +390,7 @@ def _banner(settings: ServeSettings, adapter_lines: list[str]) -> list[str]:
 
 def _serve(args: argparse.Namespace, hooks: Hooks) -> int:
     settings = _settings(args)
-    adapter, adapter_lines = _build_adapter(settings, hooks)
+    adapter, adapter_lines, execution = _build_adapter(settings, hooks)
     for line in _banner(settings, adapter_lines):
         print(f"[verbatim] {line}", file=hooks.stdout, flush=True)
 
@@ -398,7 +408,9 @@ def _serve(args: argparse.Namespace, hooks: Hooks) -> int:
             if hooks.on_ready is not None:
                 hooks.on_ready(endpoints, lambda: loop.call_soon_threadsafe(shutdown.set))
 
-        await hooks.run_server(settings, adapter, shutdown=shutdown, on_ready=ready)
+        await hooks.run_server(
+            settings, adapter, shutdown=shutdown, on_ready=ready, execution=execution
+        )
         print("[verbatim] stopped", file=hooks.stdout, flush=True)
 
     asyncio.run(main())

@@ -79,3 +79,4 @@ class TickStats:
     starved: int
     step_ms: float
     edge_ms: float
+    lateness_ms: float = 0.0  # end of the tick minus its scheduled boundary

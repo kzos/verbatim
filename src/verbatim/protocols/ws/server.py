@@ -40,6 +40,7 @@ from websockets.http11 import Request, Response
 
 from verbatim.core.errors import ErrorCode, InvalidArgument, ResourceExhausted, VerbatimError
 from verbatim.protocols.base import SAMPLE_RATE_HZ, EngineHandle, SessionHandle, SessionOptions
+from verbatim.protocols.health import HealthReporter
 from verbatim.protocols.ws.frames import (
     ErrorFrame,
     FinalFrame,
@@ -89,9 +90,16 @@ class WsServer:
             ...  server.endpoint -> "ws://127.0.0.1:<bound port>/v1/stream"
     """
 
-    def __init__(self, engine: EngineHandle, config: WsServerConfig | None = None) -> None:
+    def __init__(
+        self,
+        engine: EngineHandle,
+        config: WsServerConfig | None = None,
+        *,
+        health: HealthReporter | None = None,
+    ) -> None:
         self._engine = engine
         self._config = config if config is not None else WsServerConfig()
+        self._health = health
         self._server: Server | None = None
         self._handlers: set[asyncio.Task[None]] = set()
         self._live = 0
@@ -160,8 +168,16 @@ class WsServer:
         await self.stop()
 
     def _process_request(self, connection: ServerConnection, request: Request) -> Response | None:
-        """Serve the endpoint at `config.path` only; anything else is HTTP 404."""
+        """Serve the stream at `config.path`, the health paths through the reporter
+        when one was given, and HTTP 404 for anything else."""
         path, _, _ = request.path.partition("?")
+        if self._health is not None:
+            answer = self._health.route(path)
+            if answer is not None:
+                response = connection.respond(answer.status, answer.body)
+                del response.headers["Content-Type"]
+                response.headers["Content-Type"] = answer.content_type
+                return response
         if path != self._config.path:
             return connection.respond(404, "not found")
         return None
