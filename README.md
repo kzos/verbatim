@@ -6,9 +6,13 @@
 >
 > Both wires now run every session through the tick-scheduled engine, with admission, live back-pressure
 > and an idle deadline. **The first load run happened on 2026-09-11 and produced no publishable number:**
-> the server sits on its own latency budget at every concurrency tested, so the ladder's three seeds
-> disagreed by a factor of three and the reported stream count is noise, not capacity. Tripling the load
-> moved p95 by 19 ms. That is a finding about a fixed floor, and the eager encoder step is the suspect.
+> the server sits on its own latency budget at every concurrency tested, so the ladder's seeds disagreed
+> and the reported stream count describes the search rather than the server. Tripling the load moved p95
+> by 19 ms. Repeating it on a B300 **on the graph path** lowered the median p95 from 303 ms to 273
+> against a 310 ms budget, a real improvement that does not clear the problem, and exposed what is
+> underneath: the latency is **bimodal**, clustering near 265 ms or near 321 ms with nothing between.
+> Something discrete adds about 50 ms to the tail on some runs. Until that is found, a concurrency
+> ladder cannot measure this server, because its pass/fail line falls between the two modes.
 > On 2026-09-11 `verbatim serve` ran against a real NeMo pipeline on an A6000 for
 > the first time, transcribed real audio with word timings and shut down cleanly. **Nothing here has been
 > benchmarked**, and the first run surfaced a problem worth reading before anything else:
