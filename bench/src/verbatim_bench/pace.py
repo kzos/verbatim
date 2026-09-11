@@ -81,6 +81,16 @@ class LoadSpec:
     warm_up_cap_s: float = constants.WARM_UP_CAP_S
 
 
+@dataclass(frozen=True, slots=True)
+class WindowHooks:
+    """Called by `run_load` on the loop thread at the two moments a window is defined by:
+    the instant it opens and the instant it closes. They bound whatever a caller samples
+    across the window to the window itself, and they must not block."""
+
+    on_open: Callable[[], None]
+    on_close: Callable[[], None]
+
+
 @dataclass(slots=True)
 class _Phases:
     """What the load did with its clock, filled in as each phase ends."""
@@ -186,7 +196,7 @@ def _readings_agree(previous: float | None, current: float | None, tolerance: fl
     return abs(current - previous) <= tolerance * max(previous, current)
 
 
-async def run_load(spec: LoadSpec) -> RunResult:
+async def run_load(spec: LoadSpec, *, hooks: WindowHooks | None = None) -> RunResult:
     """Open every session per the plan, gather the results, and reduce them.
 
     With ``window_s`` set this runs the ramp, the warm-up and the measurement window
@@ -327,10 +337,14 @@ async def run_load(spec: LoadSpec) -> RunResult:
                 stop.set()
                 return
         phases.window_open_s = phases.warm_up_end_s
+        if hooks is not None:
+            hooks.on_open()
         remaining = phases.window_open_s + (spec.window_s or 0.0) - time.monotonic()
         if remaining > 0:
             await asyncio.sleep(remaining)
         phases.window_close_s = time.monotonic()
+        if hooks is not None:
+            hooks.on_close()
         stop.set()
 
     supervisor: asyncio.Task[None] | None = None

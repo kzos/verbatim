@@ -13,10 +13,11 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from verbatim_bench import constants
-from verbatim_bench.env import GpuFacts, HostCounters
+from verbatim_bench.env import HostCounters
+from verbatim_bench.hostrecord import HostWindow
 from verbatim_bench.pace import executed_canonical_window, window_partial_samples
 from verbatim_bench.results import RunResult, percentile
 from verbatim_bench.wer import corpus_wer, within_window
@@ -120,6 +121,10 @@ class Rung:
     canonical_window: bool = True
     window_s: float = constants.WINDOW_S
     wall_clock_s: float = 0.0
+    #: The host record sampled across this rung's window, when one was taken; None is a
+    #: rung run from its load alone, which can apply the pacing threshold and nothing else
+    #: and can never evaluate thermal.
+    host: HostWindow | None = None
 
     @property
     def criteria_unevaluated(self) -> frozenset[Criterion]:
@@ -203,6 +208,7 @@ _CRITERION_ORDER: Final = (
     Criterion.INTEGRITY_REFUSED,
     Criterion.INTEGRITY_DROPPED,
     Criterion.INTEGRITY_NO_FINAL,
+    Criterion.THERMAL,
 )
 
 
@@ -212,6 +218,7 @@ def rung_from_run(
     plan: RungPlan,
     threshold_ms: float,
     batch1_wer: float | None = None,
+    host: HostWindow | None = None,
 ) -> Rung:
     """Reduce one executed load to the rung it supports, and to nothing more.
 
@@ -232,8 +239,14 @@ def rung_from_run(
       invented here;
     * the three integrity counts, which every session reports.
 
-    Thermal is never listed. Zero GPU throttle events needs a collection this harness
-    does not have, so no rung can pass, which is the correct answer until it does.
+    Thermal is listed only when a host record sampled the GPU across the whole window
+    (`host.gpu.covered`), and it is met when no sample inside the window showed a
+    throttling reason. Without a host record it is not listed and no rung can pass, which
+    is the correct answer for a run that never looked. With one, validity is judged by
+    `rung_validity` over the whole record rather than by the pacing threshold alone, so a
+    throttle event inside the window makes the rung invalid (section 7) before thermal
+    could be the criterion that fails; the criterion is still evaluated on a valid rung,
+    and written for the day the document separates the two readings.
 
     `first_failing_criterion` names the earliest failure in diagnosis order, integrity
     before latency before word error rate, because a refused or dropped stream explains
@@ -256,7 +269,11 @@ def rung_from_run(
         "window_s": float(plan.window_s),
         "wall_clock_s": float(result.wall_clock_s),
     }
-    invalid_reason = pacing_slip_validity(percentile(slips, 99))
+    ran["host"] = host
+    if host is not None:
+        invalid_reason = rung_validity(host.counters, host.gpu, percentile(slips, 99))
+    else:
+        invalid_reason = pacing_slip_validity(percentile(slips, 99))
     if invalid_reason is not None:
         # An invalid rung is discarded whole, so it claims nothing: no criteria, and no
         # percentile, because the load it was taken over is not the load the rung names.
@@ -306,10 +323,16 @@ def rung_from_run(
         wer_vs_batch1 = measured_wer - batch1_wer
         if not within_window(measured_wer, batch1_wer):
             failed.add(Criterion.WER)
+    if host is not None and host.gpu.covered:
+        evaluated.add(Criterion.THERMAL)
+        if host.gpu.throttle_events > constants.NVML_THROTTLE_EVENTS_MAX:
+            failed.add(Criterion.THERMAL)
+    # A throttled GPU explains a percentile, so thermal is diagnosed before latency.
     diagnosis = (
         Criterion.INTEGRITY_REFUSED,
         Criterion.INTEGRITY_DROPPED,
         Criterion.INTEGRITY_NO_FINAL,
+        Criterion.THERMAL,
         Criterion.LATENCY,
         Criterion.WER,
     )
@@ -393,6 +416,7 @@ class LadderResult:
             for row, rung in zip(rows, self.rungs, strict=True):
                 row["window_s"] = rung.window_s
                 row["wall_clock_s"] = rung.wall_clock_s
+                row["host"] = rung.host.to_json_dict() if rung.host is not None else None
         return rows
 
 
@@ -633,8 +657,17 @@ def _cpu_fraction(value: float) -> float:
     return value / 100.0 if value > 1.0 else value
 
 
+class GpuEvidence(Protocol):
+    """What `rung_validity` reads of the GPU: a `GpuFacts` snapshot, or a `GpuWindow`
+    whose reasons are counts of samples inside the window and whose processes are the
+    foreign ones seen in it."""
+
+    throttle_reasons: Mapping[str, int]
+    compute_process_pids: tuple[int, ...]
+
+
 def rung_validity(
-    counters: HostCounters, gpu: GpuFacts, pacing_slip_p99_ms: float
+    counters: HostCounters, gpu: GpuEvidence, pacing_slip_p99_ms: float
 ) -> InvalidReason | None:
     """Apply every frozen host validity threshold to one measurement window.
 

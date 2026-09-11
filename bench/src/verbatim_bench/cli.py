@@ -88,6 +88,35 @@ def _build_parser() -> argparse.ArgumentParser:
         help="the compute dtype class of the server under test; required by --wer-batch1",
     )
     ladder.add_argument("--out", type=Path, required=True)
+    ladder.add_argument(
+        "--host-record",
+        action="store_true",
+        help=(
+            "sample the host and the GPU across every rung's window and judge validity "
+            "over the whole record (METHODOLOGY section 7), which is also the only way a "
+            "rung evaluates thermal (section 56). Needs --server-pid. While the pressure "
+            "thresholds are unfrozen every sampled rung is invalid, as the document says"
+        ),
+    )
+    ladder.add_argument(
+        "--server-pid",
+        type=int,
+        default=None,
+        help="the server's own process id, so its compute process is not counted foreign",
+    )
+    ladder.add_argument("--gpu-index", type=int, default=0)
+    ladder.add_argument(
+        "--gpu-sample-interval-s",
+        type=float,
+        default=None,
+        help="seconds between GPU samples across the window (default 1.0)",
+    )
+    ladder.add_argument(
+        "--from-smi-xml",
+        type=Path,
+        default=None,
+        help="sample a saved `nvidia-smi -q -x` document instead of the live command",
+    )
     return parser
 
 
@@ -297,6 +326,13 @@ def _resolve_wer_reference(args: argparse.Namespace, chunk: ChunkMode) -> Batch1
 def _ladder(args: argparse.Namespace) -> int:
     import asyncio
 
+    from verbatim_bench.env import SmiProbe
+    from verbatim_bench.hostrecord import (
+        DEFAULT_INTERVAL_S,
+        LiveSmiProbe,
+        WindowRecorder,
+        run_load_recorded,
+    )
     from verbatim_bench.ladder import Rung, run_ladder, rung_from_run
 
     try:
@@ -327,13 +363,45 @@ def _ladder(args: argparse.Namespace) -> int:
         print(f"verbatim-bench: {exc}")
         return 1
 
+    probe = None
+    interval_s = DEFAULT_INTERVAL_S
+    if args.host_record:
+        if args.server_pid is None:
+            print(
+                "verbatim-bench: --host-record needs --server-pid: the server's own compute "
+                "process must be told apart from a foreign one"
+            )
+            return 1
+        if args.gpu_sample_interval_s is not None:
+            interval_s = float(args.gpu_sample_interval_s)
+            if interval_s <= 0:
+                print("verbatim-bench: --gpu-sample-interval-s must be positive")
+                return 1
+        if args.from_smi_xml is not None:
+            probe = SmiProbe.from_xml(Path(args.from_smi_xml).read_text(encoding="utf-8"))
+        else:
+            probe = LiveSmiProbe()
+
     def _make_rung(plan: RungPlan) -> Rung:
-        result = asyncio.run(run_load(ladder_load_spec(args, plan, chunk)))
+        spec = ladder_load_spec(args, plan, chunk)
+        host = None
+        if probe is not None:
+            recorder = WindowRecorder(
+                gpu=probe,
+                gpu_index=int(args.gpu_index),
+                server_pid=int(args.server_pid),
+                interval_s=interval_s,
+            )
+            result = asyncio.run(run_load_recorded(spec, recorder))
+            host = recorder.finish()
+        else:
+            result = asyncio.run(run_load(spec))
         return rung_from_run(
             result,
             plan=plan,
             threshold_ms=threshold_ms,
             batch1_wer=reference.wer if reference is not None else None,
+            host=host,
         )
 
     outcome = run_ladder(
@@ -370,6 +438,12 @@ def _ladder(args: argparse.Namespace) -> int:
             # `wer_vs_batch1` is the signed difference from this number, so the two
             # together give back the corpus WER the run measured.
             "wer_batch1": reference.to_json_dict() if reference is not None else None,
+            # Whether every rung's window was sampled for its host record. Without it no
+            # rung evaluates thermal and none can pass.
+            "host_record": bool(args.host_record),
+            "server_pid": int(args.server_pid) if args.server_pid is not None else None,
+            "gpu_index": int(args.gpu_index),
+            "gpu_sample_interval_s": interval_s if args.host_record else None,
         },
         "rungs": outcome.to_json_list(include_window=True),
     }
