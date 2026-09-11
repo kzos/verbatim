@@ -330,6 +330,35 @@ def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapt
     ]
 
 
+def _precision_lines(settings: ServeSettings) -> list[str]:
+    """Decision record 0003, item 4: the operator reads at startup what the chosen
+    precision does to batch invariance, with the counts and the record, instead of
+    finding it in a document. The counts are the record's (evidence section 21),
+    quoted here, not measured here; the fake pipeline has no precision to speak of.
+    """
+    if settings.pipeline == "fake":
+        return []
+    measured = (
+        "batch invariance MEASURED TO FAIL at bfloat16 on this server's own code path: "
+        "287 of 2,939 utterances diverged on an A6000 and 264 on a B300 (float32: 6 and 1), "
+        "and equalising row lengths made it worse"
+    )
+    if settings.compute_dtype == "float32":
+        return [
+            "precision    float32: the precision at which batch invariance was measured, "
+            "6 of 2,939 utterances divergent on an A6000 and 1 on a B300; docs/decisions/0003"
+        ]
+    if settings.compute_dtype == "bfloat16":
+        head = f"precision    bfloat16 (the default): {measured}."
+    else:
+        head = f"precision    {settings.compute_dtype}: not measured at this precision; {measured}."
+    return [
+        head,
+        "             A row from this run must cite docs/decisions/0003; pass "
+        "--compute-dtype float32 for the property this server is named for.",
+    ]
+
+
 def _banner(settings: ServeSettings, adapter_lines: list[str]) -> list[str]:
     config = engine_config(settings)
     if settings.calibrated:
@@ -339,6 +368,7 @@ def _banner(settings: ServeSettings, adapter_lines: list[str]) -> list[str]:
     return [
         f"checkpoint   {settings.model}",
         *adapter_lines,
+        *_precision_lines(settings),
         f"admission    {admission}",
         f"slots        {config.num_slots} NeMo slots: bucket {max(config.buckets or (0,))}, "
         f"{config.effective_pad} steady pads, {config.edge_pad_rows} edge pads, "
@@ -431,3 +461,7 @@ def main(argv: Sequence[str] | None = None, *, hooks: Hooks | None = None) -> in
 def console_main() -> None:
     """The console-script entry point."""
     sys.exit(main())
+
+
+if __name__ == "__main__":  # python -m verbatim.cli
+    console_main()
