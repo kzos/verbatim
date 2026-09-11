@@ -56,3 +56,16 @@ def test_unknown_encoding_and_unserved_rate_are_refused() -> None:
         WireDecoder("FLAC", 16000)
     with pytest.raises(ValueError, match="rate"):
         WireDecoder("MULAW", 8001)
+
+
+def test_the_decoded_level_is_preserved_through_the_resampler() -> None:
+    """What goes in at one rate comes out at the other at the same level: a 20000-peak
+    tone at 8 kHz decodes to a 20000-peak tone at 16 kHz, and a mu-law DC of -32124
+    decodes to -32124. A wrong output scale would pass every count and carry test."""
+    tone = (np.sin(np.linspace(0, 40 * np.pi, 1600)) * 20000).astype("<i2").tobytes()  # 0.2 s
+    d = WireDecoder("LINEAR_PCM", 8000)
+    out = np.frombuffer(d.decode(tone) + d.flush(), dtype="<i2").astype(np.int32)
+    assert int(np.abs(out[400:-400]).max()) == pytest.approx(20000, rel=0.02)
+    g711 = WireDecoder("MULAW", 8000)
+    dc = np.frombuffer(g711.decode(b"\x00" * 800) + g711.flush(), dtype="<i2").astype(np.int32)
+    assert int(dc[400:-400].mean()) == pytest.approx(-32124, rel=0.01)
