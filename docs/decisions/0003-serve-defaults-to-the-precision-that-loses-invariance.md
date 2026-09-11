@@ -28,6 +28,19 @@ So the server, as it ships today, defaults to the one setting that costs it the 
 for. Nothing was hidden: the banner says `bfloat16` and the evidence says what bfloat16 does. They had
 simply never been read next to each other, because until tonight the server had never run.
 
+## Confirmed on a second architecture, 2026-09-11
+
+Repeated on a B300 with NeMo built from source, through `serve`'s own pipeline-building code:
+
+| precision | A6000 ragged / equalised | B300 ragged / equalised |
+|---|---|---|
+| bfloat16 | 287 / 328 | **264 / 295** |
+| float32 | 6 / 6 | **1 / 1** |
+
+The effect follows the precision, not the die. Newer silicon does not fix it; the gap is **wider** there,
+about 264x against the A6000's 48x, because float32 on Blackwell is so nearly clean. Equalising row
+lengths makes it slightly worse on both machines.
+
 ## Decision
 
 1. **This is recorded before any row is produced.** No benchmark row may be published from a bfloat16

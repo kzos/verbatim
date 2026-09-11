@@ -202,6 +202,8 @@ so the code path is the variable:
 | example, `conformer_stream_step` | float32 | 38 in 2,939 | 1 in 2,939 | **all 38** at or after the last shared word |
 | **server, `CacheAwareRNNTPipeline`** | float32 | **6 in 2,939** | **6 in 2,939** | **none** at the tail in either arm |
 | **server, `CacheAwareRNNTPipeline`** | **bfloat16** | **287 in 2,939** | **328 in 2,939** | 321 of 328 mid-sentence |
+| server, on a **B300** | float32 | **1 in 2,939** | **1 in 2,939** | none at the tail |
+| server, on a **B300** | **bfloat16** | **264 in 2,939** | **295 in 2,939** | 263 of 264 mid-sentence |
 
 Two things follow, and the second is larger than anything else on this page.
 
@@ -211,6 +213,12 @@ ordinary numerical effect, at the same order as the offline runs. The control ma
 padding every row to a common length changes the count **not at all**, 6 against 6, where on the example
 path the same control took 38 to 1. A control that removes an effect where it exists and removes nothing
 where it does not is the strongest form this comparison could take.
+
+**The precision effect is architecture-independent, so newer silicon does not fix it.** Repeated on a
+B300 with NeMo built from source: 264 and 295, against the A6000's 287 and 328. Same order, about one in
+eleven, on two silicon generations. float32 is nearly clean on both, and cleaner on Blackwell — one
+divergence in 2,939 against six. So the gap between the two precisions is **wider** on newer hardware,
+not narrower, and the property this project is named for is achievable at float32 and not at bfloat16.
 
 **Reduced precision costs far more invariance than batch composition ever did.** At bfloat16 the same
 path diverges roughly forty-eight times as often, and **equalising row lengths does not reduce it**:
