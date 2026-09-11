@@ -575,12 +575,24 @@ def _detect_container_runtime(procfs: Path) -> str | None:
     return None
 
 
-def single_thread_score(*, duration_s: float = 1.0) -> float:
+def single_thread_score(*, duration_s: float = 1.0, best_of: int = 3) -> float:
     """Run a fixed single-threaded micro-benchmark and return its score.
 
     The score is iterations per second of a small integer hash loop, so it is a
-    host-CPU number taken in the same session as the ladder it calibrates.
+    host-CPU number taken in the same session as the ladder it calibrates. It is the
+    best of `best_of` samples of `duration_s` each: the score measures what the core
+    can do, and a sample that shared its slice with another process measures the
+    sharing, not the core. One sample in nine came out under half the other on a
+    loaded box; the best of three does not, and a looser tolerance would only have
+    hidden it.
     """
+    if isinstance(best_of, bool) or best_of < 1:
+        raise ValueError(f"best_of must be >= 1, got {best_of!r}")
+    return max(_score_once(duration_s) for _ in range(best_of))
+
+
+def _score_once(duration_s: float) -> float:
+    """One sample of the micro-benchmark: iterations per second over `duration_s`."""
     iterations = max(1000, int(200000 * max(duration_s, 0.001)))
     state = 0x243F6A88
     start = time.perf_counter()
