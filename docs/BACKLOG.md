@@ -162,6 +162,35 @@ promised date — that is for triage once an entry becomes an issue.
   operationally or delete it, derive `canonical_window` from the executed load, and guard it with a test
   that reddens against today's `_make_rung`. Until then no ladder output is a capacity.
 
+- `bench/src/verbatim_bench/cli.py::_make_rung` — **the rung evaluates one of the four criteria the
+  methodology defines and reports the other three as passing.** `benchmarks/METHODOLOGY.md` section 56
+  requires latency, WER within 0.1 absolute of the batch-1 reference, integrity (no stream refused,
+  dropped, back-pressured into audio loss, or ended without a final, with the load generator under half
+  its pinned CPU budget) and zero GPU throttle events. The code evaluates latency, counts refusals, and
+  writes `wer_vs_batch1=None`, `sessions_dropped=0` and `sessions_without_final=0` as literals.
+  `Criterion.WER`, `INTEGRITY_DROPPED`, `INTEGRITY_NO_FINAL` and `THERMAL` are defined and unreachable.
+  Every rung also carries `valid=True, invalid_reason=None` unconditionally, so all eight
+  `InvalidReason` values and the eight validity constants that name them are dead.
+  Three of the missing checks need no new collection: `SessionResult` already carries
+  `finals_received`, `pacing_slip_ms` and `final_text`/`reference_text`.
+  **The first fix is not any of these checks. It is that a rung must not report `passed=True` for a
+  criterion it did not evaluate**, which turns four hardcoded passes into an honest invalid. Every
+  ladder output this project has produced would come back invalid under that rule, which is correct.
+
+- `bench/src/verbatim_bench/cli.py::_make_rung` — the ladder reports the **secondary** latency metric
+  as though it were the primary. `LATENCY_PRIMARY = "word_emission"`, with `chunk_watermark` as the
+  secondary and the fallback permitted only when the primary is unavailable. The rung computes p95 from
+  `partial_ms`, which is the watermark metric, and never passes `words=True`, so the primary is
+  unavailable by construction rather than by circumstance and nothing in the output records the
+  substitution. Related: `SESSION_PROFILE = "m180"` describes 180-second sessions and the corpus is
+  LibriSpeech utterances of a few seconds each.
+
+- `bench/src/verbatim_bench/` — the warm-up is a convergence protocol, not a duration, and it does not
+  exist. `WARM_UP_READING_S = 30`, `WARM_UP_CONVERGENCE = 0.10` and `WARM_UP_CAP_S = 120`: two
+  consecutive 30-second readings within 10 percent open the window, and failure to converge by the cap
+  fails the rung as `unstable`. `Criterion.UNSTABLE` is defined and unreachable. The window also has to
+  *open* at a wall-clock moment rather than only *end* at one, and `run_load` has no notion of that.
+
 
 - ~~`bench/src/verbatim_bench/verify.py::_check_pacing_slip` — the summary's `pacing_slip_ms` percentiles
   can only be checked for internal ordering (`p50 <= p95 <= max`), never recomputed from the underlying

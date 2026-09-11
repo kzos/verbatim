@@ -65,3 +65,11 @@ seeing a number is visible in this directory rather than invisible in a diff.
   third guard in this family found unable to fail, after the freeze test above and the frozen schema
   version that no code read. **The freeze binds what an operator may type. It does not yet bind what
   the harness does with it, and this is the difference.**
+- **One of the four criteria this document defines is evaluated, found 2026-09-11.** Section 56 requires
+  latency, WER against the batch-1 reference, integrity and zero throttle events. The rung executor
+  evaluates latency, counts refusals, and writes the rest as literals: `wer_vs_batch1=None`,
+  `sessions_dropped=0`, `sessions_without_final=0`, `valid=True`, `invalid_reason=None`. Four of the
+  eight `Criterion` values and all eight `InvalidReason` values are unreachable. The warm-up defined in
+  section 21 as a convergence protocol, with a reading length, a convergence fraction, a cap and an
+  `unstable` outcome, does not exist in any form. **A frozen document whose definitions no code can
+  reach is a specification, not a freeze**, and the distinction is the whole lesson of this record.
