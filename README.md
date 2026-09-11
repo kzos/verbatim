@@ -14,6 +14,15 @@
 > 310 ms budget, three passes and a failure from the same inputs. An earlier reading of these runs as a
 > **bimodal** latency, and a 30 ms improvement attributed to the graph path, are both withdrawn: a
 > single rung repeated on one machine covers that whole gap.
+>
+> With the window applied the measurement is repeatable, and it shows what actually fails the budget.
+> **A session's latency is a phase offset drawn once when it connects and never repaid.** The client's
+> chunk cadence and the server's tick are both 160 ms and stay in lockstep, so stepping sixteen sessions'
+> start delays across one period traces a sawtooth of slope minus one and amplitude one period, from
+> 168.8 ms to 321.6 ms, steady to a few milliseconds for each session's whole life. A well-phased session
+> sits at about 170 ms against a 310 ms budget; a badly phased one is over it. For clients arriving at
+> arbitrary times the p95 is near 320 ms **at any concurrency, including one stream**. See
+> `probes/tick_phase_sweep.py`, which reproduces it in twenty seconds.
 > On 2026-09-11 `verbatim serve` ran against a real NeMo pipeline on an A6000 for
 > the first time, transcribed real audio with word timings and shut down cleanly. **Nothing here has been
 > benchmarked**, and the first run surfaced a problem worth reading before anything else:

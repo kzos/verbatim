@@ -149,6 +149,20 @@ promised date — that is for triage once an entry becomes an issue.
   cannot discover `/healthz`, `/readyz`, `/metrics` or `/admission` from the process that serves them.
   Small, and worth doing while the endpoints are new.
 
+- `src/verbatim/scheduler/` — **a session's latency is a phase offset drawn at connect and never
+  repaid.** The client's chunk cadence and the tick are both 160 ms and stay in lockstep, so a chunk
+  completing at phase p waits one period minus p for its tick, every time, for the session's whole life.
+  Measured on 2026-09-11 by stepping sixteen sessions' start delays across one period against a live
+  A6000: a sawtooth of slope minus one and amplitude 160 ms, range 168.8 to 321.6 ms, within-session
+  spread 2 to 5 ms over 85 chunks, and the wrap point moves when the sweep is repeated, which anchors it
+  to the server's tick rather than to anything about the sessions. `probes/tick_phase_sweep.py`.
+  **Against a 310 ms budget and a p95 criterion this fails at any concurrency, including one stream**,
+  for clients arriving at arbitrary times: a uniform phase draw puts the p95 near 320 ms. Windowed load
+  runs look better only because a replaced session inherits the phase of one that ended on a tick
+  boundary. Fix: align a session's chunk boundary to the tick at admission, paying under one period once
+  at connect instead of a fraction of a period on every chunk forever. Running the tick faster than the
+  chunk is the same fix at the price of a step per tick.
+
 - `bench/src/verbatim_bench/cli.py::_make_rung` — **the ladder never runs the window it reports.** The
   rung executor builds its `LoadSpec` without `window_s`, which in `run_load` takes the branch that runs
   each slot exactly once, and it overrides `ramp_s` to zero. `warm_up_s` reaches no measurement anywhere:
