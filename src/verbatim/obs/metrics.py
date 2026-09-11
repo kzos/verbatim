@@ -44,6 +44,7 @@ class MetricsSnapshot:
     partial_latency_ms: tuple[float, float, float]
     tick_cost_ms: tuple[float, float, float]
     last_refusal_reason: str | None
+    results_partials_dropped_total: int = 0
 
 
 def _escape(value: str) -> str:
@@ -110,6 +111,12 @@ def render(snapshot: MetricsSnapshot, *, labels: Mapping[str, str]) -> str:
     )
     series(
         "verbatim_sessions_refused_total", "counter", "Sessions refused.", c.sessions_refused_total
+    )
+    series(
+        "verbatim_result_partials_dropped_total",
+        "counter",
+        "Partials dropped from a session's result backlog to hold its bound.",
+        snapshot.results_partials_dropped_total,
     )
     series("verbatim_live_sessions", "gauge", "Sessions live now.", snapshot.live_sessions)
     series(

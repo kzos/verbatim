@@ -216,6 +216,7 @@ async def test_admission_reports_the_controller_and_the_last_refusal() -> None:
     assert report["ceiling"] is None and report["calibrated_ceiling"] is None
     assert report["admitted_total"] == 2 and report["refused_total"] == 1
     assert "fill the largest bucket" in report["last_refusal_reason"]
+    assert report["result_partials_dropped"] == 0  # bounded backlog, none dropped yet
     assert report["degradation_level"] == 0 and report["consecutive_overruns"] == 0
     slots = report["slots"]
     assert slots["free"] == slots["capacity"] - slots["reserved"]
