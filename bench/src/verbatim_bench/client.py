@@ -23,7 +23,7 @@ import contextlib
 import json
 import random
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 from urllib.parse import urlencode
@@ -211,6 +211,7 @@ async def run_session(
     words: bool = False,
     lang: str = "en-US",
     clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     frame_ms: int | None = None,
     frame_seed: int = 0,
     on_open: Callable[[], None] | None = None,
@@ -225,8 +226,11 @@ async def run_session(
     still open. Both are called from this coroutine and must not block.
 
     Transport framing (`frame_ms`) is decoupled from measurement chunking
-    (`chunk.ms`): canonical runs send 20 ms frames with seeded jitter while the
-    per-chunk watermark samples in `partial_ms` stay per chunk. When `frame_ms`
+    (`chunk.ms`): canonical runs send 20 ms frames with seeded jitter, on the wire:
+    frame i is sent at `t0 + i * frame_period + jitter_i` and graded against that
+    same deadline, so the jitter shapes what the server sees and the slip measures
+    only the generator's own lateness. The per-chunk watermark samples in
+    `partial_ms` stay per chunk. `clock` and `sleep` are test-harness inputs. When `frame_ms`
     is None the client sends chunk-sized frames, which is recorded as
     non-canonical framing. The true short tail is sent unpadded and the
     server pads it, so client and server agree. Then sends `{"type": "end"}`
@@ -250,6 +254,7 @@ async def run_session(
             words=words,
             lang=lang,
             clock=clock,
+            sleep=sleep,
             frame_ms=frame_ms,
             frame_seed=frame_seed,
             on_open=on_open,
@@ -272,13 +277,14 @@ async def _run_session_inner(
     words: bool,
     lang: str,
     clock: Callable[[], float],
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     frame_ms: int | None = None,
     frame_seed: int = 0,
     on_open: Callable[[], None] | None = None,
     on_sample: Callable[[float, float], None] | None = None,
 ) -> SessionResult:
     if start_delay_s > 0:
-        await asyncio.sleep(start_delay_s)
+        await sleep(start_delay_s)
     query = urlencode({"chunk_ms": chunk.ms, "lang": lang, "words": "1" if words else "0"})
     url = f"{endpoint}?{query}"
     effective_frame_ms = frame_ms if frame_ms is not None else chunk.ms
@@ -306,6 +312,18 @@ async def _run_session_inner(
     frame_period_s = effective_frame_ms / 1000.0
     jitter_rng = random.Random(frame_seed)
     jitter_s = constants.FRAME_JITTER_MS / 1000.0
+
+    def frame_deadline(index: int) -> float:
+        """When frame `index` is due: the nominal grid plus this frame's seeded jitter,
+        drawn once, here, for canonical framing only. The sender sleeps to this deadline
+        and is graded against it, so the jitter is on the wire and the slip is the
+        generator's own lateness. Frame 0 is due at t0. One draw per frame, in frame
+        order, so a seed reproduces the schedule."""
+        if index == 0:
+            return t0
+        jitter = jitter_rng.uniform(-jitter_s, jitter_s) if effective_frame_ms != chunk.ms else 0.0
+        return t0 + index * frame_period_s + jitter
+
     send_times: list[float] = []
     matcher = WatermarkMatcher()
     partial_events: list[tuple[float, dict[str, Any]]] = []
@@ -370,18 +388,10 @@ async def _run_session_inner(
         reader_task = asyncio.create_task(reader())
         try:
             frame_index = 0
+            deadline = frame_deadline(0)
             for group in chunk_groups:
                 for position, wire in enumerate(group):
                     last_in_chunk = position == len(group) - 1
-                    if frame_index == 0:
-                        deadline = t0
-                    else:
-                        jitter = (
-                            jitter_rng.uniform(-jitter_s, jitter_s)
-                            if effective_frame_ms != chunk.ms
-                            else 0.0
-                        )
-                        deadline = t0 + frame_index * frame_period_s + jitter
                     now = clock()
                     slip_ms = max(0.0, (now - deadline) * 1000.0)
                     result.pacing_slip_ms.append(slip_ms)
@@ -399,10 +409,10 @@ async def _run_session_inner(
                         result.chunks += 1
                         matcher.offer_chunk(t_chunk, result.audio_s)
                     if not last_in_chunk or group is not chunk_groups[-1]:
-                        next_deadline = t0 + frame_index * frame_period_s
-                        delay = next_deadline - clock()
+                        deadline = frame_deadline(frame_index)
+                        delay = deadline - clock()
                         if delay > 0:
-                            await asyncio.sleep(delay)
+                            await sleep(delay)
                 else:
                     continue
                 break
