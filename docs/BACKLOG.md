@@ -163,6 +163,15 @@ promised date — that is for triage once an entry becomes an issue.
   at connect instead of a fraction of a period on every chunk forever. Running the tick faster than the
   chunk is the same fix at the price of a step per tick.
 
+- `bench/src/verbatim_bench/` — **the load generator misses its own frozen pacing tolerance, so no run
+  taken so far is valid.** `PACING_SLIP_P99_MAX_MS` is 5.0. Measured 2026-09-11 over four gated
+  interleaved arms on one A6000, six streams, the machine otherwise idle: p99 slip is 10.8 to 10.9 ms
+  on every arm, p50 about 1.1 ms, max under 13 ms, over roughly 38,000 frames each. It is identical
+  across precisions, so it is the generator and not the server. Nothing has ever noticed because `valid`
+  is written `True` unconditionally. Implementing this check is the cheapest of the unevaluated criteria,
+  needs neither the client fix nor the window fix, and is the only one that can fail on real data today.
+  It will mark every existing run invalid, which is the correct answer.
+
 - `bench/src/verbatim_bench/client.py` — **the load client stops measuring at the first final, and a
   stream has several.** The server emits a `final` frame for every hypothesis with `is_final`, which is
   one per endpointed utterance, so a stream with an internal silence of the endpointing length produces
