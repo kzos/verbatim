@@ -652,11 +652,6 @@ def check_monotone(rungs: Sequence[Rung]) -> tuple[str, ...]:
     return tuple(messages)
 
 
-def _cpu_fraction(value: float) -> float:
-    """Accept the record's fraction form and tolerate a percentage-form probe."""
-    return value / 100.0 if value > 1.0 else value
-
-
 class GpuEvidence(Protocol):
     """What `rung_validity` reads of the GPU: a `GpuFacts` snapshot, or a `GpuWindow`
     whose reasons are counts of samples inside the window and whose processes are the
@@ -678,8 +673,13 @@ def rung_validity(
     """
     if constants.PSI_CPU_SOME_MAX_PCT is None or constants.PSI_CPU_FULL_MAX_PCT is None:
         return InvalidReason.PSI_THRESHOLD_UNFROZEN
-    client_fraction = _cpu_fraction(counters.client_cpu_pct_of_cpuset)
-    if client_fraction > constants.CLIENT_CPU_MAX_FRACTION_OF_CPUSET:
+    # The record's client CPU is a percentage of the effective cpuset, by name and by
+    # computation, and the frozen budget is a fraction; the gate compares the one against
+    # the other as a percentage and guesses no unit from a value's size. A guess did once:
+    # it read a client at three quarters of one percent as seventy-five and invalidated
+    # the first capacity search's every rung, while reading any client above one percent
+    # correctly, so the better the generator behaved the more certainly it was rejected.
+    if counters.client_cpu_pct_of_cpuset > constants.CLIENT_CPU_MAX_FRACTION_OF_CPUSET * 100:
         return InvalidReason.CLIENT_CPU
     if counters.steal_pct > constants.STEAL_PCT_MAX:
         return InvalidReason.STEAL

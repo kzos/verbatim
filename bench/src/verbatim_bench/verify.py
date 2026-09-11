@@ -568,17 +568,19 @@ def _check_v2_env(doc: Mapping[str, Any], findings: list[Finding]) -> None:
     host = doc.get("host")
     if isinstance(host, Mapping):
         client_cpu = host.get("client_cpu_pct_of_cpuset")
-        if _is_number(client_cpu):
-            fraction = float(client_cpu) / 100.0 if float(client_cpu) > 1.0 else float(client_cpu)
-            if fraction > constants.CLIENT_CPU_MAX_FRACTION_OF_CPUSET:
-                findings.append(
-                    Finding(
-                        Level.ERROR,
-                        "CLIENT_CPU_OVER_BUDGET",
-                        f"client CPU {client_cpu!r} exceeds the frozen fraction",
-                        "host.client_cpu_pct_of_cpuset",
-                    )
+        # A percentage of the cpuset, by name and by computation; compared as one.
+        if (
+            _is_number(client_cpu)
+            and float(client_cpu) > constants.CLIENT_CPU_MAX_FRACTION_OF_CPUSET * 100.0
+        ):
+            findings.append(
+                Finding(
+                    Level.ERROR,
+                    "CLIENT_CPU_OVER_BUDGET",
+                    f"client CPU {client_cpu!r} percent of the cpuset exceeds the frozen budget",
+                    "host.client_cpu_pct_of_cpuset",
                 )
+            )
 
 
 def _check_v2_floor_and_box(doc: Mapping[str, Any], findings: list[Finding]) -> None:
