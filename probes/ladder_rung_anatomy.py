@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """Reproduce one ladder rung exactly and dump the anatomy of its p95.
 
-The ladder's rung executor (`_make_rung` in the bench CLI) builds its `LoadSpec`
+The ladder's rung executor (`_make_rung` in the bench CLI) built its `LoadSpec`
 with `ramp_s=0.0` and no `window_s`, so the frozen 180-second window and the
-60-second warm-up never reach a measurement while every rung is still stamped
+60-second warm-up never reached a measurement while every rung was still stamped
 `canonical_window: true`.  This script reproduces that spec literally rather
 than approximating it, and takes `--window-s` so the same rung can be run with
-the window applied and the two compared.
+the window applied and the two compared.  It is kept as the record of the run
+that found the defect; the executor itself was fixed on 2026-09-11 by DR-0005
+and no longer behaves like this.
 
 Run it against a live server with the bench package importable:
 

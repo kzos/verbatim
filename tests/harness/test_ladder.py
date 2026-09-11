@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import json
 from pathlib import Path
 
 import pytest
@@ -13,8 +15,10 @@ from verbatim_bench.client import ChunkMode, run_session
 from verbatim_bench.corpus import Utterance
 from verbatim_bench.env import HostCounters, fake_gpu_facts
 from verbatim_bench.ladder import (
+    RUNG_PASS_CRITERIA,
     Criterion,
     InvalidReason,
+    LadderResult,
     Rung,
     RungPlan,
     Sensitivity,
@@ -32,6 +36,7 @@ from verbatim_bench.results import percentile
 pytestmark = pytest.mark.cpu
 
 SEED = 20260914
+EVERY_CRITERION = tuple(sorted(RUNG_PASS_CRITERIA, key=lambda criterion: criterion.value))
 
 
 def _rung(
@@ -44,13 +49,25 @@ def _rung(
     invalid_reason: InvalidReason | None = None,
     warm_up_s: float = constants.WARM_UP_S,
     canonical: bool = True,
+    criteria_evaluated: tuple[Criterion, ...] | None = None,
 ) -> Rung:
-    return Rung(
+    """A rung double for the search tests, which need only passes and fails.
+
+    `passed` is derived on `Rung` rather than stored, so the double has to declare what
+    it evaluated. A rung that passed, and one that failed on a criterion the methodology
+    names, evaluated all of them; a rung that is invalid, or that never converged,
+    established nothing. The assertion below keeps the double from claiming a state the
+    real type cannot hold. What a partially evaluating rung reports is the subject of the
+    criteria tests, not of these.
+    """
+    if criteria_evaluated is None:
+        named = criterion is not None and criterion in RUNG_PASS_CRITERIA
+        criteria_evaluated = EVERY_CRITERION if (passed or named) else ()
+    rung = Rung(
         n=n,
         seed=seed,
         p95_ms=10.0 if passed else 10000.0,
         wer_vs_batch1=None,
-        passed=passed,
         first_failing_criterion=criterion if not passed else None,
         valid=valid,
         invalid_reason=invalid_reason,
@@ -58,8 +75,11 @@ def _rung(
         sessions_refused=1 if criterion is Criterion.INTEGRITY_REFUSED else 0,
         sessions_dropped=0,
         sessions_without_final=0,
+        criteria_evaluated=criteria_evaluated,
         canonical_window=canonical,
     )
+    assert rung.passed is passed
+    return rung
 
 
 def _threshold_runner(n_star: int, criterion: Criterion = Criterion.LATENCY):
@@ -357,12 +377,15 @@ def test_ladder_against_the_capacity_limited_null_server() -> None:
             samples = [v for s in sessions for v in s.partial_ms]
             p95 = percentile(samples, 95) if samples else float("inf")
             passed = p95 <= threshold_ms
+            # A double again: this rung really does measure latency, but it declares the
+            # whole criteria set because the assertion below is about the search finding
+            # the null server's capacity. A rung declaring only what it measured could
+            # not pass, which is the point of the criteria tests.
             return Rung(
                 n=n,
                 seed=seed,
                 p95_ms=float(p95),
                 wer_vs_batch1=None,
-                passed=bool(passed),
                 first_failing_criterion=None if passed else Criterion.LATENCY,
                 valid=True,
                 invalid_reason=None,
@@ -370,6 +393,7 @@ def test_ladder_against_the_capacity_limited_null_server() -> None:
                 sessions_refused=0,
                 sessions_dropped=0,
                 sessions_without_final=0,
+                criteria_evaluated=EVERY_CRITERION,
                 canonical_window=False,
             )
 
@@ -396,3 +420,405 @@ def test_ladder_uses_only_frozen_constants() -> None:
     ).read_text()
     assert "0.7" not in text
     assert "1.15" not in text or "LADDER_MULTIPLIER" in text
+
+
+def _partial_rung(n: int = 8, **overrides) -> Rung:
+    """A rung shaped like the one the harness can actually produce today."""
+    fields: dict = {
+        "n": n,
+        "seed": SEED,
+        "p95_ms": 10.0,
+        "wer_vs_batch1": None,
+        "first_failing_criterion": None,
+        "valid": True,
+        "invalid_reason": None,
+        "warm_up_s": float(constants.WARM_UP_S),
+        "sessions_refused": 0,
+        "sessions_dropped": 0,
+        "sessions_without_final": 0,
+        "criteria_evaluated": (Criterion.LATENCY, Criterion.INTEGRITY_REFUSED),
+        "canonical_window": True,
+    }
+    fields.update(overrides)
+    return Rung(**fields)
+
+
+def test_rung_pass_criteria_are_the_ones_the_methodology_names() -> None:
+    named = {
+        Criterion.LATENCY,
+        Criterion.WER,
+        Criterion.INTEGRITY_REFUSED,
+        Criterion.INTEGRITY_DROPPED,
+        Criterion.INTEGRITY_NO_FINAL,
+        Criterion.THERMAL,
+    }
+    assert named == RUNG_PASS_CRITERIA
+    # Neither names a criterion of the run: one is a rung that produced no window, the
+    # other a host that was unfit to measure on.
+    assert Criterion.UNSTABLE not in RUNG_PASS_CRITERIA
+    assert Criterion.INVALID_HOST not in RUNG_PASS_CRITERIA
+
+
+def test_a_rung_that_evaluated_only_latency_and_refusals_does_not_pass() -> None:
+    rung = _partial_rung()
+    assert rung.passed is False
+    # Nothing evaluated failed, so nothing is named. Naming an unevaluated criterion here
+    # would report a failure for a measurement nobody took.
+    assert rung.first_failing_criterion is None
+    assert rung.criteria_unevaluated == {
+        Criterion.WER,
+        Criterion.INTEGRITY_DROPPED,
+        Criterion.INTEGRITY_NO_FINAL,
+        Criterion.THERMAL,
+    }
+
+
+def test_a_rung_passes_only_once_every_criterion_was_evaluated_and_met() -> None:
+    rung = _partial_rung(criteria_evaluated=EVERY_CRITERION)
+    assert rung.passed is True
+    assert rung.criteria_unevaluated == frozenset()
+    one_short = _partial_rung(criteria_evaluated=EVERY_CRITERION[:-1])
+    assert one_short.passed is False
+    assert one_short.first_failing_criterion is None
+
+
+def test_an_evaluated_criterion_that_failed_is_still_named() -> None:
+    rung = _partial_rung(
+        p95_ms=10000.0,
+        first_failing_criterion=Criterion.LATENCY,
+        criteria_evaluated=EVERY_CRITERION,
+    )
+    assert rung.passed is False
+    assert rung.first_failing_criterion is Criterion.LATENCY
+
+
+def test_criteria_evaluated_round_trips_through_to_json_list() -> None:
+    result = LadderResult(
+        rungs=(_partial_rung(), _partial_rung(10, criteria_evaluated=EVERY_CRITERION)),
+        s=None,
+        ending_criterion=None,
+        s_per_seed={},
+        aborted=False,
+        abort_reason=None,
+        sensitivity=None,
+    )
+    rows = result.to_json_list()
+    assert rows[0]["criteria_evaluated"] == ["latency", "integrity:refused"]
+    assert rows[0]["passed"] is False
+    assert rows[0]["first_failing_criterion"] is None
+    assert rows[1]["criteria_evaluated"] == [criterion.value for criterion in EVERY_CRITERION]
+    assert rows[1]["passed"] is True
+    # The host-fitness vocabulary is untouched by an unevaluated criterion.
+    assert rows[0]["valid"] is True
+    assert rows[0]["invalid_reason"] is None
+
+
+def test_a_ladder_of_partially_evaluated_rungs_reports_no_passing_rung() -> None:
+    def _run(plan: RungPlan) -> Rung:
+        return _partial_rung(plan.n)
+
+    outcome = run_ladder(_run, n0=4, seeds=(SEED,))
+    assert outcome.s == 0
+    assert outcome.rungs
+    assert not any(rung.passed for rung in outcome.rungs)
+    assert outcome.ending_criterion is None
+
+
+#: One transport frame per measurement chunk, which is not the frozen 20 ms framing.
+#: Canonical framing draws a fresh jitter offset for each frame's deadline while sleeping
+#: to the unjittered one, so the pooled pacing-slip p99 lands above the frozen tolerance
+#: and every rung comes back invalid, whatever the server did. At one frame per chunk the
+#: client draws no jitter and the generator meets the schedule it grades itself against,
+#: which is what these tests need in order to be about the ladder. The gate itself is
+#: tested on canonical framing, in `test_rung_criteria.py`.
+PACEABLE_FRAMING = ["--frame-ms", "160"]
+
+#: A rung small enough for a unit test, with the same three phases as a frozen one: a
+#: ramp, a warm-up whose readings are long enough to hold several chunks, and a window.
+#: Every duration is overridden, so every rung it produces is non-canonical by
+#: construction, which is what a run this short is.
+FAST_RUNG = [
+    "--ramp-s",
+    "0.1",
+    "--warm-up-s",
+    "0.5",
+    "--warm-up-reading-s",
+    "0.5",
+    "--warm-up-cap-s",
+    "6.0",
+    "--window-s",
+    "1.5",
+    *PACEABLE_FRAMING,
+]
+
+
+def _ladder_args(argv: list[str]):
+    from verbatim_bench.cli import _build_parser
+
+    return _build_parser().parse_args(argv)
+
+
+def _minimal_ladder_argv(tmp_path) -> list[str]:
+    return [
+        "ladder",
+        "--endpoint",
+        "ws://127.0.0.1:1/v1/stream",
+        "--manifest",
+        str(tmp_path / "m.jsonl"),
+        "--arm",
+        "a",
+        "--out",
+        str(tmp_path / "out"),
+    ]
+
+
+async def _run_fast_ladder(tmp_path, config: NullServerConfig, extra: list[str]) -> dict:
+    """Run one short ladder against the null server and return its `ladder.json`."""
+    from test_pace import make_manifest, make_wav
+    from verbatim_bench.cli import main
+
+    wav = tmp_path / "utt.wav"
+    make_wav(wav, 1.0)
+    manifest = make_manifest(tmp_path / "m.jsonl", [wav], ["utt-0"])
+    out_dir = tmp_path / "ladder-out"
+    async with NullServer(config) as server:
+        argv = [
+            "ladder",
+            "--endpoint",
+            server.endpoint,
+            "--manifest",
+            str(manifest),
+            "--arm",
+            "a",
+            "--n0",
+            "1",
+            "--seeds",
+            str(SEED),
+            "--out",
+            str(out_dir),
+            *extra,
+        ]
+        rc = await asyncio.get_running_loop().run_in_executor(None, main, argv)
+    assert rc == 0
+    return json.loads((out_dir / "ladder.json").read_text(encoding="utf-8"))
+
+
+def test_the_rung_load_spec_carries_the_frozen_window_and_a_real_ramp(tmp_path) -> None:
+    """The defect: `_make_rung` built its spec with `ramp_s=0.0` and no window at all.
+
+    Without `window_s` the load generator runs each slot exactly once, so the six-stream
+    rung measured on 2026-09-11 was 15.1 s of wall clock and 106 samples against a frozen
+    window of 180 s. The spec the executor builds is checked here directly, because it is
+    the thing that was wrong and a four-minute rung is not a unit test.
+    """
+    from verbatim_bench.cli import ladder_load_spec
+
+    args = _ladder_args(_minimal_ladder_argv(tmp_path))
+    spec = ladder_load_spec(args, RungPlan(n=6, seed=SEED), ChunkMode.parse(160))
+    assert spec.sessions == 6
+    assert spec.window_s == constants.WINDOW_S
+    assert spec.warm_up_s == constants.WARM_UP_S
+    assert spec.warm_up_reading_s == constants.WARM_UP_READING_S
+    assert spec.warm_up_convergence == constants.WARM_UP_CONVERGENCE
+    assert spec.warm_up_cap_s == constants.WARM_UP_CAP_S
+    assert spec.ramp_s > 0.0, "the rung executor forced the ramp to zero"
+    # An overridden plan still reaches the load, or the ladder could not be tested at all.
+    overridden = RungPlan(n=2, seed=SEED, warm_up_s=1.0, window_s=2.0)
+    fast = ladder_load_spec(args, overridden, ChunkMode.parse(160))
+    assert (fast.warm_up_s, fast.window_s) == (1.0, 2.0)
+
+
+async def test_a_rungs_wall_clock_is_consistent_with_the_window_it_claims(tmp_path) -> None:
+    payload = await _run_fast_ladder(tmp_path, NullServerConfig(partial_delay_ms=20.0), FAST_RUNG)
+    assert payload["rungs"]
+    for rung in payload["rungs"]:
+        assert rung["window_s"] == pytest.approx(1.5)
+        # A run cannot hold a window open for longer than it ran, nor skip the warm-up
+        # that precedes it. The rung that shipped claimed 180 s and ran for 15.1 s.
+        assert rung["wall_clock_s"] >= rung["window_s"] + rung["warm_up_s"]
+        assert rung["warm_up_s"] >= 0.5
+
+
+def test_canonical_window_is_false_with_default_arguments_when_no_window_ran(tmp_path) -> None:
+    """The flag was `args.warm_up_s == WARM_UP_S and args.window_s == WINDOW_S`.
+
+    Nothing about the arguments can fail that check, which is why every rung produced on
+    2026-09-11 carried `canonical_window: true` while running no window at all. The
+    argument comparison still exists, as a warning, and still says nothing has been
+    overridden; the flag now comes from the load that ran.
+    """
+    from verbatim_bench.cli import _overrides_frozen_durations
+    from verbatim_bench.pace import executed_canonical_window
+    from verbatim_bench.results import RunResult
+
+    args = _ladder_args(_minimal_ladder_argv(tmp_path))
+    assert _overrides_frozen_durations(args) is False
+    ran_no_window = RunResult(
+        spec_dict={
+            "window_s": float(constants.WINDOW_S),
+            "warm_up_s": float(constants.WARM_UP_S),
+            "warm_up_reading_s": float(constants.WARM_UP_READING_S),
+            "warm_up_convergence": float(constants.WARM_UP_CONVERGENCE),
+            "warm_up_cap_s": float(constants.WARM_UP_CAP_S),
+        },
+        wall_clock_s=15.1,
+    )
+    assert executed_canonical_window(ran_no_window) is False
+
+
+async def test_a_warm_up_that_never_converges_produces_an_unstable_rung(tmp_path) -> None:
+    """`Criterion.UNSTABLE` was defined and unreachable. This is the path that reaches it.
+
+    The frozen document: two consecutive readings within ten percent open the window, and
+    failure to converge by the cap fails the rung as unstable. The null server's latency
+    grows without bound here, so no two readings ever agree.
+    """
+    payload = await _run_fast_ladder(
+        tmp_path,
+        NullServerConfig(partial_delay_ms=20.0, partial_delay_growth_ms_per_s=300.0),
+        [
+            "--ramp-s",
+            "0.0",
+            "--warm-up-s",
+            "0.5",
+            "--warm-up-reading-s",
+            "0.4",
+            "--warm-up-cap-s",
+            "2.0",
+            "--window-s",
+            "0.5",
+            *PACEABLE_FRAMING,
+        ],
+    )
+    assert payload["rungs"]
+    unstable = payload["rungs"][0]
+    assert unstable["first_failing_criterion"] == Criterion.UNSTABLE.value
+    # No window opened, so this rung established nothing and reports no percentile.
+    assert unstable["criteria_evaluated"] == []
+    assert unstable["passed"] is False
+    assert unstable["canonical_window"] is False
+    assert payload["ending_criterion"] == Criterion.UNSTABLE.value
+    assert payload["config"]["canonical_window"] is False
+
+
+def test_the_serialised_rung_stays_inside_the_frozen_schema() -> None:
+    """`ladder.json` may carry the executed window; a row's rung object may not.
+
+    The rung in `row.schema.v3.json` sets `additionalProperties: false`, and DR-0001
+    makes adding a field to it a schema bump and a full re-run. The executed window is
+    therefore opt-in, and the default shape stays exactly the frozen one.
+    """
+    import pathlib as _pathlib
+
+    schema_path = (
+        _pathlib.Path(__file__).resolve().parents[2]
+        / "benchmarks"
+        / "schema"
+        / "row.schema.v3.json"
+    )
+    allowed = set(
+        json.loads(schema_path.read_text(encoding="utf-8"))["properties"]["ladder"]["items"][
+            "properties"
+        ]
+    )
+    result = LadderResult(
+        rungs=(_partial_rung(),),
+        s=None,
+        ending_criterion=None,
+        s_per_seed={},
+        aborted=False,
+        abort_reason=None,
+        sensitivity=None,
+    )
+    assert set(result.to_json_list()[0]) <= allowed
+    with_window = result.to_json_list(include_window=True)[0]
+    assert {"window_s", "wall_clock_s"} <= set(with_window)
+    assert not set(with_window) <= allowed
+
+
+def test_a_non_canonical_plan_clears_a_rung_flag_but_a_canonical_one_cannot_set_it() -> None:
+    """The plan narrows and never widens.
+
+    A rung decides `canonical_window` from the load it ran. A plan that asked for
+    overridden durations can only make that worse. If the plan could set it, the ladder
+    would restore exactly the guard that certified fifteen-second rungs as canonical.
+    """
+    from verbatim_bench.ladder import _narrow_canonical
+
+    frozen_plan = RungPlan(n=4, seed=SEED)
+    overridden_plan = RungPlan(n=4, seed=SEED, warm_up_s=1.0, window_s=2.0)
+    ran_canonical = _partial_rung(canonical_window=True)
+    ran_nothing = _partial_rung(canonical_window=False)
+    assert _narrow_canonical(ran_canonical, frozen_plan).canonical_window is True
+    assert _narrow_canonical(ran_canonical, overridden_plan).canonical_window is False
+    assert _narrow_canonical(ran_nothing, frozen_plan).canonical_window is False
+    assert _narrow_canonical(ran_nothing, overridden_plan).canonical_window is False
+
+
+def test_the_plan_no_longer_rewrites_the_warm_up_a_rung_reports() -> None:
+    """A rung reports the warm-up it ran, which the ladder used to overwrite."""
+
+    def _run(plan: RungPlan) -> Rung:
+        return _partial_rung(plan.n, warm_up_s=7.5)
+
+    outcome = run_ladder(_run, n0=4, seeds=(SEED,), warm_up_s=1.0, window_s=2.0)
+    assert outcome.rungs
+    assert all(rung.warm_up_s == 7.5 for rung in outcome.rungs)
+
+
+async def test_the_rung_executor_declares_only_the_criteria_it_established(tmp_path) -> None:
+    """The defect DR-0004 names, checked at the executor that has it.
+
+    The rung this harness can run today measures latency, counts refusals, counts the
+    streams the server accepted and then lost, and counts the streams that ended without
+    a final. Word error rate is absent because this ladder was given no batch-1 reference
+    to compare against, and thermal is absent because nothing collects throttle events.
+    Neither is written as a literal by anybody: they are simply not in what the rung
+    claims, so the rung cannot report a pass, and it names no failing criterion because
+    nothing it evaluated failed.
+    """
+    # Same-directory import, not `tests.harness.test_pace`; see the note in test_schema_v2.
+    from test_pace import make_manifest, make_wav
+    from verbatim_bench.cli import main
+
+    wav = tmp_path / "utt.wav"
+    make_wav(wav, 1.0)
+    manifest = make_manifest(tmp_path / "m.jsonl", [wav], ["utt-0"])
+    out_dir = tmp_path / "ladder-out"
+    async with NullServer(NullServerConfig(partial_delay_ms=20.0)) as server:
+        argv = [
+            "ladder",
+            "--endpoint",
+            server.endpoint,
+            "--manifest",
+            str(manifest),
+            "--arm",
+            "a",
+            "--n0",
+            "1",
+            "--seeds",
+            str(SEED),
+            "--out",
+            str(out_dir),
+            *FAST_RUNG,
+        ]
+        rc = await asyncio.get_running_loop().run_in_executor(None, main, argv)
+    assert rc == 0
+    payload = json.loads((out_dir / "ladder.json").read_text(encoding="utf-8"))
+    assert payload["rungs"]
+    for rung in payload["rungs"]:
+        assert rung["criteria_evaluated"] == [
+            "latency",
+            "integrity:refused",
+            "integrity:dropped",
+            "integrity:no_final",
+        ]
+        assert rung["passed"] is False
+        assert rung["first_failing_criterion"] is None
+        assert rung["wer_vs_batch1"] is None
+        # Host fitness is a separate question and this host was fine.
+        assert rung["valid"] is True
+        assert rung["invalid_reason"] is None
+    # No reference was supplied, so nothing was compared and the run says so.
+    assert payload["config"]["wer_batch1"] is None
+    assert payload["s"] == 0

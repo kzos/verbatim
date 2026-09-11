@@ -16,9 +16,12 @@ promised date — that is for triage once an entry becomes an issue.
   O(chunks × partials) instead of linear. Both lists are already sorted by time, so a single merge walk
   with one cursor into `partial_events` would do the same match in O(chunks + partials).~~
 - `bench/src/verbatim_bench/client.py` (`_FINAL_WAIT_S`) — the timeout for the first server message and
-  for the final after `end` is a fixed module constant (15 s) with no way to override it per run.
+  for the read after `end` is a fixed module constant (15 s) with no way to override it per run.
   Thread it through `LoadSpec`/`run_session` as a parameter, so a slower or more loaded server under
-  test does not need a code change to avoid false timeouts.
+  test does not need a code change to avoid false timeouts. This matters more now that the reader
+  reads every final rather than returning at the first: the read ends when the peer closes, so a
+  server that finalises and then holds the socket open costs the full wait on every session instead
+  of ending the moment a final arrives.
 - `bench/src/verbatim_bench/client.py::SessionResult.started_at_s` — defaults to `0.0` and is only
   assigned once the session handshake succeeds, so a session that errors out before the first server
   message reports `started_at_s == 0.0`, indistinguishable from one that genuinely started at the
@@ -191,21 +194,50 @@ promised date — that is for triage once an entry becomes an issue.
   taken in the same window, one real and one an artefact of the other**, which is the cost of running a
   mutation pass while an unrelated livelock is live in the tree.
 
-- `bench/src/verbatim_bench/client.py` — **the pacing slip is scored against a deadline the sender does
-  not follow.** The slip is measured against `t0 + i * frame_period + jitter`, jitter uniform in plus or
-  minus `FRAME_JITTER_MS` = 10, while the sleep before each send targets the unjittered
-  `t0 + i * frame_period`. So the reported slip is `max(0, ε − J)` with ε the true overshoot near 1 ms,
-  which gives p50 about 1.1 ms, p99 about 10.8 and max about 12.8 regardless of anything the server
-  does. Those are exactly the four gated arms measured on 2026-09-11, to the tenth of a millisecond, and
-  they are identical across precisions because the jitter is seeded per session. The generator's true
-  slip against the schedule it follows is about 1 ms at p50, inside the 5.0 ms tolerance.
-  **This record previously said the generator misses its own tolerance and that no run is valid. That
-  was wrong and is withdrawn.** The frozen document lists `FRAME_JITTER_MS` under the workload
-  constants, so the jitter belongs on the wire: the sender should sleep to the jittered deadline, which
-  makes both the workload and the metric honest. Until it does, a `pacing_slip` criterion would
-  invalidate every run for a harness reason.
+- ~~`bench/src/verbatim_bench/` — **the load generator misses its own frozen pacing tolerance, so no run
+  taken so far is valid.** `PACING_SLIP_P99_MAX_MS` is 5.0. Measured 2026-09-11 over four gated
+  interleaved arms on one A6000, six streams, the machine otherwise idle: p99 slip is 10.8 to 10.9 ms
+  on every arm, p50 about 1.1 ms, max under 13 ms, over roughly 38,000 frames each. It is identical
+  across precisions, so it is the generator and not the server. Nothing has ever noticed because `valid`
+  is written `True` unconditionally. Implementing this check is the cheapest of the unevaluated criteria,
+  needs neither the client fix nor the window fix, and is the only one that can fail on real data today.
+  It will mark every existing run invalid, which is the correct answer.~~
+  **The check exists.** `ladder.pacing_slip_validity` is the one definition of the tolerance and
+  `rung_validity` defers to it; a rung whose pooled slip p99 is over it is `valid=false` with
+  `invalid_reason: pacing_slip`, establishes no criterion and reports no percentile, and two
+  consecutive invalid rungs abort the ladder as host unfit. It fires on the shipped configuration: run
+  against the null server on this machine on 2026-09-11, four sessions at the frozen 20 ms framing, the
+  pooled slip over 800 frames is p50 0.9, p95 9.8, p99 10.8, max 11.8 ms, which reproduces the live
+  A6000 figure above on a server that does no work at all. **The finding this leaves open is the next
+  entry.**
 
-- `bench/src/verbatim_bench/client.py` — **the load client stops measuring at the first final, and a
+- `bench/src/verbatim_bench/client.py::_run_session_inner` — **the seeded frame jitter shapes no send
+  and only corrupts the slip measurement.** The send loop sleeps to `t0 + frame_index * frame_period_s`
+  and then grades that send against `t0 + frame_index * frame_period_s + jitter`, where `jitter` is a
+  fresh draw in ±`FRAME_JITTER_MS`. Nothing schedules on the jittered deadline, so the offset never
+  moves a frame on the wire; it only makes a punctual send look up to `FRAME_JITTER_MS` late. Measured
+  against the null server on this machine on 2026-09-11, same four sessions, same code path, changing
+  only the framing: at 20 ms frames with a chunk of 160, where the draw happens, the pooled slip p99 is
+  10.8 ms; at one 160 ms frame per chunk, where `effective_frame_ms == chunk.ms` and the draw is
+  skipped, it is 2.1 ms over 104 frames. The whole excess is the draw. That leaves two readings of the
+  frozen constant and the document does not choose between them: either the jitter is meant to shape
+  the send, in which case the sleep should target the jittered deadline and the slip is then measuring
+  something real, or it is not, in which case the deadline should not carry it. **Deciding that is a
+  change to what every future run measures and is not a tidy-up**; until it is decided, every canonical
+  rung is invalid for a reason that is at least partly the measurement and not the schedule. Not
+  changed here because this branch implements the criteria and must not quietly disarm the one that
+  fires.
+  **Decided 2026-09-11: the jitter belongs on the wire, so the sleep targets the jittered deadline.**
+  `benchmarks/METHODOLOGY.md` lists `FRAME_JITTER_MS` among the **workload** constants, beside
+  `SESSION_PROFILE`, `PACING_PROFILE` and `FRAME_MS`, and a workload constant describes what is sent.
+  Jitter that exists only in the scoring is not a workload: nothing on the wire carries it, the server
+  never sees it, and the only thing it perturbs is the metric. Grading against the nominal deadline
+  would make the number honest and silently delete a workload property the freeze declares. So the
+  sender sleeps to `t0 + i * frame_period + jitter` and is graded against the same deadline, which makes
+  the workload and the metric true at once. Not yet implemented; it is one line and it changes what
+  every future run measures, so it lands on its own with its own before-and-after numbers.
+
+- ~~`bench/src/verbatim_bench/client.py` — **the load client stops measuring at the first final, and a
   stream has several.** The server emits a `final` frame for every hypothesis with `is_final`, which is
   one per endpointed utterance, so a stream with an internal silence of the endpointing length produces
   several. The reader returns on the first one. Three consequences, all live:
@@ -217,7 +249,11 @@ promised date — that is for triage once an entry becomes an issue.
   2026-09-11, 95.1 percent. **This is a harness defect, not a server integrity failure**, and the two
   must not be conflated in the rung's integrity criterion.
   The same defect bit a probe of mine the same day: reading one final made leading silence look as
-  though it changed the transcript, when it had only moved where the server segmented.
+  though it changed the transcript, when it had only moved where the server segmented.~~
+  **Resolved.** The reader now reads to the close of the socket, `final_text` is the segments joined in
+  arrival order, `finals_received` counts them, and `final_ms` is measured to the last final. The
+  coverage loss is not re-measured here: that needs the live server, and this branch was built against
+  the null server.
 
 - `bench/src/verbatim_bench/cli.py::_make_rung` — **the ladder never runs the window it reports.** The
   rung executor builds its `LoadSpec` without `window_s`, which in `run_load` takes the branch that runs
@@ -231,6 +267,16 @@ promised date — that is for triage once an entry becomes an issue.
   it certifies the arguments and not the run. Fix: pass the window through, decide what the warm-up does
   operationally or delete it, derive `canonical_window` from the executed load, and guard it with a test
   that reddens against today's `_make_rung`. Until then no ladder output is a capacity.
+  **Done 2026-09-11** by [DR-0005](decisions/0005-the-ladder-runs-the-window-it-reports.md): a rung now
+  ramps to `N`, waits for every slot's session to be acknowledged by the server, runs the warm-up
+  convergence protocol at `N`, and takes its percentile only from samples received inside the window.
+  Reaching `WARM_UP_CAP_S` without two readings agreeing within `WARM_UP_CONVERGENCE` fails the rung as
+  `Criterion.UNSTABLE`, which was defined and unreachable. `canonical_window` is read from the load that
+  executed, and `Rung` carries the window and the wall clock it ran so the two can be checked against
+  each other. Reading latency mid-session forced the watermark match into a streaming form,
+  `client.WatermarkMatcher`, which `match_partials_by_watermark` is now written in terms of; every
+  sample carries the moment it was matched. **No rung produced before this commit is a capacity, and
+  none becomes one retrospectively.**
 
 - `bench/src/verbatim_bench/cli.py::_make_rung` — **the rung evaluates one of the four criteria the
   methodology defines and reports the other three as passing.** `benchmarks/METHODOLOGY.md` section 56
@@ -244,8 +290,27 @@ promised date — that is for triage once an entry becomes an issue.
   Three of the missing checks need no new collection: `SessionResult` already carries
   `finals_received`, `pacing_slip_ms` and `final_text`/`reference_text`.
   **The first fix is not any of these checks. It is that a rung must not report `passed=True` for a
-  criterion it did not evaluate**, which turns four hardcoded passes into an honest invalid. Every
-  ladder output this project has produced would come back invalid under that rule, which is correct.
+  criterion it did not evaluate.** **Done 2026-09-11** by
+  [DR-0004](decisions/0004-a-rung-records-which-criteria-it-evaluated.md): a rung now records
+  `criteria_evaluated`, `passed` is derived from it rather than stored, and every ladder output this
+  project has produced comes back `passed: false`, which is correct. The route this entry proposed for
+  it, turning the four hardcoded passes into an honest *invalid*, was rejected there: `valid` and
+  `invalid_reason` name host fitness, and a criterion nobody evaluated is not a host being unfit.
+  **The three checks the returned data supports were then implemented 2026-09-11.** The rung reduction
+  moved out of the command into `ladder.rung_from_run`, a pure function of the load result, and it now
+  evaluates word error rate, both halves of integrity the client can see, and applies the pacing-slip
+  validity threshold. `sessions_dropped` and `sessions_without_final` are counts and not literals: a
+  stream that failed before the server acknowledged it is refused, one that failed after is dropped, and
+  `finals_received == 0` is a stream that ended without a transcript, which only became a real question
+  once the client stopped reading one final per stream. `InvalidReason.PACING_SLIP` is reachable and
+  fires. **What stays open is thermal.** Zero GPU throttle events over the window needs a collection
+  nothing in the harness performs, so `Criterion.THERMAL` is still unreachable, it is deliberately
+  absent from every `criteria_evaluated`, and therefore **no rung can report a pass until throttle
+  counters are sampled across the window.** That is the correct answer and not a bug to route around.
+  Two smaller pieces stay open with it: the integrity criterion's "back-pressured into audio loss" and
+  "load generator under half its pinned CPU budget" clauses have no counterpart in the rung, and six of
+  the eight `InvalidReason` values are still unreachable from the ladder, which collects no host record
+  at all.
 
 - `bench/src/verbatim_bench/cli.py::_make_rung` — the ladder reports the **secondary** latency metric
   as though it were the primary. `LATENCY_PRIMARY = "word_emission"`, with `chunk_watermark` as the

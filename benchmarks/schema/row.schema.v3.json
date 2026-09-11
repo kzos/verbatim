@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:verbatim:schema:vb-results:2",
-  "title": "vb-results/2 results row",
-  "description": "One measured row with environment, ladder and comparability blocks.",
+  "$id": "urn:verbatim:schema:vb-results:3",
+  "title": "vb-results/3 results row",
+  "description": "One measured row with environment, ladder and comparability blocks. Identical to vb-results/2 except that a ladder rung records which criteria it evaluated.",
   "type": "object",
   "required": [
     "schema",
@@ -18,7 +18,7 @@
   "additionalProperties": false,
   "properties": {
     "schema": {
-      "const": "vb-results/2"
+      "const": "vb-results/3"
     },
     "harness": {
       "type": "object",
@@ -605,10 +605,6 @@
             }
           },
           "partials_received": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "finals_received": {
             "type": "integer",
             "minimum": 0
           },
@@ -1749,6 +1745,7 @@
       "type": "array",
       "items": {
         "type": "object",
+        "description": "A rung. criteria_evaluated lists the criteria this rung actually established; passed is true only when every criterion the methodology names appears there and was met; first_failing_criterion names a criterion that was evaluated and failed, never one that was not evaluated.",
         "additionalProperties": false,
         "properties": {
           "n": {
@@ -1786,6 +1783,22 @@
               "invalid_host",
               null
             ]
+          },
+          "criteria_evaluated": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "latency",
+                "wer",
+                "integrity:refused",
+                "integrity:dropped",
+                "integrity:no_final",
+                "thermal",
+                "unstable",
+                "invalid_host"
+              ]
+            }
           },
           "valid": {
             "type": "boolean"

@@ -66,6 +66,28 @@ async def test_null_server_finalises_on_end() -> None:
             await ws.recv()
 
 
+async def test_segment_finals_emit_mid_stream_and_partials_continue_after_them() -> None:
+    config = NullServerConfig(segment_finals=((2, "hello"),), final_text="again")
+    async with (
+        NullServer(config) as server,
+        websockets.connect(f"{server.endpoint}?chunk_ms=160") as ws,
+    ):
+        await recv_json(ws)
+        frames = []
+        for _ in range(3):
+            await ws.send(b"\x00" * CHUNK_BYTES_160MS)
+            frames.append(await recv_json(ws))
+            if len(frames) == 2:
+                frames.append(await recv_json(ws))
+        assert [f["type"] for f in frames] == ["partial", "partial", "final", "partial"]
+        assert frames[2]["text"] == "hello"
+        assert frames[2]["audio_s"] == pytest.approx(0.32)
+        await ws.send(json.dumps({"type": "end"}))
+        terminal = await recv_json(ws)
+        assert terminal["type"] == "final"
+        assert terminal["text"] == "again"
+
+
 async def test_null_server_reports_error_when_configured() -> None:
     async with (
         NullServer(NullServerConfig(fail_after_chunks=2)) as server,

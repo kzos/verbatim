@@ -34,6 +34,7 @@ def _session(
     error: str | None = None,
     chunks: int = 2,
     partials_received: int | None = None,
+    finals_received: int | None = None,
 ) -> dict[str, Any]:
     partials = [10.0, 12.0] if partials is None else partials
     return {
@@ -47,6 +48,9 @@ def _session(
         "final_ms": final,
         "partial_ms": list(partials),
         "partials_received": len(partials) if partials_received is None else partials_received,
+        "finals_received": (
+            (1 if final is not None else 0) if finals_received is None else finals_received
+        ),
         "final_text": text,
         "reference_text": text,
         "words": [] if error else [{"w": text, "s": 0, "e": 160}],
@@ -112,7 +116,9 @@ def build_doc(sessions: list[dict[str, Any]], **overrides: Any) -> dict[str, Any
             "sessions_failed": len(sessions) - completed,
             "chunks_sent": sum(s["chunks"] for s in sessions),
             "partials_received": sum(len(s["partial_ms"]) for s in sessions),
-            "finals_received": len(finals),
+            "finals_received": sum(
+                s.get("finals_received", 1 if s["final_ms"] is not None else 0) for s in sessions
+            ),
             "wall_clock_s": 1.5,
             "pacing_slip_ms": {"p50": 0.5, "p95": 1.0, "max": 1.5},
             "invariance": {
@@ -377,6 +383,46 @@ def test_partials_received_reconciles_against_per_session_counts() -> None:
     stamp_checksum(doc)
     report = verify_document(doc)
     assert report.ok, [f"{f.code} {f.path}: {f.message}" for f in report.findings]
+
+
+def test_finals_received_reconciles_against_per_session_counts() -> None:
+    # One endpointed stream carrying three finals: the run total is three, and it
+    # is three because the session says so, not because one session ended.
+    session = _session("s0000", "utt-1", "hello there world", finals_received=3)
+    doc = build_doc([session])
+    assert doc["result"]["finals_received"] == 3
+    stamp_checksum(doc)
+    report = verify_document(doc)
+    assert report.ok, [f"{f.code} {f.path}: {f.message}" for f in report.findings]
+
+    doc["result"]["finals_received"] = 1
+    stamp_checksum(doc)
+    report = verify_document(doc)
+    assert not report.ok
+    assert any(
+        finding.code == "COUNTER_MISMATCH" and finding.path == "result.finals_received"
+        for finding in report.findings
+    )
+
+
+def test_finals_received_falls_back_to_a_lower_bound_without_per_session_counts() -> None:
+    doc = build_doc(default_sessions())
+    for session in doc["sessions"]:
+        del session["finals_received"]
+    # Two sessions, each ended with a final, but the stream count is unknowable
+    # from this document: five finals is consistent, one is not.
+    doc["result"]["finals_received"] = 5
+    stamp_checksum(doc)
+    assert verify_document(doc).ok
+
+    doc["result"]["finals_received"] = 1
+    stamp_checksum(doc)
+    report = verify_document(doc)
+    assert not report.ok
+    assert any(
+        finding.code == "COUNTER_MISMATCH" and finding.path == "result.finals_received"
+        for finding in report.findings
+    )
 
 
 def test_partials_received_check_skipped_when_sessions_lack_the_field() -> None:

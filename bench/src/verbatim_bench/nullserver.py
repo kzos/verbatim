@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import json
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -34,8 +35,18 @@ class NullServerConfig:
     fail_after_chunks: int | None = None
     capacity: int | None = None
     overload_penalty_ms: float = 160.0
+    #: Milliseconds added to `partial_delay_ms` per second since the server started.
+    #: A server whose latency climbs without bound never settles, which is the only way
+    #: to exercise the warm-up cap without waiting for a real one to misbehave.
+    partial_delay_growth_ms_per_s: float = 0.0
     word_script: tuple[str, ...] | None = None
     retract_mode: bool = False
+    # Mid-stream finals as (chunk index, text) pairs, emitted just after the
+    # partial for that chunk. A real server marks a hypothesis final at every
+    # endpoint it detects, so a stream with an internal silence carries several
+    # finals and keeps sending partials after each; this reproduces that shape
+    # without a model. The terminal final on `end` is always sent as well.
+    segment_finals: tuple[tuple[int, str], ...] = ()
 
 
 @dataclass
@@ -67,8 +78,10 @@ class NullServer:
         self._ids = itertools.count(1)
         self._lock = asyncio.Lock()
         self._live = 0
+        self._started_at = time.monotonic()
 
     async def __aenter__(self) -> NullServer:
+        self._started_at = time.monotonic()
         self._server = await websockets.serve(self._handle, "127.0.0.1", 0)
         sock = self._server.sockets
         if not sock:
@@ -130,8 +143,17 @@ class NullServer:
             return " ".join(self.config.word_script)
         return self.config.final_text
 
+    def _final_frame(self, text: str, audio_s: float, words: bool) -> dict[str, Any]:
+        frame: dict[str, Any] = {"type": "final", "text": text, "audio_s": audio_s}
+        if words or self.config.emit_words:
+            frame["words"] = []
+        return frame
+
     async def _chunk_delay_s(self) -> float:
         delay_ms = self.config.partial_delay_ms
+        if self.config.partial_delay_growth_ms_per_s:
+            elapsed_s = time.monotonic() - self._started_at
+            delay_ms += self.config.partial_delay_growth_ms_per_s * elapsed_s
         if self.config.capacity is not None:
             async with self._lock:
                 live = self._live
@@ -157,6 +179,11 @@ class NullServer:
                     }
                 )
             )
+
+        async def _emit_segment_finals(audio_s: float) -> None:
+            for at_chunk, text in self.config.segment_finals:
+                if at_chunk == session.chunks_emitted:
+                    await ws.send(json.dumps(self._final_frame(text, audio_s, words)))
 
         async def maybe_fail() -> bool:
             if (
@@ -192,13 +219,11 @@ class NullServer:
                             session.chunks_emitted += 1
                             audio_s = session.received_bytes / _BYTES_PER_SECOND
                             await _emit_partial(audio_s)
-                        final: dict[str, Any] = {
-                            "type": "final",
-                            "text": self._final_text_for(),
-                            "audio_s": session.received_bytes / _BYTES_PER_SECOND,
-                        }
-                        if words or self.config.emit_words:
-                            final["words"] = []
+                        final = self._final_frame(
+                            self._final_text_for(),
+                            session.received_bytes / _BYTES_PER_SECOND,
+                            words,
+                        )
                         await ws.send(json.dumps(final))
                         await ws.close()
                         return
@@ -215,6 +240,7 @@ class NullServer:
                     # chunk boundary has not been recognised past it.
                     audio_s = session.chunks_emitted * frame_bytes / _BYTES_PER_SECOND
                     await _emit_partial(audio_s)
+                    await _emit_segment_finals(audio_s)
                     if await maybe_fail():
                         return
         except websockets.exceptions.ConnectionClosed:

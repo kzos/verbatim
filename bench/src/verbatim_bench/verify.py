@@ -25,6 +25,7 @@ from typing import Any, Final
 from verbatim_bench import constants
 from verbatim_bench import schema as _schema
 from verbatim_bench.canonical import verify_checksum
+from verbatim_bench.ladder import RUNG_PASS_CRITERIA
 from verbatim_bench.results import percentile
 
 PERCENTILE_TOLERANCE_MS: Final = 0.1
@@ -153,24 +154,60 @@ def _check_pacing_slip(result: Mapping[str, Any], findings: list[Finding]) -> No
             )
 
 
+def _is_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _check_finals_received(
+    result: Mapping[str, Any], sessions: list[Mapping[str, Any]], findings: list[Finding]
+) -> None:
+    """Reconcile ``result.finals_received`` against the sessions.
+
+    A stream carries one final per endpoint the server found in it, so the run
+    total is the sum of the per-session counts and not the number of sessions that
+    ended with a final. Documents written before the client counted finals carry no
+    per-session count; the only claim their sessions support is the lower bound,
+    that a session with a final latency received at least one final.
+    """
+    actual = result.get("finals_received")
+    if actual is None or not _is_number(actual):
+        return
+    if all(_is_count(s.get("finals_received")) for s in sessions):
+        want = sum(int(s["finals_received"]) for s in sessions)
+        if actual != want:
+            findings.append(
+                Finding(
+                    Level.ERROR,
+                    "COUNTER_MISMATCH",
+                    f"finals_received is {actual!r} but sessions imply {want}",
+                    "result.finals_received",
+                )
+            )
+        return
+    floor = sum(1 for s in sessions if s.get("final_ms") is not None)
+    if float(actual) < floor:
+        findings.append(
+            Finding(
+                Level.ERROR,
+                "COUNTER_MISMATCH",
+                f"finals_received is {actual!r} but {floor} sessions recorded a final latency",
+                "result.finals_received",
+            )
+        )
+
+
 def _check_counters(
     doc: Mapping[str, Any], sessions: list[Mapping[str, Any]], findings: list[Finding]
 ) -> None:
     result = _result_of(doc)
     completed = sum(1 for s in sessions if s.get("error") is None)
     failed = sum(1 for s in sessions if s.get("error") is not None)
-    final_count = sum(1 for s in sessions if s.get("final_ms") is not None)
     expected = {
         "sessions_started": len(sessions),
         "sessions_completed": completed,
         "sessions_failed": failed,
-        "finals_received": final_count,
     }
-    if all(
-        isinstance(s.get("partials_received"), int)
-        and not isinstance(s.get("partials_received"), bool)
-        for s in sessions
-    ):
+    if all(_is_count(s.get("partials_received")) for s in sessions):
         # Reconcile against the per-session message counts the client records,
         # not against len(partial_ms): the two coincide only for servers that
         # emit exactly one partial per chunk. Older documents without the field
@@ -178,6 +215,7 @@ def _check_counters(
         expected["partials_received"] = sum(
             s["partials_received"] for s in sessions if isinstance(s, Mapping)
         )
+    _check_finals_received(result, sessions, findings)
     for key, want in expected.items():
         actual = result.get(key)
         if actual is None:
@@ -394,11 +432,13 @@ def verify_document(doc: Mapping[str, Any]) -> VerifyReport:
 
     Dispatches on the document's `schema` field: `vb-results/1` keeps every
     check it ever had, unchanged; `vb-results/2` runs those plus the
-    environment, ladder and comparability checks below.
+    environment, ladder and comparability checks below; `vb-results/3` runs the
+    same set against its own schema, with the ladder checks reading the rung's
+    `criteria_evaluated`.
     """
     schema_id = doc.get("schema", _schema.SCHEMA_ID)
-    if schema_id == _schema.SCHEMA_ID_V2:
-        return _verify_document_v2(doc)
+    if schema_id in (_schema.SCHEMA_ID_V2, _schema.SCHEMA_ID_V3):
+        return _verify_row_document(doc, str(schema_id))
     findings: list[Finding] = []
     for error in _schema.validate(doc):
         findings.append(Finding(Level.ERROR, "SCHEMA", error.message, error.path))
@@ -455,9 +495,9 @@ def _contains_notes_key(value: Any) -> list[str]:
     return hits
 
 
-def _check_v2_schema(doc: Mapping[str, Any], findings: list[Finding]) -> None:
+def _check_row_schema(doc: Mapping[str, Any], findings: list[Finding], schema_id: str) -> None:
     try:
-        schema = _schema.load_schema(_schema.SCHEMA_ID_V2)
+        schema = _schema.load_schema(schema_id)
     except FileNotFoundError:
         return
     for error in _schema.validate(doc, schema):
@@ -552,7 +592,47 @@ def _check_v2_floor_and_box(doc: Mapping[str, Any], findings: list[Finding]) -> 
         findings.append(Finding(Level.ERROR, "BOX_ID_MISSING", "box id is missing", "box.id"))
 
 
-def _check_v2_ladder(doc: Mapping[str, Any], findings: list[Finding]) -> None:
+def _rung_criteria_evaluated(rung: Mapping[str, Any]) -> set[str]:
+    listed = rung.get("criteria_evaluated")
+    if not isinstance(listed, list):
+        return set()
+    return {value for value in listed if isinstance(value, str)}
+
+
+def _check_rung_criteria(ladder: list[Mapping[str, Any]], findings: list[Finding]) -> None:
+    """Check each rung against what it says it evaluated.
+
+    A rung may report a pass only for criteria it established, may not label a failure
+    with a criterion it never evaluated, and is not required to name a failing criterion
+    when the reason it did not pass is that the evaluation was incomplete.
+    """
+    required = {criterion.value for criterion in RUNG_PASS_CRITERIA}
+    for rung in ladder:
+        evaluated = _rung_criteria_evaluated(rung)
+        unevaluated = sorted(required - evaluated)
+        if rung.get("passed") is True and unevaluated:
+            findings.append(
+                Finding(
+                    Level.ERROR,
+                    "PASSED_WITHOUT_EVALUATING_EVERY_CRITERION",
+                    f"rung n={rung.get('n')} reports a pass but never evaluated "
+                    f"{', '.join(unevaluated)}",
+                    "ladder",
+                )
+            )
+        criterion = rung.get("first_failing_criterion")
+        if isinstance(criterion, str) and criterion in required and criterion not in evaluated:
+            findings.append(
+                Finding(
+                    Level.ERROR,
+                    "CRITERION_NOT_EVALUATED",
+                    f"rung n={rung.get('n')} fails on {criterion}, which it never evaluated",
+                    "ladder",
+                )
+            )
+
+
+def _check_ladder(doc: Mapping[str, Any], findings: list[Finding], *, criteria_aware: bool) -> None:
     ladder = _ladder_of(doc)
     if not ladder:
         return
@@ -587,17 +667,26 @@ def _check_v2_ladder(doc: Mapping[str, Any], findings: list[Finding]) -> None:
                     "result.streams",
                 )
             )
+    if criteria_aware:
+        _check_rung_criteria(ladder, findings)
+    required = {criterion.value for criterion in RUNG_PASS_CRITERIA}
     for rung in ladder:
-        if rung.get("passed") is False and rung.get("first_failing_criterion") is None:
-            findings.append(
-                Finding(
-                    Level.ERROR,
-                    "CRITERION_MISSING",
-                    f"rung n={rung.get('n')} failed without a labelled criterion",
-                    "ladder",
-                )
+        if rung.get("passed") is not False or rung.get("first_failing_criterion") is not None:
+            continue
+        # A rung that did not pass because something it evaluated failed owes a criterion.
+        # One that did not pass because the evaluation was incomplete does not, and saying
+        # otherwise would name a criterion nobody measured.
+        if criteria_aware and not required <= _rung_criteria_evaluated(rung):
+            continue
+        findings.append(
+            Finding(
+                Level.ERROR,
+                "CRITERION_MISSING",
+                f"rung n={rung.get('n')} failed without a labelled criterion",
+                "ladder",
             )
-            break
+        )
+        break
     criteria = {rung.get("first_failing_criterion") for rung in ladder}
     if "latency" not in criteria:
         # A table with no latency failure anywhere is the signature of a
@@ -801,9 +890,15 @@ def _check_v2_typed_fields(doc: Mapping[str, Any], findings: list[Finding]) -> N
     _walk(doc, "", False)
 
 
-def _verify_document_v2(doc: Mapping[str, Any]) -> VerifyReport:
+def _verify_row_document(doc: Mapping[str, Any], schema_id: str) -> VerifyReport:
+    """Run the row checks for `vb-results/2` and every version after it.
+
+    The only difference between the versions is the schema the document is validated
+    against and, from `vb-results/3` on, that the ladder checks read what each rung says
+    it evaluated.
+    """
     findings: list[Finding] = []
-    _check_v2_schema(doc, findings)
+    _check_row_schema(doc, findings, schema_id)
     sessions = _sessions_of(doc)
     result = _result_of(doc)
     latency = result.get("latency_ms", {})
@@ -832,7 +927,7 @@ def _verify_document_v2(doc: Mapping[str, Any]) -> VerifyReport:
     _check_checksum(doc, findings)
     _check_v2_env(doc, findings)
     _check_v2_floor_and_box(doc, findings)
-    _check_v2_ladder(doc, findings)
+    _check_ladder(doc, findings, criteria_aware=schema_id != _schema.SCHEMA_ID_V2)
     _check_v2_ratio(doc, findings)
     _check_v2_arm(doc, findings)
     _check_v2_typed_fields(doc, findings)

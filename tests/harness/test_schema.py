@@ -206,3 +206,13 @@ def test_per_session_partials_received_is_optional_but_nonnegative() -> None:
     doc["sessions"][0]["partials_received"] = -1
     errors = validate(doc)
     assert any(error.path == "sessions[0].partials_received" for error in errors)
+
+
+def test_per_session_finals_received_is_optional_but_nonnegative() -> None:
+    doc = make_doc()
+    assert validate(doc) == []
+    doc["sessions"][0]["finals_received"] = 3
+    assert validate(doc) == []
+    doc["sessions"][0]["finals_received"] = -1
+    errors = validate(doc)
+    assert any(error.path == "sessions[0].finals_received" for error in errors)

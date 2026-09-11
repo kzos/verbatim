@@ -7,13 +7,26 @@
 > Both wires now run every session through the tick-scheduled engine, with admission, live back-pressure
 > and an idle deadline. **The first load runs happened on 2026-09-11 and produced no publishable number,
 > because the load generator was measuring something other than what it reported.** The ladder's rung
-> executor builds its load spec without the frozen 180-second window, so a rung streamed one utterance
+> executor built its load spec without the frozen 180-second window, so a rung streamed one utterance
 > down each slot and stopped: fifteen seconds of wall clock and 106 latency samples, while every rung
 > was stamped `canonical_window: true` from a comparison of command-line arguments against constants.
 > Four repeats of one identical rung give p95 values of 289.8, 320.3, 302.6 and 301.8 ms against a
 > 310 ms budget, three passes and a failure from the same inputs. An earlier reading of these runs as a
 > **bimodal** latency, and a 30 ms improvement attributed to the graph path, are both withdrawn: a
-> single rung repeated on one machine covers that whole gap.
+> single rung repeated on one machine covers that whole gap. The executor now ramps to `N`, runs the
+> warm-up convergence protocol at `N`, and takes its percentile only from the window
+> ([DR-0005](docs/decisions/0005-the-ladder-runs-the-window-it-reports.md)); no run made before that
+> commit becomes a capacity retrospectively.
+>
+> **A rung now evaluates three of the four criteria the method defines, and the first thing those
+> checks do is invalidate every canonical rung**
+> ([DR-0006](docs/decisions/0006-the-three-criteria-the-returned-data-supports.md)). The load generator
+> misses its own frozen pacing tolerance: `PACING_SLIP_P99_MAX_MS` is 5.0 ms and the pooled slip p99 is
+> 10.8 ms, reproduced here against a null server that does no work at all, so it is the generator and
+> not any server under test. A rung over that tolerance is invalid rather than failed, two consecutive
+> invalid rungs abort the ladder as host unfit, and the ladder therefore yields no capacity today. The
+> fourth criterion, zero GPU throttle events across the window, is collected by nothing here, is absent
+> from every rung's `criteria_evaluated`, and so **no rung can report a pass at all** until it is.
 >
 > With the window applied the measurement is repeatable, and it shows what actually fails the budget.
 > **A session's latency is a phase offset drawn once when it connects and never repaid.** The client's
