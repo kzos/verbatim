@@ -128,10 +128,14 @@ def _build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--manifest", required=True, type=Path)
     cal.add_argument("--out", required=True, type=Path)
     cal.add_argument(
-        "--n",
-        type=int,
-        default=constants.LADDER_N0_WITHOUT_CEILING,
-        help="streams per null-floor window (default: the ladder's start without a ceiling)",
+        "--ns",
+        type=str,
+        default=None,
+        help=(
+            "comma-separated concurrencies to drive the null floor at; the default is the "
+            "frozen document's own: the ladder's start without a ceiling and the ceiling "
+            "batch sizes (16,32,128)"
+        ),
     )
     cal.add_argument("--seeds", type=str, default=",".join(str(s) for s in constants.SEEDS))
     cal.add_argument("--window-s", type=float, default=constants.WINDOW_S)
@@ -496,7 +500,12 @@ def _ladder(args: argparse.Namespace) -> int:
 def _calibrate_psi(args: argparse.Namespace) -> int:
     import asyncio
 
-    from verbatim_bench.calibrate import QUIET_OBSERVATION_S, CalibrationRefusal, calibrate
+    from verbatim_bench.calibrate import (
+        NULL_FLOOR_NS,
+        QUIET_OBSERVATION_S,
+        CalibrationRefusal,
+        calibrate,
+    )
     from verbatim_bench.env import SmiProbe
     from verbatim_bench.hostrecord import LiveSmiProbe
 
@@ -505,8 +514,17 @@ def _calibrate_psi(args: argparse.Namespace) -> int:
     except ValueError:
         print("verbatim-bench: --seeds must be comma-separated integers")
         return 1
-    if not seeds or args.n < 1 or args.interval_s <= 0:
-        print("verbatim-bench: need at least one seed, --n >= 1 and a positive --interval-s")
+    try:
+        ns = (
+            tuple(NULL_FLOOR_NS)
+            if args.ns is None
+            else tuple(int(part) for part in str(args.ns).split(",") if part.strip())
+        )
+    except ValueError:
+        print("verbatim-bench: --ns must be comma-separated integers")
+        return 1
+    if not seeds or not ns or min(ns) < 1 or args.interval_s <= 0:
+        print("verbatim-bench: need at least one seed, every N >= 1 and a positive --interval-s")
         return 1
     if args.no_gpu:
         probe = None
@@ -518,7 +536,7 @@ def _calibrate_psi(args: argparse.Namespace) -> int:
         record = asyncio.run(
             calibrate(
                 manifest=Path(args.manifest),
-                n=int(args.n),
+                ns=ns,
                 seeds=seeds,
                 window_s=float(args.window_s),
                 warm_up_s=None if args.warm_up_s is None else float(args.warm_up_s),

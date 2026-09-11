@@ -25,6 +25,20 @@ across each null-floor window, the same window a rung samples, and the threshold
 maximum over every sample of every window, rounded up to ``PRECISION_PCT``. No safety
 factor: a factor would be an unfrozen constant chosen by hand, the thing this avoids.
 
+**Over the concurrencies the method contemplates.** Client-side pressure rises with N, so a
+threshold calibrated at one low N would reject an honest run at a higher one: a guard that
+cannot pass. The floor is driven at ``NULL_FLOOR_NS``, three windows at each, and the
+threshold is the maximum over all of them; the constants are the frozen document's own
+(``LADDER_N0_WITHOUT_CEILING``, the only concurrency it names for a ladder without a
+ceiling, and ``CEILING_BATCH_SIZES``, which bracket every concurrency a ladder will reach),
+so no number here is anyone's choice. A window that did not drive cleanly, a session error
+or the generator over its own frozen pacing tolerance, is recorded with its reason and
+excluded from the maximum rather than dropped: if the box cannot drive the largest N, that is
+a finding in the record. The limit to know: a ladder that climbs past the largest N calibrated
+can exceed a threshold taken below it; that shows as rungs invalid for pressure, never as a
+silent pass, and the answer is to re-calibrate higher and record why, never to raise the
+number by hand.
+
 **No warm-up by default.** A rung's warm-up is the convergence protocol at N: the window
 opens when two consecutive readings of the server's p95 agree within a fraction. The
 null server answers in a fraction of a millisecond, so that fraction is noise and the
@@ -72,6 +86,7 @@ from verbatim_bench.nullserver import NullServer, NullServerConfig
 from verbatim_bench.pace import LoadSpec
 
 __all__ = [
+    "NULL_FLOOR_NS",
     "PRECISION_PCT",
     "QUIET_LOADAVG_MAX_FRACTION_OF_CPUSET",
     "QUIET_OBSERVATION_S",
@@ -86,6 +101,8 @@ __all__ = [
 ]
 
 PRECISION_PCT: Final = 0.01
+#: The concurrencies the null floor is driven at: the frozen document's own numbers.
+NULL_FLOOR_NS: Final = (constants.LADDER_N0_WITHOUT_CEILING, *constants.CEILING_BATCH_SIZES)
 QUIET_OBSERVATION_S: Final = 10.0
 #: A tenth of the cpuset: on a 48-CPU box a load average of 4.8, which the box's own
 #: services sit under and a paced load of even a few streams does not.
@@ -205,10 +222,18 @@ class WindowReading:
     psi_full_at_close: float | None
     client_cpu_pct_of_cpuset: float
     pacing_slip_p99_ms: float | None
+    sessions: int = 0
+    sessions_failed: int = 0
+    clean: bool = True
+    unclean_reason: str | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
             "n": self.n,
+            "clean": self.clean,
+            "unclean_reason": self.unclean_reason,
+            "sessions": self.sessions,
+            "sessions_failed": self.sessions_failed,
             "seed": self.seed,
             "window_open_s": self.window_open_s,
             "window_close_s": self.window_close_s,
@@ -232,13 +257,14 @@ def ceil_to_precision(value: float, precision: float = PRECISION_PCT) -> float:
 def thresholds_from(
     windows: Sequence[WindowReading], *, precision: float = PRECISION_PCT
 ) -> tuple[float, float]:
-    """The two thresholds: the maximum over every window's maximum, rounded up."""
-    somes = [w.psi_some_max for w in windows if w.psi_some_max is not None]
-    fulls = [w.psi_full_max for w in windows if w.psi_full_max is not None]
-    if not windows or not somes or not fulls:
+    """The two thresholds: the maximum over every clean window's maximum, rounded up."""
+    clean = [w for w in windows if w.clean]
+    somes = [w.psi_some_max for w in clean if w.psi_some_max is not None]
+    fulls = [w.psi_full_max for w in clean if w.psi_full_max is not None]
+    if not clean or not somes or not fulls:
         raise CalibrationRefusal(
-            "no pressure samples inside any window: the box exposes no "
-            "/proc/pressure/cpu, or no window was held"
+            "no pressure samples inside any clean window: the box exposes no "
+            "/proc/pressure/cpu, no window was held, or no window drove cleanly"
         )
     return ceil_to_precision(max(somes), precision), ceil_to_precision(max(fulls), precision)
 
@@ -261,7 +287,7 @@ class CalibrationRecord:
     harness_git_sha: str | None
     harness_tree_clean: bool
     manifest: str
-    n: int
+    ns: tuple[int, ...]
     seeds: tuple[int, ...]
     window_s: float
     warm_up_s: float | None
@@ -299,8 +325,15 @@ class CalibrationRecord:
             "load": {
                 "server": "the harness's own null server (verbatim_bench.nullserver)",
                 "manifest": self.manifest,
-                "n": self.n,
+                "ns": list(self.ns),
+                "windows_per_n": len(self.seeds),
                 "seeds": list(self.seeds),
+                "clean_windows": sum(1 for w in self.windows if w.clean),
+                "unclean_windows": [
+                    {"n": w.n, "seed": w.seed, "reason": w.unclean_reason}
+                    for w in self.windows
+                    if not w.clean
+                ],
                 "window_s": self.window_s,
                 "warm_up_s": self.warm_up_s,
                 "frame_ms": self.frame_ms,
@@ -324,6 +357,16 @@ def _reading(result: Any, host: HostWindow, *, n: int, seed: int) -> WindowReadi
     from verbatim_bench.results import percentile
 
     slips = [v for s in result.sessions for v in s.pacing_slip_ms]
+    failed = sum(1 for s in result.sessions if s.error is not None)
+    slip_p99 = percentile(slips, 99) if slips else None
+    reason: str | None = None
+    if failed:
+        reason = f"{failed} of {len(result.sessions)} session(s) failed"
+    elif slip_p99 is not None and slip_p99 > constants.PACING_SLIP_P99_MAX_MS:
+        reason = (
+            f"pacing slip p99 {slip_p99:.2f} ms over the frozen "
+            f"{constants.PACING_SLIP_P99_MAX_MS} ms: the generator did not drive N={n} cleanly"
+        )
     return WindowReading(
         n=n,
         seed=seed,
@@ -336,14 +379,18 @@ def _reading(result: Any, host: HostWindow, *, n: int, seed: int) -> WindowReadi
         psi_some_at_close=host.counters.psi_cpu_some_avg,
         psi_full_at_close=host.counters.psi_cpu_full_avg,
         client_cpu_pct_of_cpuset=host.counters.client_cpu_pct_of_cpuset,
-        pacing_slip_p99_ms=percentile(slips, 99) if slips else None,
+        pacing_slip_p99_ms=slip_p99,
+        sessions=len(result.sessions),
+        sessions_failed=failed,
+        clean=reason is None,
+        unclean_reason=reason,
     )
 
 
 async def calibrate(
     *,
     manifest: Path,
-    n: int = constants.LADDER_N0_WITHOUT_CEILING,
+    ns: Sequence[int] = NULL_FLOOR_NS,
     seeds: Sequence[int] = constants.SEEDS,
     window_s: float = constants.WINDOW_S,
     warm_up_s: float | None = None,
@@ -364,8 +411,8 @@ async def calibrate(
     sleep: Callable[[float], None] = time.sleep,
     precision: float = PRECISION_PCT,
 ) -> CalibrationRecord:
-    """Observe the box quiet, run the null floor once per seed with the window recorder, and
-    reduce the pressure series to the two thresholds with their provenance."""
+    """Observe the box quiet, run the null floor once per seed at each N with the window
+    recorder, and reduce the pressure series to the two thresholds with their provenance."""
     if cgroupfs is None:
         cgroupfs = own_cgroup(procfs)
     quiet = observe_quiet(
@@ -387,7 +434,7 @@ async def calibrate(
             gpu_facts = None
     windows: list[WindowReading] = []
     async with NullServer(NullServerConfig()) as server:
-        for seed in seeds:
+        for n, seed in ((n, seed) for n in ns for seed in seeds):
             spec = LoadSpec(
                 endpoint=server.endpoint,
                 manifest=Path(manifest),
@@ -417,7 +464,7 @@ async def calibrate(
             host = recorder.finish()
             if host is None or result.warm_up_converged is False:
                 raise CalibrationRefusal(
-                    f"the null-floor run with seed {seed} held no window: warm-up "
+                    f"the null-floor run at N={n} with seed {seed} held no window: warm-up "
                     f"converged={result.warm_up_converged}; the calibration measures the "
                     "window a rung measures and nothing else"
                 )
@@ -440,7 +487,7 @@ async def calibrate(
         harness_git_sha=identity.git_sha,
         harness_tree_clean=identity.tree_clean,
         manifest=str(manifest),
-        n=n,
+        ns=tuple(ns),
         seeds=tuple(seeds),
         window_s=float(window_s),
         warm_up_s=None if warm_up_s is None else float(warm_up_s),
@@ -453,6 +500,7 @@ async def calibrate(
             float(window_s) == float(constants.WINDOW_S)
             and frame_ms == constants.FRAME_MS
             and tuple(seeds) == tuple(constants.SEEDS)
+            and tuple(ns) == tuple(NULL_FLOOR_NS)
         ),
         quiet=quiet,
         windows=tuple(windows),

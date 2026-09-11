@@ -433,3 +433,19 @@ def test_own_cgroup_is_the_nearest_ancestor_that_carries_the_quota(tmp_path: Pat
     _write(bare / "proc" / "self" / "cgroup", "0::/a/b\n")
     (bare / "cgroup" / "a" / "b").mkdir(parents=True)
     assert own_cgroup(bare / "proc", bare / "cgroup") == bare / "cgroup"
+
+
+def test_only_compute_processes_count_as_compute_processes() -> None:
+    """A display server holds a graphics context on the GPU; it is not a compute tenant
+    and the frozen foreign-process threshold names compute processes."""
+    document = FIXTURE.read_text(encoding="utf-8").replace(
+        "<processes>\n    </processes>",
+        "<processes>"
+        "<process_info><pid>11</pid><type>C</type><process_name>server</process_name></process_info>"
+        "<process_info><pid>22</pid><type>G</type><process_name>Xorg</process_name></process_info>"
+        "<process_info><pid>33</pid><type>C+G</type><process_name>both</process_name></process_info>"
+        "<process_info><pid>44</pid><process_name>untyped</process_name></process_info>"
+        "</processes>",
+    )
+    (gpu,) = parse_smi_xml(document)
+    assert gpu.compute_process_pids == (11, 33, 44)
