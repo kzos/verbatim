@@ -6,12 +6,14 @@ box, and provenance beside the two numbers."""
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 from test_env import _fake_box_tree, _fake_host_tree, _write, _write_pid_stat
 from verbatim_bench import constants
 from verbatim_bench.calibrate import (
+    CALIBRATION_REFERENCE_N,
     PRECISION_PCT,
     QUIET_OBSERVATION_S,
     CalibrationRefusal,
@@ -250,3 +252,78 @@ def test_observe_quiet_records_both_ends_of_the_pressure_decay(tmp_path: Path) -
     doc = reading.to_json_dict()
     assert doc["avg60_some_start"] == pytest.approx(0.12)
     assert doc["psi_some_window_pct"] == pytest.approx(0.0)  # a static counter: no stall
+
+
+async def test_a_calibration_against_the_server_under_test_names_it_and_the_reference(
+    tmp_path: Path,
+) -> None:
+    """On a box that serves and measures at once the clean baseline includes the server
+    under test; given an endpoint the calibration runs the complete measurement at the
+    reference concurrency and the record says so, with the pid the server's CPU is read
+    from."""
+    from test_pace import make_manifest, make_wav
+    from verbatim_bench.nullserver import NullServer, NullServerConfig
+
+    _, sysfs, _ = _fake_box_tree(tmp_path)
+    procfs, cgroupfs = _quiet_tree(tmp_path)
+    wav = tmp_path / "utt.wav"
+    make_wav(wav, 1.0)
+    manifest = make_manifest(tmp_path / "m.jsonl", [wav], ["utt-0"])
+    async with NullServer(NullServerConfig()) as server:  # standing in for the server under test
+        with pytest.raises(CalibrationRefusal, match="pid"):
+            await calibrate(
+                manifest=manifest,
+                endpoint=server.endpoint,
+                window_s=0.6,
+                warm_up_s=None,
+                frame_ms=160,
+                interval_s=0.1,
+                quiet_s=0.0,
+                procfs=procfs,
+                cgroupfs=cgroupfs,
+                sysfs=sysfs,
+                sleep=lambda s: None,
+            )
+        record = await calibrate(
+            manifest=manifest,
+            endpoint=server.endpoint,
+            server_pid=os.getpid(),
+            seeds=(constants.SEEDS[0],),
+            window_s=0.6,
+            warm_up_s=None,
+            frame_ms=160,
+            interval_s=0.1,
+            quiet_s=0.0,
+            procfs=procfs,
+            cgroupfs=cgroupfs,
+            sysfs=sysfs,
+            repo_root=Path(__file__).resolve().parents[2],
+            sleep=lambda s: None,
+        )
+    assert record.mode == "under-test"
+    assert record.endpoint == server.endpoint
+    assert record.ns == (CALIBRATION_REFERENCE_N,) == (6,)
+    assert [w.n for w in record.windows] == [6]
+    doc = record.to_json_dict()
+    assert doc["load"]["mode"] == "under-test"
+    assert doc["load"]["reference_n"] == 6
+    assert doc["load"]["server_pid"] == os.getpid()
+    assert "under test" in doc["load"]["server"]
+
+
+def test_the_cli_refuses_an_endpoint_without_the_servers_pid(tmp_path: Path) -> None:
+    from verbatim_bench.cli import main
+
+    rc = main(
+        [
+            "calibrate-psi",
+            "--manifest",
+            str(tmp_path / "m.jsonl"),
+            "--out",
+            str(tmp_path / "cal"),
+            "--endpoint",
+            "ws://127.0.0.1:1/v1/stream",
+            "--no-gpu",
+        ]
+    )
+    assert rc == 1
