@@ -16,9 +16,12 @@ promised date — that is for triage once an entry becomes an issue.
   O(chunks × partials) instead of linear. Both lists are already sorted by time, so a single merge walk
   with one cursor into `partial_events` would do the same match in O(chunks + partials).~~
 - `bench/src/verbatim_bench/client.py` (`_FINAL_WAIT_S`) — the timeout for the first server message and
-  for the final after `end` is a fixed module constant (15 s) with no way to override it per run.
+  for the read after `end` is a fixed module constant (15 s) with no way to override it per run.
   Thread it through `LoadSpec`/`run_session` as a parameter, so a slower or more loaded server under
-  test does not need a code change to avoid false timeouts.
+  test does not need a code change to avoid false timeouts. This matters more now that the reader
+  reads every final rather than returning at the first: the read ends when the peer closes, so a
+  server that finalises and then holds the socket open costs the full wait on every session instead
+  of ending the moment a final arrives.
 - `bench/src/verbatim_bench/client.py::SessionResult.started_at_s` — defaults to `0.0` and is only
   assigned once the session handshake succeeds, so a session that errors out before the first server
   message reports `started_at_s == 0.0`, indistinguishable from one that genuinely started at the
@@ -172,7 +175,7 @@ promised date — that is for triage once an entry becomes an issue.
   needs neither the client fix nor the window fix, and is the only one that can fail on real data today.
   It will mark every existing run invalid, which is the correct answer.
 
-- `bench/src/verbatim_bench/client.py` — **the load client stops measuring at the first final, and a
+- ~~`bench/src/verbatim_bench/client.py` — **the load client stops measuring at the first final, and a
   stream has several.** The server emits a `final` frame for every hypothesis with `is_final`, which is
   one per endpointed utterance, so a stream with an internal silence of the endpointing length produces
   several. The reader returns on the first one. Three consequences, all live:
@@ -184,7 +187,11 @@ promised date — that is for triage once an entry becomes an issue.
   2026-09-11, 95.1 percent. **This is a harness defect, not a server integrity failure**, and the two
   must not be conflated in the rung's integrity criterion.
   The same defect bit a probe of mine the same day: reading one final made leading silence look as
-  though it changed the transcript, when it had only moved where the server segmented.
+  though it changed the transcript, when it had only moved where the server segmented.~~
+  **Resolved.** The reader now reads to the close of the socket, `final_text` is the segments joined in
+  arrival order, `finals_received` counts them, and `final_ms` is measured to the last final. The
+  coverage loss is not re-measured here: that needs the live server, and this branch was built against
+  the null server.
 
 - `bench/src/verbatim_bench/cli.py::_make_rung` — **the ladder never runs the window it reports.** The
   rung executor builds its `LoadSpec` without `window_s`, which in `run_load` takes the branch that runs
