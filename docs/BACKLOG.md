@@ -169,13 +169,18 @@ promised date — that is for triage once an entry becomes an issue.
   at connect instead of a fraction of a period on every chunk forever. Running the tick faster than the
   chunk is the same fix at the price of a step per tick.
 
-- `tests/` — **the suite is not safe to run concurrently with itself.** Observed 2026-09-11: two full
-  runs in different worktrees, on a 48-core machine at load average 8, both passed 500 s without
-  finishing and were killed, while the same tests run one at a time take 38 s. Run sequentially the
-  suite splits 228 harness tests in 27.8 s and 482 others in 7.9 s, with no individual test over 6.1 s,
-  so it is contention rather than a slow or hanging test. The likely cause is the socket tests binding
-  fixed ports, which collide across concurrent runs. This matters for the verification phase, which
-  plans parallel mutation passes: either bind port zero everywhere, or serialise the runs.
+- ~~`tests/` — the suite is not safe to run concurrently with itself, probably the socket tests binding
+  fixed ports.~~ **Diagnosed and fixed 2026-09-11, and the port guess was wrong.** The stall was the
+  held clock in `tests/protocol/test_engine_session.py`: once opened it returned from every sleep
+  immediately, so the tick thread became a busy loop queuing a wake per tick through
+  `call_soon_threadsafe` faster than the event loop could drain them, and the loop ended up spending its
+  time collecting the garbage of its own wake callbacks rather than reaching the test's next step.
+  Whether the loop keeps up is a scheduling race, so it bites only under load and only in a full run,
+  and the file on its own passes every time. Found from a faulthandler dump of a hung process, which
+  showed the tick thread inside the publish path and the loop thread inside garbage collection. The held
+  clock now sleeps a millisecond once opened. The symptom that led here was two full runs in different
+  worktrees, on a 48-core machine at load average 8, both passing 500 s without finishing while the same
+  tests run one at a time take 38 s.
 
 - `tests/` — **a test waits unbounded for a failed tick's errors.** Found while mutation-testing the
   tick-publish fix on 2026-09-11: removing the failure-path `publish([])` reddens its own test as

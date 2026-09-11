@@ -589,8 +589,16 @@ async def test_stop_does_not_block_the_event_loop_while_joining_the_tick_thread(
 class _HeldClock:
     """Real time for `now`; every sleep to the next boundary blocks until the test
     releases it, so the tick thread parks exactly where the test says. `open()` ends
-    the holding: every sleep from then on returns at once, so a thread parked when a
-    test fails is not left there for `stop()` to join forever."""
+    the holding: every sleep from then on lasts a millisecond, so a thread parked
+    when a test fails is not left there for `stop()` to join forever, and the freed
+    thread is not a busy loop either. A tick that returns at once queues a wake at
+    once, and a thread that never blocks queues them faster than the loop drains
+    them: the loop then garbage-collects a backlog of wake callbacks and never
+    reaches the test's next step, a livelock that appeared only under load and only
+    in a full-suite run. A millisecond bounds the rate to what the loop drains
+    without noticing; the production clocks always sleep to a boundary."""
+
+    OPEN_SLEEP_S = 0.001
 
     def __init__(self) -> None:
         self._releases = threading.Semaphore(0)
@@ -604,6 +612,8 @@ class _HeldClock:
         self.sleeps += 1
         if not self._open:
             self._releases.acquire()
+        else:
+            time.sleep(self.OPEN_SLEEP_S)
 
     def release(self) -> None:
         self._releases.release()
@@ -611,6 +621,17 @@ class _HeldClock:
     def open(self) -> None:
         self._open = True
         self._releases.release()
+
+
+def test_an_opened_held_clock_does_not_busy_loop() -> None:
+    """Once opened, the held clock's sleeps take a millisecond each, not nothing: a
+    tick thread that never blocks floods the loop with wakes and the suite hangs."""
+    clock = _HeldClock()
+    clock.open()
+    started = time.perf_counter()
+    for _ in range(20):
+        clock.sleep_until(0.0)
+    assert time.perf_counter() - started >= 20 * _HeldClock.OPEN_SLEEP_S * 0.5
 
 
 async def _until(predicate: Callable[[], bool], *, timeout: float = 5.0) -> None:
