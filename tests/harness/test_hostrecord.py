@@ -422,6 +422,7 @@ async def test_the_ladder_records_the_host_window_when_asked(tmp_path: Path) -> 
             str(LADDER_SEED),
             "--out",
             str(out_dir),
+            *FAST_RUNG,  # carries --no-host-record; the explicit request below wins
             "--host-record",
             "--server-pid",
             str(os.getpid()),
@@ -429,7 +430,6 @@ async def test_the_ladder_records_the_host_window_when_asked(tmp_path: Path) -> 
             str(FIXTURE),
             "--gpu-sample-interval-s",
             "0.1",
-            *FAST_RUNG,
         ]
         rc = await asyncio.get_running_loop().run_in_executor(None, main, argv)
     del rc  # the outcome depends on whether the fast warm-up converged; the record does not
@@ -486,3 +486,40 @@ def test_host_record_needs_a_server_pid(tmp_path: Path) -> None:
         ]
     )
     assert rc == 1
+
+
+def test_the_host_record_is_the_ladders_default_and_needs_the_server_pid(tmp_path: Path) -> None:
+    """Since DR-0007 calibrated the pressure thresholds the record is on by default: a
+    ladder run without it can never pass, and saying so requires the flag, not silence."""
+    from verbatim_bench.cli import _build_parser, main
+
+    base = [
+        "ladder",
+        "--endpoint",
+        "ws://127.0.0.1:1/v1/stream",
+        "--manifest",
+        "m.jsonl",
+        "--arm",
+        "a",
+        "--out",
+        "out",
+    ]
+    assert _build_parser().parse_args(base).host_record is True
+    assert _build_parser().parse_args([*base, "--no-host-record"]).host_record is False
+    assert _build_parser().parse_args([*base, "--no-host-record", "--host-record"]).host_record
+    rc = main(
+        [
+            "ladder",
+            "--endpoint",
+            "ws://127.0.0.1:1/v1/stream",
+            "--manifest",
+            str(tmp_path / "missing.jsonl"),
+            "--arm",
+            "a",
+            "--n0",
+            "1",
+            "--out",
+            str(tmp_path / "out"),
+        ]
+    )
+    assert rc == 1  # the default record needs --server-pid; nothing ran

@@ -552,6 +552,9 @@ FAST_RUNG = [
     "--window-s",
     "1.5",
     *PACEABLE_FRAMING,
+    # The host record is the ladder's default; these tests are about the ladder's logic
+    # against the null server, not about the box the suite happens to run on.
+    "--no-host-record",
 ]
 
 
@@ -564,6 +567,7 @@ def _ladder_args(argv: list[str]):
 def _minimal_ladder_argv(tmp_path) -> list[str]:
     return [
         "ladder",
+        "--no-host-record",
         "--endpoint",
         "ws://127.0.0.1:1/v1/stream",
         "--manifest",
@@ -587,6 +591,7 @@ async def _run_fast_ladder(tmp_path, config: NullServerConfig, extra: list[str])
     async with NullServer(config) as server:
         argv = [
             "ladder",
+            "--no-host-record",
             "--endpoint",
             server.endpoint,
             "--manifest",
