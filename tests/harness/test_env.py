@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import verbatim_bench.env as env_module
 from verbatim_bench.env import (
     EnvironmentRefusal,
     FakeGpuProbe,
@@ -343,11 +344,28 @@ def test_hottest_thread_percentage_is_per_thread_not_per_process(tmp_path: Path)
 
 
 def test_single_thread_score_is_reproducible_within_its_own_tolerance() -> None:
+    """Two scores, each the best of three 20 ms samples, agree within the tolerance
+    the record uses. One sample a side went red about once in nine full-suite runs
+    under load; the best of three is the fix, not a looser tolerance."""
     first = single_thread_score(duration_s=0.02)
     second = single_thread_score(duration_s=0.02)
     assert first > 0 and second > 0
     spread = abs(first - second) / max(first, second)
     assert spread < 0.75
+
+
+def test_single_thread_score_takes_the_best_of_its_samples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A sample that shared its slice with another process scores the sharing, not the
+    core; the best of the samples is the core's number."""
+    samples = iter([5.0, 100.0, 80.0])
+    monkeypatch.setattr(env_module, "_score_once", lambda duration_s: next(samples))
+    assert single_thread_score(duration_s=0.02) == 100.0
+    samples = iter([5.0, 100.0, 80.0])
+    assert single_thread_score(duration_s=0.02, best_of=1) == 5.0
+    with pytest.raises(ValueError, match="best_of"):
+        single_thread_score(duration_s=0.02, best_of=0)
 
 
 def test_env_collector_imports_no_optional_dependency() -> None:

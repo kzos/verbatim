@@ -169,6 +169,14 @@ promised date — that is for triage once an entry becomes an issue.
   at connect instead of a fraction of a period on every chunk forever. Running the tick faster than the
   chunk is the same fix at the price of a step per tick.
 
+- `tests/` — **the suite is not safe to run concurrently with itself.** Observed 2026-09-11: two full
+  runs in different worktrees, on a 48-core machine at load average 8, both passed 500 s without
+  finishing and were killed, while the same tests run one at a time take 38 s. Run sequentially the
+  suite splits 228 harness tests in 27.8 s and 482 others in 7.9 s, with no individual test over 6.1 s,
+  so it is contention rather than a slow or hanging test. The likely cause is the socket tests binding
+  fixed ports, which collide across concurrent runs. This matters for the verification phase, which
+  plans parallel mutation passes: either bind port zero everywhere, or serialise the runs.
+
 - `tests/` — **a test waits unbounded for a failed tick's errors.** Found while mutation-testing the
   tick-publish fix on 2026-09-11: removing the failure-path `publish([])` reddens its own test as
   intended, but also hangs the suite, killed at 194 s. Some engine test awaits results from a tick that
