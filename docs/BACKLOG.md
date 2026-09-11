@@ -163,6 +163,20 @@ promised date — that is for triage once an entry becomes an issue.
   at connect instead of a fraction of a period on every chunk forever. Running the tick faster than the
   chunk is the same fix at the price of a step per tick.
 
+- `bench/src/verbatim_bench/client.py` — **the load client stops measuring at the first final, and a
+  stream has several.** The server emits a `final` frame for every hypothesis with `is_final`, which is
+  one per endpointed utterance, so a stream with an internal silence of the endpointing length produces
+  several. The reader returns on the first one. Three consequences, all live:
+  `final_text` holds one segment rather than the utterance, so a WER criterion computed from it would be
+  wrong in a way no ordering check can see; `finals_received` cannot exceed 1, so a
+  `sessions_without_final` count built on it is asking a question the client cannot answer; and every
+  partial after the first final is never read, so those chunks get no matching watermark. That last is
+  the likely source of the measured coverage loss: 4,798 chunks matched of 5,047 sent at bfloat16 on
+  2026-09-11, 95.1 percent. **This is a harness defect, not a server integrity failure**, and the two
+  must not be conflated in the rung's integrity criterion.
+  The same defect bit a probe of mine the same day: reading one final made leading silence look as
+  though it changed the transcript, when it had only moved where the server segmented.
+
 - `bench/src/verbatim_bench/cli.py::_make_rung` — **the ladder never runs the window it reports.** The
   rung executor builds its `LoadSpec` without `window_s`, which in `run_load` takes the branch that runs
   each slot exactly once, and it overrides `ramp_s` to zero. `warm_up_s` reaches no measurement anywhere:
