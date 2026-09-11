@@ -18,6 +18,7 @@ from verbatim_bench.env import (
     collect,
     fake_gpu_facts,
     harness_identity,
+    own_cgroup,
     parse_smi_xml,
     read_box,
     refuse_if_unfit,
@@ -411,3 +412,24 @@ def test_refuse_if_unfit_rejects_a_dirty_tree_directly() -> None:
     with pytest.raises(EnvironmentRefusal):
         refuse_if_unfit(record)
     assert harness_identity(Path(__file__).resolve().parents[2]).version
+
+
+def test_own_cgroup_is_the_nearest_ancestor_that_carries_the_quota(tmp_path: Path) -> None:
+    """A user session's cgroup has cpu.stat and nothing else; the quota that constrains
+    it is enforced where the cpu controller was delegated to, so that is what is read."""
+    procfs = tmp_path / "proc"
+    cgroupfs = tmp_path / "cgroup"
+    _write(procfs / "self" / "cgroup", "0::/user.slice/user-1001.slice/session-4.scope\n")
+    _write(cgroupfs / "user.slice" / "user-1001.slice" / "session-4.scope" / "cpu.stat", "x\n")
+    _write(cgroupfs / "user.slice" / "cpu.max", "max 100000\n")
+    assert own_cgroup(procfs, cgroupfs) == cgroupfs / "user.slice"
+    # The process's own cgroup wins when it carries the quota itself.
+    _write(cgroupfs / "user.slice" / "user-1001.slice" / "session-4.scope" / "cpu.max", "max 1\n")
+    assert own_cgroup(procfs, cgroupfs) == (
+        cgroupfs / "user.slice" / "user-1001.slice" / "session-4.scope"
+    )
+    # No quota anywhere: the root, and the reader then refuses as before.
+    bare = tmp_path / "bare"
+    _write(bare / "proc" / "self" / "cgroup", "0::/a/b\n")
+    (bare / "cgroup" / "a" / "b").mkdir(parents=True)
+    assert own_cgroup(bare / "proc", bare / "cgroup") == bare / "cgroup"

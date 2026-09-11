@@ -33,7 +33,14 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any, Final
 
-from verbatim_bench.env import GpuFacts, GpuProbe, HostCounters, HostSampler, SmiProbe
+from verbatim_bench.env import (
+    GpuFacts,
+    GpuProbe,
+    HostCounters,
+    HostSampler,
+    SmiProbe,
+    _read_pressure_avg,
+)
 from verbatim_bench.pace import LoadSpec, WindowHooks, run_load
 from verbatim_bench.results import RunResult
 
@@ -44,6 +51,8 @@ __all__ = [
     "GpuWindow",
     "HostWindow",
     "LiveSmiProbe",
+    "PsiSample",
+    "PsiWindow",
     "WindowRecorder",
     "run_load_recorded",
     "summarise_gpu",
@@ -115,13 +124,49 @@ class GpuWindow:
 
 
 @dataclass(frozen=True, slots=True)
+class PsiSample:
+    at_s: float
+    some: float | None
+    full: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class PsiWindow:
+    """CPU pressure sampled across one window, on the estimator the validity gate reads:
+    `/proc/pressure/cpu`'s `avg60` (`avg10` where `avg60` is absent) for `some` and
+    `full`. `HostSampler.stop` reads that field once, at the close; this is the same
+    field at every poll inside the window, so a rung's record shows the window's peak
+    and a calibration can bound the gate's reading from above."""
+
+    samples: int
+    some_max: float | None
+    full_max: float | None
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {"samples": self.samples, "some_max": self.some_max, "full_max": self.full_max}
+
+
+def summarise_psi(samples: Sequence[PsiSample], *, open_s: float, close_s: float) -> PsiWindow:
+    inside = [s for s in samples if open_s <= s.at_s <= close_s]
+    somes = [s.some for s in inside if s.some is not None]
+    fulls = [s.full for s in inside if s.full is not None]
+    return PsiWindow(
+        samples=len(inside),
+        some_max=max(somes) if somes else None,
+        full_max=max(fulls) if fulls else None,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class HostWindow:
-    """The host record of one window: the sampler's deltas and the GPU's samples."""
+    """The host record of one window: the sampler's deltas, the GPU's samples and the
+    pressure series."""
 
     counters: HostCounters
     gpu: GpuWindow
     open_s: float
     close_s: float
+    psi: PsiWindow = PsiWindow(samples=0, some_max=None, full_max=None)
 
     def to_json_dict(self) -> dict[str, Any]:
         c = self.counters
@@ -144,6 +189,7 @@ class HostWindow:
                 "server_cpu_s_per_stream_hour": c.server_cpu_s_per_stream_hour,
             },
             "gpu": self.gpu.to_json_dict(),
+            "psi": self.psi.to_json_dict(),
         }
 
 
@@ -245,10 +291,12 @@ class WindowRecorder:
         self._server_pid = server_pid
         self._interval_s = interval_s
         self._clock = clock
+        self._procfs = procfs
         self._sampler = HostSampler(
             server_pid=server_pid, client_pid=client_pid, procfs=procfs, cgroupfs=cgroupfs
         )
         self._samples: list[GpuSample] = []
+        self._psi: list[PsiSample] = []
         self._open_s: float | None = None
         self._close_s: float | None = None
         self._counters: HostCounters | None = None
@@ -268,6 +316,8 @@ class WindowRecorder:
 
     def poll(self) -> None:
         at = self._clock()
+        some, full = _read_pressure_avg(self._procfs)
+        self._psi.append(PsiSample(at_s=at, some=some, full=full))
         try:
             facts = self._gpu.facts(self._gpu_index)
         except (IndexError, ValueError, OSError, subprocess.SubprocessError):
@@ -295,7 +345,11 @@ class WindowRecorder:
             server_pid=self._server_pid,
         )
         return HostWindow(
-            counters=self._counters, gpu=gpu, open_s=self._open_s, close_s=self._close_s
+            counters=self._counters,
+            gpu=gpu,
+            open_s=self._open_s,
+            close_s=self._close_s,
+            psi=summarise_psi(self._psi, open_s=self._open_s, close_s=self._close_s),
         )
 
 
