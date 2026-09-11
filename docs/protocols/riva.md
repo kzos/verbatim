@@ -77,6 +77,7 @@ word confidences — followed by an empty partial.
 |---|---|---|
 | `RESOURCE_EXHAUSTED` | admission refused the session | a `retry-after-ms` trailer; no response is written |
 | `DEADLINE_EXCEEDED` | no audio arrived for the engine's idle timeout, so the slot was reclaimed | the elapsed idle time and the deadline, in the message |
+| `UNAVAILABLE` | the server stopped while the stream was live | no final is produced; a clean end is reserved for an utterance that finished |
 | `INVALID_ARGUMENT` | a rejected field, audio before the config, a second config on one stream, or a chunk size this engine does not serve | the field name |
 
 A refusal reaches the client before any acknowledgement: no response precedes it, so a client never

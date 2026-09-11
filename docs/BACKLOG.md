@@ -61,7 +61,8 @@ promised date — that is for triage once an entry becomes an issue.
   first feed was short, and that at least one tick was waited per short feed.
 - **The WebSocket demo protocol has no document, while the Riva subset has one.** The frames, the
   `error` codes a client can receive (`INVALID_ARGUMENT`, `RESOURCE_EXHAUSTED` with a retry hint, and
-  `DEADLINE_EXCEEDED` when the idle deadline reclaims a slot) and the close codes (1000 after a refusal,
+  `DEADLINE_EXCEEDED` when the idle deadline reclaims a slot, and `UNAVAILABLE` when the server stops
+  under a live session) and the close codes (1000 after a refusal, **1001 when the server goes away**,
   1009 for a message over `max_message_bytes`) are described only in the module docstring and the tests.
   A demo protocol that is still moving is a bad thing to freeze into a document, so this is recorded
   rather than written: give it a page under `docs/protocols/` once the day-21 row has been taken over
