@@ -22,7 +22,12 @@
 > 168.8 ms to 321.6 ms, steady to a few milliseconds for each session's whole life. A well-phased session
 > sits at about 170 ms against a 310 ms budget; a badly phased one is over it. For clients arriving at
 > arbitrary times the p95 is near 320 ms **at any concurrency, including one stream**. See
-> `probes/tick_phase_sweep.py`, which reproduces it in twenty seconds.
+> `probes/tick_phase_sweep.py`, which reproduces it in twenty seconds. It reproduces on the CPU fake
+> with no model at all, which rules out the pipeline, the batching and the precision by construction.
+> Underneath it sits a second defect: the tick loop sleeps to the next boundary **before** publishing a
+> tick's results, so every result reaches the client a full period late, and the server's own latency
+> metric reads the clock after that sleep and therefore reports about 1 ms. Every latency figure this
+> project has taken contains that period.
 > On 2026-09-11 `verbatim serve` ran against a real NeMo pipeline on an A6000 for
 > the first time, transcribed real audio with word timings and shut down cleanly. **Nothing here has been
 > benchmarked**, and the first run surfaced a problem worth reading before anything else:

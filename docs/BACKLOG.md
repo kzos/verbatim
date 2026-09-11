@@ -163,14 +163,19 @@ promised date — that is for triage once an entry becomes an issue.
   at connect instead of a fraction of a period on every chunk forever. Running the tick faster than the
   chunk is the same fix at the price of a step per tick.
 
-- `bench/src/verbatim_bench/` — **the load generator misses its own frozen pacing tolerance, so no run
-  taken so far is valid.** `PACING_SLIP_P99_MAX_MS` is 5.0. Measured 2026-09-11 over four gated
-  interleaved arms on one A6000, six streams, the machine otherwise idle: p99 slip is 10.8 to 10.9 ms
-  on every arm, p50 about 1.1 ms, max under 13 ms, over roughly 38,000 frames each. It is identical
-  across precisions, so it is the generator and not the server. Nothing has ever noticed because `valid`
-  is written `True` unconditionally. Implementing this check is the cheapest of the unevaluated criteria,
-  needs neither the client fix nor the window fix, and is the only one that can fail on real data today.
-  It will mark every existing run invalid, which is the correct answer.
+- `bench/src/verbatim_bench/client.py` — **the pacing slip is scored against a deadline the sender does
+  not follow.** The slip is measured against `t0 + i * frame_period + jitter`, jitter uniform in plus or
+  minus `FRAME_JITTER_MS` = 10, while the sleep before each send targets the unjittered
+  `t0 + i * frame_period`. So the reported slip is `max(0, ε − J)` with ε the true overshoot near 1 ms,
+  which gives p50 about 1.1 ms, p99 about 10.8 and max about 12.8 regardless of anything the server
+  does. Those are exactly the four gated arms measured on 2026-09-11, to the tenth of a millisecond, and
+  they are identical across precisions because the jitter is seeded per session. The generator's true
+  slip against the schedule it follows is about 1 ms at p50, inside the 5.0 ms tolerance.
+  **This record previously said the generator misses its own tolerance and that no run is valid. That
+  was wrong and is withdrawn.** The frozen document lists `FRAME_JITTER_MS` under the workload
+  constants, so the jitter belongs on the wire: the sender should sleep to the jittered deadline, which
+  makes both the workload and the metric honest. Until it does, a `pacing_slip` criterion would
+  invalidate every run for a harness reason.
 
 - `bench/src/verbatim_bench/client.py` — **the load client stops measuring at the first final, and a
   stream has several.** The server emits a `final` frame for every hypothesis with `is_final`, which is
