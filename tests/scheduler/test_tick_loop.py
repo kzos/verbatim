@@ -424,3 +424,44 @@ def test_a_non_positive_idle_timeout_is_a_config_error(idle_timeout_s: object) -
 
 def test_the_default_idle_timeout_is_thirty_seconds_and_the_stub_engine_disables_it() -> None:
     assert EngineConfig(chunk=CHUNK, buckets=(8,)).idle_timeout_s == 30.0
+
+
+def test_results_are_published_before_the_sleep_to_the_next_boundary() -> None:
+    """A row computed at boundary t reaches its transport at t plus the step, not at
+    t+1: `publish` runs before the sleep, so it sees this tick's boundary on the
+    clock, and it carries exactly the rows the tick returns."""
+    loop, _, clock = _harness(bucket=1, edge_batch=1)
+    _join(loop, 1, _audio(np.random.default_rng(3), 2), drain=False)
+    published: list[tuple[list[StepResult], float]] = []
+    returned = loop.run_tick(publish=lambda rows: published.append((list(rows), clock.now())))
+    assert len(published) == 1
+    rows, published_at = published[0]
+    assert rows == returned
+    assert [row.stream_id for row in rows] == [1]
+    assert published_at == loop.boundaries[-1]
+    assert clock.now() == pytest.approx(loop.boundaries[-1] + PERIOD)
+
+
+class _FailingStep(FakePipelineAdapter):
+    def transcribe_step(
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+    ) -> list[StepResult]:
+        raise RuntimeError("step failed")
+
+
+def test_a_failed_tick_publishes_before_its_sleep_with_the_errors_recorded() -> None:
+    """The failure path keeps the order: `fail_live` records every live session's
+    error, then `publish` runs with no rows, before the sleep, so the caller drains
+    the errors at boundary t and not at t+1."""
+    config = EngineConfig(chunk=CHUNK, buckets=(1,), edge_batch=1, calibrated_ceiling=1)
+    clock = SimulatedClock()
+    loop = TickLoop(config, _FailingStep(CHUNK, buckets=(1,)), SessionRegistry(), clock=clock)
+    _join(loop, 1, _audio(np.random.default_rng(4), 1), drain=False)
+    seen: list[tuple[list[StepResult], float, list[int]]] = []
+    loop.run_tick(
+        publish=lambda rows: seen.append(
+            (list(rows), clock.now(), [sid for sid, _ in loop.drain_errors()])
+        )
+    )
+    assert seen == [([], loop.boundaries[-1], [1])]
+    assert clock.now() == pytest.approx(loop.boundaries[-1] + PERIOD)

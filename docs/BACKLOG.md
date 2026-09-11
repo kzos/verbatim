@@ -163,6 +163,12 @@ promised date — that is for triage once an entry becomes an issue.
   at connect instead of a fraction of a period on every chunk forever. Running the tick faster than the
   chunk is the same fix at the price of a step per tick.
 
+- `tests/` — **a test waits unbounded for a failed tick's errors.** Found while mutation-testing the
+  tick-publish fix on 2026-09-11: removing the failure-path `publish([])` reddens its own test as
+  intended, but also hangs the suite, killed at 194 s. Some engine test awaits results from a tick that
+  failed and now never publishes, with no timeout of its own. A test that cannot fail in bounded time
+  is not a guard, which this project has already learned twice. Bound every receive in that path.
+
 - `bench/src/verbatim_bench/client.py` — **the pacing slip is scored against a deadline the sender does
   not follow.** The slip is measured against `t0 + i * frame_period + jitter`, jitter uniform in plus or
   minus `FRAME_JITTER_MS` = 10, while the sleep before each send targets the unjittered
