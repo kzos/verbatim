@@ -18,15 +18,29 @@
 > ([DR-0005](docs/decisions/0005-the-ladder-runs-the-window-it-reports.md)); no run made before that
 > commit becomes a capacity retrospectively.
 >
-> **A rung now evaluates three of the four criteria the method defines, and the first thing those
-> checks do is invalidate every canonical rung**
-> ([DR-0006](docs/decisions/0006-the-three-criteria-the-returned-data-supports.md)). The load generator
-> misses its own frozen pacing tolerance: `PACING_SLIP_P99_MAX_MS` is 5.0 ms and the pooled slip p99 is
-> 10.8 ms, reproduced here against a null server that does no work at all, so it is the generator and
-> not any server under test. A rung over that tolerance is invalid rather than failed, two consecutive
-> invalid rungs abort the ladder as host unfit, and the ladder therefore yields no capacity today. The
+> **A rung now evaluates three of the four criteria the method defines**
+> ([DR-0006](docs/decisions/0006-the-three-criteria-the-returned-data-supports.md)). The pacing
+> tolerance, `PACING_SLIP_P99_MAX_MS` at 5.0 ms, first invalidated every canonical rung at a pooled slip
+> p99 of 10.8 ms; that was the generator scoring itself against a jittered deadline it never scheduled
+> on, and with the jitter moved onto the wire the same measurement reads 2.0 ms over 79,411 frames. The
 > fourth criterion, zero GPU throttle events across the window, is collected by nothing here, is absent
-> from every rung's `criteria_evaluated`, and so **no rung can report a pass at all** until it is.
+> from every rung's `criteria_evaluated`, and so **no rung can report a pass at all** until it is. That
+> is the single thing standing between this project and its first benchmark row.
+>
+> **The first run with all of that corrected, on 2026-09-11, is not a row and is worth stating anyway.**
+> One A6000, bfloat16, eager, bucket 32, six streams, the frozen window and warm-up actually applied:
+> 315 s of wall clock, 298 sessions, 10,068 latency samples, **100.0 % of chunks matched**, p50
+> **140.6 ms** and p95 **193.7 ms** against a 310 ms budget, pacing slip p99 2.0 ms, no session without
+> a final and none errored. It reports `passed: false`, because thermal is unevaluated and the harness
+> will not claim a criterion nobody measured. Six streams are nowhere near the limit; the earlier
+> reports of `S = 4` and `S = 0` were artefacts of a harness measuring fifteen seconds of the wrong
+> thing. The ceiling to expect instead is the step: a fixed-shape bucket-32 step on that card costs
+> **53 to 123 ms of the 160 ms tick budget** whether six streams or thirty sit on it.
+>
+> Telephone audio was checked against recognition rather than against itself: the same utterances at
+> 8 kHz mu-law through the server's decoder and resampler score a mean word error rate of 0.0541 against
+> 0.0484 at native 16 kHz PCM, **half a point**, inside the 0.1 tolerance, measured at float32 so the
+> difference is the audio path and not the precision.
 >
 > With the window applied the measurement is repeatable, and it shows what actually fails the budget.
 > **A session's latency is a phase offset drawn once when it connects and never repaid.** The client's

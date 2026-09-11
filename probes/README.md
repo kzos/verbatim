@@ -27,6 +27,7 @@ is built to fix must not depend on the server. What they establish is that the d
 | `ladder_rung_anatomy.py` | Does the load ladder run the window it reports, and is one rung's verdict repeatable? | No, and no: a six-stream rung is 15.1 s and 106 samples, and four repeats give 289.8, 320.3, 302.6, 301.8 ms against a 310 ms threshold |
 | `tick_phase_sweep.py` | Why does one session run 150 ms behind another on an idle server? | A sawtooth in connect time, slope minus one, amplitude one tick period: latency is a phase offset drawn at connect and held for the session's life |
 | `front_pad_accuracy.py` | Does leading silence, which the tick-grid fix inserts, change what the model recognises? | It moves single words and the segment boundaries, and costs no accuracy: mean word-error change +0.0002 against a 0.1 tolerance, with 0 of 3 unpadded repeats differing |
+| `resampler_transcript.py` | Does telephone-rate audio through the server's own decoder and resampler recognise like native-rate audio? | Mean word error rate 0.0541 at 8 kHz mu-law against 0.0484 at 16 kHz PCM, half a point, inside the 0.1 tolerance |
 
 ## Running them
 
