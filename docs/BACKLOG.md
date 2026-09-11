@@ -228,7 +228,22 @@ promised date — that is for triage once an entry becomes an issue.
   fire against the null server, and fires only when the generator misses the schedule it set itself,
   which is what it exists to catch. The original entry below is kept for the reasoning.
 
-  - `bench/src/verbatim_bench/client.py::_run_session_inner` — **the seeded frame jitter shapes no send
+  - `bench/src/verbatim_bench/pace.py` — **the load generator is the binding constraint on this box, not
+  the server.** Measured 2026-09-11 while calibrating the pressure thresholds, nine 180 s null-floor
+  windows at three concurrencies: pacing slip p99 is 2.5 ms at 16 streams, 3.9 to 5.4 ms at 32 with one
+  window in three over the frozen 5.0 tolerance, and **33 to 38 ms at 128**. Nothing failed, no session
+  errored, and host pressure never left the floor at 0.00 to 0.02; one asyncio process simply cannot
+  hold a 20 ms send schedule for that many streams. So a ladder on this box will go invalid for
+  `pacing_slip` somewhere between 32 and 128 streams, before any server limit appears, while the server
+  at six streams sat 116 ms inside a 310 ms budget.
+  **Do not build a multi-process generator yet.** Run the ladder first and read which gate binds: if a
+  rung fails on latency before the generator goes invalid on pacing, the server's ceiling is inside the
+  instrument's range and a second process buys nothing. If rungs go invalid on pacing first, the
+  instrument is the limit and the generator must be split across processes, with the aggregation of
+  per-process samples into one rung as the real work. Deciding that by measurement costs one ladder run;
+  deciding it by assumption costs a rewrite that may be unnecessary.
+
+- `bench/src/verbatim_bench/client.py::_run_session_inner` — **the seeded frame jitter shapes no send
   and only corrupts the slip measurement.** The send loop sleeps to `t0 + frame_index * frame_period_s`
   and then grades that send against `t0 + frame_index * frame_period_s + jitter`, where `jitter` is a
   fresh draw in ±`FRAME_JITTER_MS`. Nothing schedules on the jittered deadline, so the offset never
