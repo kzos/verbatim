@@ -132,18 +132,29 @@ class PsiSample:
 
 @dataclass(frozen=True, slots=True)
 class PsiWindow:
-    """CPU pressure sampled across one window, on the estimator the validity gate reads:
-    `/proc/pressure/cpu`'s `avg60` (`avg10` where `avg60` is absent) for `some` and
-    `full`. `HostSampler.stop` reads that field once, at the close; this is the same
-    field at every poll inside the window, so a rung's record shows the window's peak
-    and a calibration can bound the gate's reading from above."""
+    """CPU pressure over one window. `some_window_pct` and `full_window_pct` are what the
+    validity gate reads: the delta of `/proc/pressure/cpu`'s `total` stall counters over
+    the window, as a percentage of it, exact and carrying nothing from before the window
+    opened. `some_max` and `full_max` are the peaks of the `avg60` samples polled inside
+    the window, kept as context while the two estimators are compared; `avg60` decays
+    exponentially and remembers the minute before the window, which is why it is not the
+    gate."""
 
     samples: int
     some_max: float | None
     full_max: float | None
+    some_window_pct: float | None = None
+    full_window_pct: float | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
-        return {"samples": self.samples, "some_max": self.some_max, "full_max": self.full_max}
+        return {
+            "estimator": "total-counter delta over the window; avg60 samples as context",
+            "some_window_pct": self.some_window_pct,
+            "full_window_pct": self.full_window_pct,
+            "avg60_samples": self.samples,
+            "avg60_some_max": self.some_max,
+            "avg60_full_max": self.full_max,
+        }
 
 
 def summarise_psi(samples: Sequence[PsiSample], *, open_s: float, close_s: float) -> PsiWindow:
@@ -344,12 +355,19 @@ class WindowRecorder:
             interval_s=self._interval_s,
             server_pid=self._server_pid,
         )
+        context = summarise_psi(self._psi, open_s=self._open_s, close_s=self._close_s)
         return HostWindow(
             counters=self._counters,
             gpu=gpu,
             open_s=self._open_s,
             close_s=self._close_s,
-            psi=summarise_psi(self._psi, open_s=self._open_s, close_s=self._close_s),
+            psi=PsiWindow(
+                samples=context.samples,
+                some_max=context.some_max,
+                full_max=context.full_max,
+                some_window_pct=self._counters.psi_cpu_some_avg,
+                full_window_pct=self._counters.psi_cpu_full_avg,
+            ),
         )
 
 

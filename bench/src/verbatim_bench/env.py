@@ -17,7 +17,7 @@ import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Protocol
@@ -467,6 +467,13 @@ class BoxFacts:
 
 @dataclass(frozen=True, slots=True)
 class HostCounters:
+    """One window's host counters, deltas over the window. ``psi_cpu_some_avg`` is the
+    percentage of the window during which at least one task stalled on CPU, and
+    ``psi_cpu_full_avg`` during which every task did, both from the delta of
+    ``/proc/pressure/cpu``'s monotonic ``total`` counters over the window: exact, and
+    carrying nothing from before the window opened. None where the box exposes no
+    pressure information."""
+
     steal_pct: float
     psi_cpu_some_avg: float | None
     psi_cpu_full_avg: float | None
@@ -1121,6 +1128,36 @@ def _read_pressure_avg(procfs: Path) -> tuple[float | None, float | None]:
     return some, full
 
 
+def _read_pressure_totals(procfs: Path) -> tuple[int | None, int | None]:
+    """The ``total`` stall counters of ``/proc/pressure/cpu``, microseconds, monotonic:
+    ``some`` (at least one task stalled) and ``full`` (every task stalled). Their delta over
+    a window divided by the window is the window's pressure exactly, with no decay and no
+    memory of what came before the window opened, which the ``avg`` fields carry."""
+    text = _read_text_file(procfs / "pressure" / "cpu")
+    if not text:
+        return None, None
+    some: int | None = None
+    full: int | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        tokens = stripped.split()
+        if not tokens:
+            continue
+        value: int | None = None
+        for token in tokens[1:]:
+            if token.startswith("total="):
+                try:
+                    value = int(token.split("=", 1)[1])
+                except ValueError:
+                    value = None
+                break
+        if stripped.startswith("some"):
+            some = value
+        elif stripped.startswith("full"):
+            full = value
+    return some, full
+
+
 def _read_cgroup_throttled(cgroupfs: Path) -> tuple[int, int]:
     text = _read_text_file(cgroupfs / "cpu.stat")
     if not text:
@@ -1139,6 +1176,13 @@ def _read_cgroup_throttled(cgroupfs: Path) -> tuple[int, int]:
         elif key == "throttled_usec":
             throttled_usec = number
     return nr_throttled, throttled_usec
+
+
+def _window_pressure_pct(start_us: int | None, end_us: int | None, wall_s: float) -> float | None:
+    """Stall time over wall time, as a percentage of the window; None without both counters."""
+    if start_us is None or end_us is None or wall_s <= 0:
+        return None
+    return max(end_us - start_us, 0) / (wall_s * 1_000_000.0) * 100.0
 
 
 def _read_loadavg(procfs: Path) -> float:
@@ -1200,9 +1244,11 @@ class HostSampler:
         client_pid: int | None = None,
         procfs: Path = Path("/proc"),
         cgroupfs: Path | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if cgroupfs is None:
             cgroupfs = own_cgroup(procfs)
+        self._clock = clock
         self._server_pid = server_pid
         self._client_pid = client_pid if client_pid is not None else os.getpid()
         self._procfs = procfs
@@ -1213,6 +1259,8 @@ class HostSampler:
         self._start_nr: int = 0
         self._start_usec: int = 0
         self._start_load: float = 0.0
+        self._start_some: int | None = None
+        self._start_full: int | None = None
         self._start_server: int | None = None
         self._start_client: int | None = None
         self._start_threads: dict[int, int] = {}
@@ -1233,8 +1281,9 @@ class HostSampler:
         return tids
 
     def start(self) -> None:
-        self._start_wall = time.monotonic()
+        self._start_wall = self._clock()
         self._start_total, self._start_steal = _read_proc_stat_cpu(self._procfs)
+        self._start_some, self._start_full = _read_pressure_totals(self._procfs)
         self._start_nr, self._start_usec = _read_cgroup_throttled(self._cgroupfs)
         self._start_load = _read_loadavg(self._procfs)
         if self._server_pid is not None:
@@ -1256,7 +1305,7 @@ class HostSampler:
     def stop(self, *, stream_hours: float | None = None) -> HostCounters:
         if not self._started:
             self.start()
-        wall = time.monotonic() - self._start_wall
+        wall = self._clock() - self._start_wall
         if wall <= 0:
             wall = 1e-9
         end_total, end_steal = _read_proc_stat_cpu(self._procfs)
@@ -1265,7 +1314,9 @@ class HostSampler:
         total_delta = max(end_total - self._start_total, 0)
         steal_delta = max(end_steal - self._start_steal, 0)
         steal_pct = (steal_delta / total_delta * 100.0) if total_delta else 0.0
-        psi_some, psi_full = _read_pressure_avg(self._procfs)
+        end_some, end_full = _read_pressure_totals(self._procfs)
+        psi_some = _window_pressure_pct(self._start_some, end_some, wall)
+        psi_full = _window_pressure_pct(self._start_full, end_full, wall)
         cpuset_text = _read_text_file(self._cgroupfs / "cpuset.cpus.effective")
         cpuset_size = _cpuset_size(cpuset_text)
         try:

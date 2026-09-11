@@ -154,7 +154,12 @@ def _build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--ramp-s", type=float, default=DEFAULT_RAMP_S)
     cal.add_argument("--frame-ms", type=int, default=constants.FRAME_MS)
     cal.add_argument("--interval-s", type=float, default=1.0, help="seconds between samples")
-    cal.add_argument("--quiet-s", type=float, default=None, help="quiet observation (default 10)")
+    cal.add_argument(
+        "--quiet-s",
+        type=float,
+        default=None,
+        help="quiet observation before the runs (default: the estimator's 60 s horizon)",
+    )
     cal.add_argument("--gpu-index", type=int, default=0)
     cal.add_argument("--server-pid", type=int, default=None)
     cal.add_argument("--from-smi-xml", type=Path, default=None)
