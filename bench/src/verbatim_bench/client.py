@@ -8,6 +8,9 @@ client measures the server, not its own blocking.
 
 Partial samples cover only chunks acknowledged by a qualifying server watermark; when fewer samples
 exist than chunks sent, the reported percentile is a lower bound.
+
+A stream carries as many `final` frames as the server found endpoints in it, so the
+reader reads to the close of the socket rather than stopping at the first one.
 """
 
 from __future__ import annotations
@@ -66,6 +69,25 @@ def match_partials_by_watermark(
     return samples
 
 
+def join_final_texts(events: Sequence[Mapping[str, Any]]) -> str:
+    """Join the text of every final frame, in arrival order, into one utterance.
+
+    The server marks a hypothesis final at every endpoint it detects, so an
+    utterance containing an internal silence arrives as several segments. The
+    transcript of the stream is their concatenation. Segments are joined with a
+    single space and an empty or whitespace-only segment contributes nothing, so
+    the result never carries a doubled or leading separator. A frame whose
+    ``text`` is missing or not a string still counts as a final; it just has no
+    text to contribute.
+    """
+    parts = [
+        text.strip()
+        for text in (event.get("text") for event in events)
+        if isinstance(text, str) and text.strip()
+    ]
+    return " ".join(parts)
+
+
 @dataclass(frozen=True, slots=True)
 class ChunkMode:
     ms: int
@@ -102,11 +124,17 @@ class SessionResult:
     chunks: int = 0
     audio_s: float = 0.0
     first_partial_ms: float | None = None
+    # Milliseconds from the last sent chunk to the LAST final of the stream, which
+    # is the one that completes it. A stream endpointed several times carries an
+    # earlier final per segment; those are counted in `finals_received` and their
+    # text is joined into `final_text`, but they do not set this.
     final_ms: float | None = None
     partial_ms: list[float] = field(default_factory=list)
     pacing_slip_ms: list[float] = field(default_factory=list)
     partials_received: int = 0
+    # Every final frame the stream carried, not merely whether one arrived.
     finals_received: int = 0
+    # The whole utterance: the text of every final joined in arrival order.
     final_text: str = ""
     reference_text: str = ""
     error: str | None = None
@@ -141,7 +169,8 @@ async def run_session(
     is None the client sends chunk-sized frames, which is recorded as
     non-canonical framing. The true short tail is sent unpadded and the
     server pads it, so client and server agree. Then sends `{"type": "end"}`
-    and reads until a `final` arrives or the peer closes.
+    and reads until the peer closes or the wait expires, collecting every
+    `final` the stream carried rather than stopping at the first.
 
     Never raises for a server-side or transport error: it records it in
     `SessionResult.error` and returns. A run must survive a server that drops.
@@ -215,7 +244,7 @@ async def _run_session_inner(
     send_times: list[float] = []
     sent_audio_s: list[float] = []
     partial_events: list[tuple[float, dict[str, Any]]] = []
-    final_event: tuple[float, dict[str, Any]] | None = None
+    final_events: list[tuple[float, dict[str, Any]]] = []
     failure: str | None = None
 
     async with websockets.connect(url, max_size=None) as ws:
@@ -234,7 +263,15 @@ async def _run_session_inner(
         t0 = result.started_at_s
 
         async def reader() -> None:
-            nonlocal final_event, failure
+            """Read to the close of the socket, keeping every frame the stream sent.
+
+            A final is not the end of the stream: the server marks one per endpoint
+            it detects, and partials keep coming after it. Returning on the first
+            would leave the later segments out of the transcript and the later
+            chunks without a watermark to match. Only an error frame, which the
+            server does not continue past, ends the read early.
+            """
+            nonlocal failure
             try:
                 async for message in ws:
                     now = clock()
@@ -250,13 +287,12 @@ async def _run_session_inner(
                     if kind == "partial":
                         partial_events.append((now, event))
                     elif kind == "final":
-                        final_event = (now, event)
-                        return
+                        final_events.append((now, event))
                     elif kind == "error":
                         failure = f"ServerError {event.get('code')}: {event.get('message')}"
                         return
             except Exception as exc:  # a dropped socket is a datum, not a crash
-                if final_event is None and failure is None:
+                if not final_events and failure is None:
                     failure = f"{type(exc).__name__}: {exc}"
 
         reader_task = asyncio.create_task(reader())
@@ -306,7 +342,10 @@ async def _run_session_inner(
             try:
                 await asyncio.wait_for(reader_task, timeout=_FINAL_WAIT_S)
             except TimeoutError:
-                if final_event is None and failure is None:
+                # The wait bounds a server that never closes. Whatever arrived
+                # before it expired is kept; only a stream that produced no final
+                # at all is a failure.
+                if not final_events and failure is None:
                     failure = "TimeoutError: no final received after end"
         finally:
             if not reader_task.done():
@@ -315,11 +354,8 @@ async def _run_session_inner(
                     await reader_task
 
     result.partials_received = len(partial_events)
-    if final_event is not None:
-        result.finals_received = 1
-        _, event = final_event
-        text = event.get("text", "")
-        result.final_text = text if isinstance(text, str) else ""
+    result.finals_received = len(final_events)
+    result.final_text = join_final_texts([event for _, event in final_events])
     t_first_audio = send_times[0] if send_times else result.started_at_s
     first_non_empty = next(
         (t for t, e in partial_events if isinstance(e.get("text"), str) and e["text"] != ""),
@@ -332,8 +368,10 @@ async def _run_session_inner(
         sent_audio_s,
         [(t, _watermark_of(e)) for t, e in partial_events],
     )
-    if final_event is not None:
-        result.final_ms = (final_event[0] - t_end_audio) * 1000.0
-    if failure is not None and final_event is None:
+    if final_events:
+        # To the last final: an endpointed stream finalises each segment as it
+        # ends, and only the last of them completes the stream.
+        result.final_ms = (final_events[-1][0] - t_end_audio) * 1000.0
+    if failure is not None and not final_events:
         result.error = failure
     return result

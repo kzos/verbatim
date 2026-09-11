@@ -143,6 +143,10 @@ class RunResult:
                     "final_ms": s.final_ms,
                     "partial_ms": list(s.partial_ms),
                     "partials_received": s.partials_received,
+                    # Every final the stream carried. The run total is the sum of
+                    # these, not the number of sessions that ended with one, and
+                    # `final_ms` above is the latency to the last of them.
+                    "finals_received": s.finals_received,
                     "final_text": s.final_text,
                     "reference_text": s.reference_text,
                     "words": [],

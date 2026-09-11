@@ -153,24 +153,60 @@ def _check_pacing_slip(result: Mapping[str, Any], findings: list[Finding]) -> No
             )
 
 
+def _is_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _check_finals_received(
+    result: Mapping[str, Any], sessions: list[Mapping[str, Any]], findings: list[Finding]
+) -> None:
+    """Reconcile ``result.finals_received`` against the sessions.
+
+    A stream carries one final per endpoint the server found in it, so the run
+    total is the sum of the per-session counts and not the number of sessions that
+    ended with a final. Documents written before the client counted finals carry no
+    per-session count; the only claim their sessions support is the lower bound,
+    that a session with a final latency received at least one final.
+    """
+    actual = result.get("finals_received")
+    if actual is None or not _is_number(actual):
+        return
+    if all(_is_count(s.get("finals_received")) for s in sessions):
+        want = sum(int(s["finals_received"]) for s in sessions)
+        if actual != want:
+            findings.append(
+                Finding(
+                    Level.ERROR,
+                    "COUNTER_MISMATCH",
+                    f"finals_received is {actual!r} but sessions imply {want}",
+                    "result.finals_received",
+                )
+            )
+        return
+    floor = sum(1 for s in sessions if s.get("final_ms") is not None)
+    if float(actual) < floor:
+        findings.append(
+            Finding(
+                Level.ERROR,
+                "COUNTER_MISMATCH",
+                f"finals_received is {actual!r} but {floor} sessions recorded a final latency",
+                "result.finals_received",
+            )
+        )
+
+
 def _check_counters(
     doc: Mapping[str, Any], sessions: list[Mapping[str, Any]], findings: list[Finding]
 ) -> None:
     result = _result_of(doc)
     completed = sum(1 for s in sessions if s.get("error") is None)
     failed = sum(1 for s in sessions if s.get("error") is not None)
-    final_count = sum(1 for s in sessions if s.get("final_ms") is not None)
     expected = {
         "sessions_started": len(sessions),
         "sessions_completed": completed,
         "sessions_failed": failed,
-        "finals_received": final_count,
     }
-    if all(
-        isinstance(s.get("partials_received"), int)
-        and not isinstance(s.get("partials_received"), bool)
-        for s in sessions
-    ):
+    if all(_is_count(s.get("partials_received")) for s in sessions):
         # Reconcile against the per-session message counts the client records,
         # not against len(partial_ms): the two coincide only for servers that
         # emit exactly one partial per chunk. Older documents without the field
@@ -178,6 +214,7 @@ def _check_counters(
         expected["partials_received"] = sum(
             s["partials_received"] for s in sessions if isinstance(s, Mapping)
         )
+    _check_finals_received(result, sessions, findings)
     for key, want in expected.items():
         actual = result.get(key)
         if actual is None:

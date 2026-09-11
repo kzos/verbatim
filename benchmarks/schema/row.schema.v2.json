@@ -608,6 +608,10 @@
             "type": "integer",
             "minimum": 0
           },
+          "finals_received": {
+            "type": "integer",
+            "minimum": 0
+          },
           "final_text": {
             "type": "string"
           },

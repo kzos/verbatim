@@ -36,6 +36,12 @@ class NullServerConfig:
     overload_penalty_ms: float = 160.0
     word_script: tuple[str, ...] | None = None
     retract_mode: bool = False
+    # Mid-stream finals as (chunk index, text) pairs, emitted just after the
+    # partial for that chunk. A real server marks a hypothesis final at every
+    # endpoint it detects, so a stream with an internal silence carries several
+    # finals and keeps sending partials after each; this reproduces that shape
+    # without a model. The terminal final on `end` is always sent as well.
+    segment_finals: tuple[tuple[int, str], ...] = ()
 
 
 @dataclass
@@ -130,6 +136,12 @@ class NullServer:
             return " ".join(self.config.word_script)
         return self.config.final_text
 
+    def _final_frame(self, text: str, audio_s: float, words: bool) -> dict[str, Any]:
+        frame: dict[str, Any] = {"type": "final", "text": text, "audio_s": audio_s}
+        if words or self.config.emit_words:
+            frame["words"] = []
+        return frame
+
     async def _chunk_delay_s(self) -> float:
         delay_ms = self.config.partial_delay_ms
         if self.config.capacity is not None:
@@ -157,6 +169,11 @@ class NullServer:
                     }
                 )
             )
+
+        async def _emit_segment_finals(audio_s: float) -> None:
+            for at_chunk, text in self.config.segment_finals:
+                if at_chunk == session.chunks_emitted:
+                    await ws.send(json.dumps(self._final_frame(text, audio_s, words)))
 
         async def maybe_fail() -> bool:
             if (
@@ -189,13 +206,11 @@ class NullServer:
                             session.chunks_emitted += 1
                             audio_s = session.received_bytes / _BYTES_PER_SECOND
                             await _emit_partial(audio_s)
-                        final: dict[str, Any] = {
-                            "type": "final",
-                            "text": self._final_text_for(),
-                            "audio_s": session.received_bytes / _BYTES_PER_SECOND,
-                        }
-                        if words or self.config.emit_words:
-                            final["words"] = []
+                        final = self._final_frame(
+                            self._final_text_for(),
+                            session.received_bytes / _BYTES_PER_SECOND,
+                            words,
+                        )
                         await ws.send(json.dumps(final))
                         await ws.close()
                         return
@@ -209,6 +224,7 @@ class NullServer:
                     session.chunks_emitted += 1
                     audio_s = session.received_bytes / _BYTES_PER_SECOND
                     await _emit_partial(audio_s)
+                    await _emit_segment_finals(audio_s)
                     if await maybe_fail():
                         return
         except websockets.exceptions.ConnectionClosed:
