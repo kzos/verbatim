@@ -36,14 +36,20 @@ promised date — that is for triage once an entry becomes an issue.
   `null` and reads back as `None`). Write the document with the real results writer and reload it before
   asserting, the way `tests/harness/test_verify.py::test_writer_output_round_trips_through_validate_and_verify`
   now does for the happy path.
-- **`bench/src/verbatim_bench/nullserver.py` (the tail partial) — re-opened 2026-09-10; it was struck
+- ~~**`bench/src/verbatim_bench/nullserver.py` (the tail partial) — re-opened 2026-09-10; it was struck
   through as resolved and the property it asks for is still not asserted.** The null floor emits a
   partial for a short final tail so its cadence matches the real server, but
   `test_short_tail_emits_a_final_partial_so_the_floor_matches_the_server` asserts that a final partial
   arrives, not that partial's own `audio_s` taken from the frame the floor sent. Mutating the server's
   stamp can still leave the suite green. Assert it directly. **Re-opening this is the point:** a
   strikethrough is a claim, and an entry struck through without a test that fails without the fix is the
-  same defect as a guard that cannot fail, one level up.
+  same defect as a guard that cannot fail, one level up.~~
+  **Closed 2026-09-11, and this time the property is asserted rather than the arrival.** The floor
+  stamps a mid-stream partial with the chunk it acknowledges rather than the bytes it received, which
+  differ whenever a message runs past a chunk boundary, and the tail partial keeps every byte sent
+  because the real server's padded final counts the real samples. The tests now pin the numbers: seven
+  matched watermark samples for seven client chunks including a 40 ms tail, the tail's own `audio_s`
+  read over a raw socket, and a message of one and a half chunks stamped at one chunk rather than two.
 - `bench/src/verbatim_bench/client.py::ChunkMode.parse` — accepts spellings beyond the documented `160`,
   `"160"` and `"160ms"` forms, such as `"160 ms"` with a space before the suffix, because it strips and
   re-joins the string instead of matching a strict grammar. Replace the manual strip/suffix logic with a

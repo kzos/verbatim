@@ -185,6 +185,9 @@ class NullServer:
                         continue
                     if isinstance(event, dict) and event.get("type") == "end":
                         if pending > 0:
+                            # The short tail is the last frame: its partial carries
+                            # every byte sent, as the server's padded final chunk
+                            # counts only the real samples in it.
                             pending = 0
                             session.chunks_emitted += 1
                             audio_s = session.received_bytes / _BYTES_PER_SECOND
@@ -207,7 +210,10 @@ class NullServer:
                 while pending >= frame_bytes:
                     pending -= frame_bytes
                     session.chunks_emitted += 1
-                    audio_s = session.received_bytes / _BYTES_PER_SECOND
+                    # Stamped from the frame this partial acknowledges, as the real
+                    # server stamps its own audio clock: a message that runs past a
+                    # chunk boundary has not been recognised past it.
+                    audio_s = session.chunks_emitted * frame_bytes / _BYTES_PER_SECOND
                     await _emit_partial(audio_s)
                     if await maybe_fail():
                         return
