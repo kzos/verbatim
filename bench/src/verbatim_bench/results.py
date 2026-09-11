@@ -45,12 +45,41 @@ def _block(values: Sequence[float]) -> dict[str, Any]:
 
 @dataclass
 class RunResult:
+    """One load run, with the wall-clock moment each of its phases began and ended.
+
+    The phase timestamps come from the same monotonic clock as the per-sample receive
+    times, so a caller can say which phase a sample fell in. They stay `None` for a run
+    that expressed no measurement window, which is how a smoke run reports that it took
+    no measurement rather than reporting one over whatever it happened to collect.
+    """
+
     spec_dict: dict[str, Any]
     sessions: list[SessionResult] = field(default_factory=list)
     wall_clock_s: float = 0.0
     corpus_id: str = ""
     manifest_name: str = ""
     started_at: datetime | None = None
+    wall_start_s: float = 0.0
+    all_live_at_s: float | None = None
+    warm_up_end_s: float | None = None
+    window_open_s: float | None = None
+    window_close_s: float | None = None
+    warm_up_converged: bool | None = None
+    warm_up_readings: tuple[float | None, ...] = ()
+
+    @property
+    def window_length_s(self) -> float | None:
+        """The measurement window this run actually held open, in seconds."""
+        if self.window_open_s is None or self.window_close_s is None:
+            return None
+        return self.window_close_s - self.window_open_s
+
+    @property
+    def warm_up_length_s(self) -> float | None:
+        """The warm-up actually run at N, from all streams live to the window opening."""
+        if self.all_live_at_s is None or self.warm_up_end_s is None:
+            return None
+        return self.warm_up_end_s - self.all_live_at_s
 
     def to_json_dict(self) -> dict[str, Any]:
         """Shape this task owns jointly with the schema contract; keys are never renamed."""

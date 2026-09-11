@@ -68,7 +68,12 @@ class RungPlan:
 
     @property
     def canonical_window(self) -> bool:
-        """Whether both durations are the frozen warm-up and window lengths."""
+        """Whether this plan asked for the frozen warm-up and window lengths.
+
+        A property of the request, not of any run. It can only take a rung's canonical
+        flag away, never grant it: what the operator typed says nothing about what the
+        load generator did, and the rung decides that from the load it executed.
+        """
         return self.warm_up_s == constants.WARM_UP_S and self.window_s == constants.WINDOW_S
 
 
@@ -87,6 +92,11 @@ class Rung:
 
     `valid` and `invalid_reason` are untouched and keep naming host fitness. An
     unevaluated criterion is not a host problem and is never filed as one.
+
+    `warm_up_s`, `window_s` and `wall_clock_s` describe the load this rung ran, not the
+    load it was asked for, so a reader can check one against the others: a rung that
+    claims a 180-second window and reports fifteen seconds of wall clock did not run it.
+    `canonical_window` follows from the same three rather than from the command line.
     """
 
     n: int
@@ -102,6 +112,8 @@ class Rung:
     sessions_without_final: int
     criteria_evaluated: tuple[Criterion, ...] = ()
     canonical_window: bool = True
+    window_s: float = constants.WINDOW_S
+    wall_clock_s: float = 0.0
 
     @property
     def criteria_unevaluated(self) -> frozenset[Criterion]:
@@ -145,9 +157,15 @@ class LadderResult:
     abort_reason: str | None
     sensitivity: Sensitivity | None
 
-    def to_json_list(self) -> list[dict[str, Any]]:
-        """Serialize rungs without losing invalid attempts or their reasons."""
-        return [
+    def to_json_list(self, *, include_window: bool = False) -> list[dict[str, Any]]:
+        """Serialize rungs without losing invalid attempts or their reasons.
+
+        The default shape is the rung object the row schema defines, which sets
+        `additionalProperties: false`, so the executed window and wall clock are opt-in:
+        `ladder.json` is this harness's own artifact and carries them, while a row
+        document keeps exactly the rung the frozen schema names.
+        """
+        rows = [
             {
                 "n": rung.n,
                 "seed": rung.seed,
@@ -170,6 +188,11 @@ class LadderResult:
             }
             for rung in self.rungs
         ]
+        if include_window:
+            for row, rung in zip(rows, self.rungs, strict=True):
+                row["window_s"] = rung.window_s
+                row["wall_clock_s"] = rung.wall_clock_s
+        return rows
 
 
 RungRunner = Callable[[RungPlan], Rung]
@@ -196,10 +219,17 @@ def _passed(rung: Rung) -> bool:
     return rung.valid and rung.passed
 
 
-def _with_plan_window(rung: Rung, plan: RungPlan) -> Rung:
-    if rung.warm_up_s == plan.warm_up_s and rung.canonical_window == plan.canonical_window:
-        return rung
-    return replace(rung, warm_up_s=plan.warm_up_s, canonical_window=plan.canonical_window)
+def _narrow_canonical(rung: Rung, plan: RungPlan) -> Rung:
+    """Let a non-canonical plan clear a rung's canonical flag, and nothing set it.
+
+    The rung executor derives `canonical_window` from the load it ran. A plan that asked
+    for overridden durations can only make that answer worse, so this narrows and never
+    widens. The flag it replaced was the plan's answer alone, which made it true of every
+    run nobody overrode, including every run that took no measurement at all.
+    """
+    if rung.canonical_window and not plan.canonical_window:
+        return replace(rung, canonical_window=False)
+    return rung
 
 
 def run_ladder(
@@ -227,7 +257,7 @@ def run_ladder(
     def execute(plan: RungPlan) -> tuple[Rung | None, str | None]:
         nonlocal invalid_streak
         while True:
-            rung = _with_plan_window(run_rung(plan), plan)
+            rung = _narrow_canonical(run_rung(plan), plan)
             all_rungs.append(rung)
             if rung.valid:
                 invalid_streak = 0

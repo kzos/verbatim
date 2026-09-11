@@ -7,13 +7,16 @@
 > Both wires now run every session through the tick-scheduled engine, with admission, live back-pressure
 > and an idle deadline. **The first load runs happened on 2026-09-11 and produced no publishable number,
 > because the load generator was measuring something other than what it reported.** The ladder's rung
-> executor builds its load spec without the frozen 180-second window, so a rung streamed one utterance
+> executor built its load spec without the frozen 180-second window, so a rung streamed one utterance
 > down each slot and stopped: fifteen seconds of wall clock and 106 latency samples, while every rung
 > was stamped `canonical_window: true` from a comparison of command-line arguments against constants.
 > Four repeats of one identical rung give p95 values of 289.8, 320.3, 302.6 and 301.8 ms against a
 > 310 ms budget, three passes and a failure from the same inputs. An earlier reading of these runs as a
 > **bimodal** latency, and a 30 ms improvement attributed to the graph path, are both withdrawn: a
-> single rung repeated on one machine covers that whole gap.
+> single rung repeated on one machine covers that whole gap. The executor now ramps to `N`, runs the
+> warm-up convergence protocol at `N`, and takes its percentile only from the window
+> ([DR-0005](docs/decisions/0005-the-ladder-runs-the-window-it-reports.md)); no run made before that
+> commit becomes a capacity retrospectively.
 >
 > With the window applied the measurement is repeatable, and it shows what actually fails the budget.
 > **A session's latency is a phase offset drawn once when it connects and never repaid.** The client's

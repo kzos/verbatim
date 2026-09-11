@@ -8,12 +8,15 @@ Nothing here may be cited as a benchmark result, quoted in a comparison, or used
 way. Each file says in its own record why it is not a row.
 
 > **Both files below carry `canonical_window: true` and neither run was canonical.** The ladder's rung
-> executor builds its load spec without the frozen window and with the ramp forced to zero, so a rung
-> is a single pass of one utterance per slot: fifteen seconds of wall clock and 106 latency samples at
-> six streams, against a frozen window of 180 s and a warm-up of 60 s that is applied nowhere. The flag
-> compares command-line arguments with constants and attests only that the operator typed no override.
+> executor built its load spec without the frozen window and with the ramp forced to zero, so a rung
+> was a single pass of one utterance per slot: fifteen seconds of wall clock and 106 latency samples at
+> six streams, against a frozen window of 180 s and a warm-up of 60 s that was applied nowhere. The flag
+> compared command-line arguments with constants and attested only that the operator typed no override.
 > Four repeats of one identical rung give p95 values of 289.8, 320.3, 302.6 and 301.8 ms against a
 > 310 ms threshold: three passes and a failure from the same inputs. Evidence section 25.
+> The executor was fixed on 2026-09-11 by
+> [DR-0005](../../docs/decisions/0005-the-ladder-runs-the-window-it-reports.md). These two files were
+> produced before it and stay withdrawn: a fixed harness does not make an old run canonical.
 
 | file | why it is not a row |
 |---|---|

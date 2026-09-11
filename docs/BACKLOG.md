@@ -198,6 +198,16 @@ promised date — that is for triage once an entry becomes an issue.
   it certifies the arguments and not the run. Fix: pass the window through, decide what the warm-up does
   operationally or delete it, derive `canonical_window` from the executed load, and guard it with a test
   that reddens against today's `_make_rung`. Until then no ladder output is a capacity.
+  **Done 2026-09-11** by [DR-0005](decisions/0005-the-ladder-runs-the-window-it-reports.md): a rung now
+  ramps to `N`, waits for every slot's session to be acknowledged by the server, runs the warm-up
+  convergence protocol at `N`, and takes its percentile only from samples received inside the window.
+  Reaching `WARM_UP_CAP_S` without two readings agreeing within `WARM_UP_CONVERGENCE` fails the rung as
+  `Criterion.UNSTABLE`, which was defined and unreachable. `canonical_window` is read from the load that
+  executed, and `Rung` carries the window and the wall clock it ran so the two can be checked against
+  each other. Reading latency mid-session forced the watermark match into a streaming form,
+  `client.WatermarkMatcher`, which `match_partials_by_watermark` is now written in terms of; every
+  sample carries the moment it was matched. **No rung produced before this commit is a capacity, and
+  none becomes one retrospectively.**
 
 - `bench/src/verbatim_bench/cli.py::_make_rung` — **the rung evaluates one of the four criteria the
   methodology defines and reports the other three as passing.** `benchmarks/METHODOLOGY.md` section 56

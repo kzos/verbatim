@@ -7,11 +7,21 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from verbatim_bench import constants
 from verbatim_bench.client import ChunkMode
-from verbatim_bench.pace import LoadSpec, run_load
+from verbatim_bench.pace import (
+    DEFAULT_RAMP_S,
+    LoadSpec,
+    executed_canonical_window,
+    run_load,
+    window_partial_samples,
+)
 from verbatim_bench.results import write_results
+
+if TYPE_CHECKING:
+    from verbatim_bench.ladder import RungPlan
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -24,7 +34,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--chunk", default="160ms")
     run.add_argument("--profile", choices=("uniform", "bursty"), default="uniform")
     run.add_argument("--seed", type=int, default=20260914)
-    run.add_argument("--ramp-s", type=float, default=60.0)
+    run.add_argument("--ramp-s", type=float, default=DEFAULT_RAMP_S)
     run.add_argument("--words", action="store_true")
     run.add_argument("--lang", default="en-US")
     run.add_argument("--arm", default="unknown")
@@ -48,6 +58,10 @@ def _build_parser() -> argparse.ArgumentParser:
     ladder.add_argument("--seeds", type=str, default=",".join(str(s) for s in constants.SEEDS))
     ladder.add_argument("--warm-up-s", type=float, default=constants.WARM_UP_S)
     ladder.add_argument("--window-s", type=float, default=constants.WINDOW_S)
+    ladder.add_argument("--warm-up-reading-s", type=float, default=constants.WARM_UP_READING_S)
+    ladder.add_argument("--warm-up-convergence", type=float, default=constants.WARM_UP_CONVERGENCE)
+    ladder.add_argument("--warm-up-cap-s", type=float, default=constants.WARM_UP_CAP_S)
+    ladder.add_argument("--ramp-s", type=float, default=DEFAULT_RAMP_S)
     ladder.add_argument("--out", type=Path, required=True)
     return parser
 
@@ -176,11 +190,50 @@ def _env(args: argparse.Namespace) -> int:
     return 0
 
 
+def _overrides_frozen_durations(args: argparse.Namespace) -> bool:
+    """Whether the operator typed anything other than the frozen rung durations.
+
+    A warning only. It cannot certify a run: every rung this harness produced on
+    2026-09-11 passed this check and none of them ran a measurement window.
+    """
+    return (
+        float(args.warm_up_s) != float(constants.WARM_UP_S)
+        or float(args.window_s) != float(constants.WINDOW_S)
+        or float(args.warm_up_reading_s) != float(constants.WARM_UP_READING_S)
+        or float(args.warm_up_convergence) != float(constants.WARM_UP_CONVERGENCE)
+        or float(args.warm_up_cap_s) != float(constants.WARM_UP_CAP_S)
+    )
+
+
+def ladder_load_spec(args: argparse.Namespace, plan: RungPlan, chunk: ChunkMode) -> LoadSpec:
+    """The load one rung runs: the plan's warm-up and window, and a real ramp to N.
+
+    The ramp is not forced to zero. All `n` streams have to be live before the warm-up
+    clock starts, and the load generator establishes that by waiting for every slot to
+    open its first session, so a stagger costs the rung nothing and a zero-length one
+    buys it nothing but a thundering herd.
+    """
+    return LoadSpec(
+        endpoint=args.endpoint,
+        manifest=Path(args.manifest),
+        sessions=plan.n,
+        chunk=chunk,
+        profile="uniform",
+        seed=plan.seed,
+        arm=args.arm,
+        ramp_s=float(args.ramp_s),
+        window_s=float(plan.window_s),
+        warm_up_s=float(plan.warm_up_s),
+        warm_up_reading_s=float(args.warm_up_reading_s),
+        warm_up_convergence=float(args.warm_up_convergence),
+        warm_up_cap_s=float(args.warm_up_cap_s),
+    )
+
+
 def _ladder(args: argparse.Namespace) -> int:
     import asyncio
 
-    from verbatim_bench import constants as _constants
-    from verbatim_bench.ladder import Rung, RungPlan, run_ladder
+    from verbatim_bench.ladder import Criterion, Rung, run_ladder
     from verbatim_bench.results import percentile
 
     try:
@@ -199,33 +252,44 @@ def _ladder(args: argparse.Namespace) -> int:
     if n0 < 1:
         print("verbatim-bench: --n0 must be >= 1")
         return 1
-    canonical = float(args.warm_up_s) == float(_constants.WARM_UP_S) and float(
-        args.window_s
-    ) == float(_constants.WINDOW_S)
-    if not canonical:
+    if _overrides_frozen_durations(args):
+        # A warning about what was asked for, and nothing more. Whether the run was
+        # canonical is decided per rung, from the load the generator actually executed.
         print("verbatim-bench: warning: overridden durations mark the run non-canonical")
     chunk = ChunkMode.parse(160)
-    threshold_ms = chunk.ms + _constants.X_MS
+    threshold_ms = chunk.ms + constants.X_MS
 
     def _make_rung(plan: RungPlan) -> Rung:
-        from verbatim_bench.ladder import Criterion
-
-        async def _once() -> tuple[list[float], int, object]:
-            spec = LoadSpec(
-                endpoint=args.endpoint,
-                manifest=Path(args.manifest),
-                sessions=plan.n,
-                chunk=chunk,
-                profile="uniform",
-                seed=plan.seed,
-                ramp_s=0.0,
+        result = asyncio.run(run_load(ladder_load_spec(args, plan, chunk)))
+        refused = sum(1 for session in result.sessions if session.error is not None)
+        warm_up_s = result.warm_up_length_s
+        # What the load did, which is what the rung reports: the warm-up and window it
+        # ran, the wall clock it took, and whether that was the frozen window.
+        ran: dict[str, object] = {
+            "n": plan.n,
+            "seed": plan.seed,
+            "wer_vs_batch1": None,
+            "valid": True,
+            "invalid_reason": None,
+            "warm_up_s": float(warm_up_s if warm_up_s is not None else args.warm_up_s),
+            "sessions_refused": int(refused),
+            "sessions_dropped": 0,
+            "sessions_without_final": 0,
+            "canonical_window": executed_canonical_window(result),
+            "window_s": float(plan.window_s),
+            "wall_clock_s": float(result.wall_clock_s),
+        }
+        if result.warm_up_converged is False:
+            # The frozen document: failure to converge by the cap fails the rung as
+            # unstable. No window opened, so this rung established no criterion at all
+            # and has no percentile to report.
+            return Rung(
+                p95_ms=float("inf"),
+                first_failing_criterion=Criterion.UNSTABLE,
+                criteria_evaluated=(),
+                **ran,  # type: ignore[arg-type]
             )
-            result = await run_load(spec)
-            samples = [v for s in result.sessions for v in s.partial_ms]
-            refused = sum(1 for s in result.sessions if s.error is not None)
-            return samples, refused, result
-
-        samples, refused, _ = asyncio.run(_once())
+        samples = window_partial_samples(result)
         p95 = percentile(samples, 95) if samples else float("inf")
         # Only two of the criteria a rung must meet are established here: latency, and
         # then only when the window produced samples to take a p95 of, and the refused
@@ -242,22 +306,11 @@ def _ladder(args: argparse.Namespace) -> int:
         elif samples and p95 > threshold_ms:
             criterion = Criterion.LATENCY
         return Rung(
-            n=plan.n,
-            seed=plan.seed,
             p95_ms=float(p95),
-            wer_vs_batch1=None,
             first_failing_criterion=criterion,
             criteria_evaluated=tuple(criteria),
-            valid=True,
-            invalid_reason=None,
-            warm_up_s=float(args.warm_up_s),
-            sessions_refused=int(refused),
-            sessions_dropped=0,
-            sessions_without_final=0,
-            canonical_window=bool(canonical),
+            **ran,  # type: ignore[arg-type]
         )
-
-    from verbatim_bench.ladder import n0_for as _n0_for  # noqa: F401
 
     outcome = run_ladder(
         _make_rung,
@@ -276,8 +329,19 @@ def _ladder(args: argparse.Namespace) -> int:
         else None,
         "aborted": outcome.aborted,
         "abort_reason": outcome.abort_reason,
-        "config": {"canonical_window": bool(canonical)},
-        "rungs": outcome.to_json_list(),
+        "config": {
+            # True only when every rung in this ladder ran the frozen window. A ladder
+            # with no rungs ran nothing and certifies nothing.
+            "canonical_window": bool(outcome.rungs)
+            and all(rung.canonical_window for rung in outcome.rungs),
+            "warm_up_s": float(args.warm_up_s),
+            "window_s": float(args.window_s),
+            "warm_up_reading_s": float(args.warm_up_reading_s),
+            "warm_up_convergence": float(args.warm_up_convergence),
+            "warm_up_cap_s": float(args.warm_up_cap_s),
+            "ramp_s": float(args.ramp_s),
+        },
+        "rungs": outcome.to_json_list(include_window=True),
     }
     (out_dir / "ladder.json").write_text(json.dumps(payload, indent=2) + "\n")
     if outcome.aborted:

@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import json
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -34,6 +35,10 @@ class NullServerConfig:
     fail_after_chunks: int | None = None
     capacity: int | None = None
     overload_penalty_ms: float = 160.0
+    #: Milliseconds added to `partial_delay_ms` per second since the server started.
+    #: A server whose latency climbs without bound never settles, which is the only way
+    #: to exercise the warm-up cap without waiting for a real one to misbehave.
+    partial_delay_growth_ms_per_s: float = 0.0
     word_script: tuple[str, ...] | None = None
     retract_mode: bool = False
 
@@ -67,8 +72,10 @@ class NullServer:
         self._ids = itertools.count(1)
         self._lock = asyncio.Lock()
         self._live = 0
+        self._started_at = time.monotonic()
 
     async def __aenter__(self) -> NullServer:
+        self._started_at = time.monotonic()
         self._server = await websockets.serve(self._handle, "127.0.0.1", 0)
         sock = self._server.sockets
         if not sock:
@@ -132,6 +139,9 @@ class NullServer:
 
     async def _chunk_delay_s(self) -> float:
         delay_ms = self.config.partial_delay_ms
+        if self.config.partial_delay_growth_ms_per_s:
+            elapsed_s = time.monotonic() - self._started_at
+            delay_ms += self.config.partial_delay_growth_ms_per_s * elapsed_s
         if self.config.capacity is not None:
             async with self._lock:
                 live = self._live
