@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
@@ -470,21 +471,35 @@ async def test_a_pipeline_exception_becomes_an_error_frame() -> None:
 
 
 class _StoppingEngine(_RecordingEngine):
-    """The stub engine as a reader sees it once `stop()` has begun: the tick wait
-    raises rather than waiting for a tick that will never come."""
+    """The engine as a parked reader sees it once `stop()` has begun: the tick wait
+    raises, and by then the engine has ended the session itself."""
 
     async def wait_for_ticks(self, n: int) -> None:
         self.log.append(("wait", n))
+        await self.inner.stop()
         raise RuntimeError("engine tick loop is not running")
 
 
-async def test_a_reader_parked_in_back_pressure_when_the_engine_stops_aborts_cleanly() -> None:
-    """The reader's tick wait raises during shutdown; the session is aborted, the
-    client gets a clean close and no final, and nothing is reported as internal.
+async def _collect_until_any_close(ws: ClientConnection) -> list[dict]:
+    """Like `_collect_until_close`, but a close with any code ends the collection;
+    the caller asserts on `ws.close_code`."""
+    frames = []
+    try:
+        while True:
+            raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
+            assert isinstance(raw, str)
+            frames.append(json.loads(raw))
+    except ConnectionClosed:
+        pass
+    return frames
 
-    The inner engine keeps ticking, so a partial from audio it had already stepped may
-    precede the close; a real `stop()` delivers the last tick's partials the same way,
-    ahead of its end marker. A final or an error frame would be wrong here."""
+
+async def test_a_reader_parked_in_back_pressure_when_the_engine_stops_is_told_unavailable() -> None:
+    """The reader's tick wait raises during shutdown. The reader does not abort the
+    session, because the engine has already ended it with UNAVAILABLE and an abort
+    could race the thread's last tick into a clean close; the client gets an error
+    frame naming UNAVAILABLE and close code 1001, going away, with no final. A partial
+    from audio the engine had already stepped may precede the error frame."""
     inner = stub_engine(ring_seconds=0.5)
     engine = _StoppingEngine(inner)
     async with (
@@ -494,9 +509,76 @@ async def test_a_reader_parked_in_back_pressure_when_the_engine_stops_aborts_cle
     ):
         assert (await _recv_json(ws))["type"] == "session"
         await ws.send(b"\x00" * (2 * 16000 * 2))  # larger than the ring: the first feed is short
-        frames = await _collect_until_close(ws)
-        assert ws.close_code == 1000
+        frames = await _collect_until_any_close(ws)
+        assert ws.close_code == 1001
         await _settle(server)
-    assert [frame["type"] for frame in frames if frame["type"] != "partial"] == []
+    assert [frame["type"] for frame in frames[:-1] if frame["type"] != "partial"] == []
+    assert frames[-1]["type"] == "error"
+    assert frames[-1]["code"] == "UNAVAILABLE"
     assert engine.calls("wait") == [1]
-    assert engine.calls("abort") == [0]
+    assert engine.calls("abort") == []
+
+
+async def test_a_client_mid_stream_gets_unavailable_and_close_1001_when_the_engine_stops() -> None:
+    """The engine stops under an open session: the client is told with an error frame
+    naming UNAVAILABLE and a 1001 close, going away, never a 1000 close that would read
+    as a finished utterance. Partials already produced still arrive first; no final."""
+    inner = stub_engine()
+    async with (
+        inner,
+        WsServer(inner, WsServerConfig(port=0)) as server,
+        connect(server.endpoint) as ws,
+    ):
+        assert (await _recv_json(ws))["type"] == "session"
+        await ws.send(_chunk())
+        first = await _recv_json(ws)
+        assert first["type"] == "partial", "the session must be live and mid-utterance"
+        await inner.stop()
+        frames = await _collect_until_any_close(ws)
+        assert ws.close_code == 1001
+        await _settle(server)
+    assert all(frame["type"] == "partial" for frame in frames[:-1])
+    assert frames[-1] == {"type": "error", "code": "UNAVAILABLE", "message": frames[-1]["message"]}
+    assert "shutting down" in frames[-1]["message"]
+
+
+class _StuckSession(_RecordingSession):
+    """A session whose result stream never ends: the engine failed to end it."""
+
+    async def results(self) -> AsyncIterator[Hypothesis]:
+        await asyncio.Event().wait()
+        yield Hypothesis(text="", is_final=False, audio_processed_s=0.0)  # pragma: no cover
+
+
+class _StuckEngine(_RecordingEngine):
+    def open_session(self, options: SessionOptions) -> SessionHandle:
+        return _StuckSession(self.inner.open_session(options), self.log)
+
+
+async def test_the_listener_stops_within_its_grace_when_a_session_never_ends() -> None:
+    """A handler whose result stream never ends must not hold the listener's shutdown
+    open: after the grace the handler is cancelled, its session aborted, and `stop()`
+    returns. Without the bound an engine that failed to end one session would keep
+    the process alive past SIGTERM, and a test of that engine hangs instead of
+    failing, which is how round 5's mutation table lost a row."""
+    engine = _StuckEngine(stub_engine())
+    server = WsServer(engine, WsServerConfig(port=0))
+    await server.start()
+    async with connect(server.endpoint) as ws:
+        assert (await _recv_json(ws))["type"] == "session"
+        await ws.send(_chunk())
+        await ws.send('{"type": "end"}')  # the reader ends the session and returns
+        for _ in range(500):
+            if engine.calls("end"):
+                break
+            await asyncio.sleep(0.01)
+        assert engine.calls("end") == [0], "the reader must have half-closed before stop()"
+        started = time.monotonic()
+        await asyncio.wait_for(server.stop(grace=0.5), timeout=5.0)
+        elapsed = time.monotonic() - started
+        frames = await _collect_until_any_close(ws)
+        assert ws.close_code == 1001  # the listener's own going-away close
+    assert 0.5 <= elapsed < 5.0, f"stop() took {elapsed:.2f} s against a 0.5 s grace"
+    assert frames == []
+    assert server.live_sessions == 0
+    assert engine.calls("abort") == [0], "the cancelled handler drops the session it was holding"

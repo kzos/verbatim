@@ -22,6 +22,7 @@ __all__ = [
     "InvalidArgument",
     "NotFound",
     "ResourceExhausted",
+    "Unavailable",
     "Unimplemented",
     "VerbatimError",
 ]
@@ -40,6 +41,7 @@ class ErrorCode(StrEnum):
     UNIMPLEMENTED = "UNIMPLEMENTED"
     RESOURCE_EXHAUSTED = "RESOURCE_EXHAUSTED"
     DEADLINE_EXCEEDED = "DEADLINE_EXCEEDED"
+    UNAVAILABLE = "UNAVAILABLE"
     INTERNAL = "INTERNAL"
 
 
@@ -89,3 +91,13 @@ class ResourceExhausted(VerbatimError):
     def __init__(self, message: str, retry_after_ms: int = 0) -> None:
         super().__init__(message, ErrorCode.RESOURCE_EXHAUSTED)
         self.retry_after_ms = retry_after_ms
+
+
+class Unavailable(VerbatimError):
+    """The server is going away while a session is still open: the engine stopped
+    with the session mid-stream, so its final never came. Distinct from a clean end
+    on purpose, because a caller cannot otherwise tell a completed utterance from one
+    the server abandoned, and that difference decides whether the caller retries."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, ErrorCode.UNAVAILABLE)
