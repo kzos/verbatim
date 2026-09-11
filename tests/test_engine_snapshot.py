@@ -116,10 +116,13 @@ async def test_a_dead_tick_loop_is_visible_in_the_snapshot(monkeypatch: pytest.M
     engine = stub_engine()
     real_run_tick = engine._tick.run_tick
 
-    def run_tick(*, lock: object = None) -> list[StepResult]:
+    def run_tick(*, lock: object = None, publish: object = None) -> list[StepResult]:
+        # The signature has to match the real one, publish included. Without it the
+        # loop died on a TypeError at the first tick instead of the MemoryError at the
+        # third, so this passed for the wrong reason and did so only sometimes.
         if engine.tick_id >= 2:
             raise MemoryError("tick thread died")
-        return real_run_tick(lock=lock)
+        return real_run_tick(lock=lock, publish=publish)
 
     monkeypatch.setattr(engine._tick, "run_tick", run_tick)
     async with engine:

@@ -64,14 +64,13 @@ NVML_THROTTLE_EVENTS_MAX: Final = 0
 FOREIGN_GPU_PROCESSES_MAX: Final = 0
 GPU_PERSISTENCE_MODE_REQUIRED: Final = True
 
+# Calibrated by the harness on the box, per section 7 and DR-0007. Never guess these.
+PSI_CPU_SOME_MAX_PCT: Final[float | None] = 0.4
+PSI_CPU_FULL_MAX_PCT: Final[float | None] = 0.0
 # Not yet frozen: no measurement exists. Never guess these.
-PSI_CPU_SOME_MAX_PCT: Final[float | None] = None
-PSI_CPU_FULL_MAX_PCT: Final[float | None] = None
 AA_SPREAD_MAX_PCT: Final[float | None] = None
 NULL_FLOOR_TOLERANCE_PCT: Final[float | None] = None
 UNFROZEN_THRESHOLDS: Final = (
-    "PSI_CPU_SOME_MAX_PCT",
-    "PSI_CPU_FULL_MAX_PCT",
     "AA_SPREAD_MAX_PCT",
     "NULL_FLOOR_TOLERANCE_PCT",
 )

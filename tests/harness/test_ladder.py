@@ -255,8 +255,13 @@ def test_two_consecutive_invalid_rungs_abort_as_host_unfit() -> None:
     assert outcome.s is None
 
 
-def test_an_unfrozen_pressure_threshold_makes_the_rung_invalid() -> None:
-    assert constants.PSI_CPU_SOME_MAX_PCT is None
+def test_an_unfrozen_pressure_threshold_makes_the_rung_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Constructed rather than inherited: the pressure pair was calibrated on 2026-09-11
+    (DR-0007), and the rule that a null threshold invalidates a rung still binds for the
+    two calibration values that remain null and on any box awaiting its own calibration."""
+    monkeypatch.setattr(constants, "PSI_CPU_SOME_MAX_PCT", None)
     reason = rung_validity(_counters(), fake_gpu_facts(), 1.0)
     assert reason is InvalidReason.PSI_THRESHOLD_UNFROZEN
 

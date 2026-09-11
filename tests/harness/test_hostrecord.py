@@ -219,10 +219,16 @@ def test_an_uncovered_window_leaves_thermal_unevaluated(monkeypatch: pytest.Monk
     assert rung.passed is False
 
 
-def test_unfrozen_pressure_thresholds_keep_a_sampled_rung_invalid_and_recorded() -> None:
+def test_unfrozen_pressure_thresholds_keep_a_sampled_rung_invalid_and_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The frozen document: a rung measured while a required threshold is null is invalid
-    rather than passing. The record is still kept, because it is the calibration's input."""
-    assert constants.PSI_CPU_SOME_MAX_PCT is None
+    rather than passing. The record is still kept, because it is the calibration's input.
+
+    The thresholds were calibrated on 2026-09-11 (DR-0007), so this state no longer arises
+    by default and is constructed. The rule still has to hold, because the other two
+    calibration values are null and the pressure pair is re-calibrated per box session."""
+    monkeypatch.setattr(constants, "PSI_CPU_SOME_MAX_PCT", None)
     host = _host()
     rung = rung_from_run(
         _run([_session(index) for index in range(4)]),
@@ -448,8 +454,16 @@ async def test_the_ladder_records_the_host_window_when_asked(tmp_path: Path) -> 
         assert rung["host"]["gpu"]["throttle_events"] == 0
         assert rung["host"]["gpu"]["foreign_pids"] == []
         assert rung["host"]["counters"]["client_cpu_pct_of_cpuset"] >= 0.0
-        assert rung["invalid_reason"] == InvalidReason.PSI_THRESHOLD_UNFROZEN.value
-        assert rung["valid"] is False
+        # This test's subject is that the window record rides on the rung, and it must not
+        # depend on what the box was doing while the suite ran. Before the thresholds were
+        # calibrated (DR-0007) a sampled rung was always invalid as unfrozen; now it is
+        # valid on a quiet box and invalid for pressure on a busy one, and a test suite is
+        # a busy box. Either is correct here; an unrelated reason is not.
+        if not rung["valid"]:
+            assert rung["invalid_reason"] in {
+                InvalidReason.PSI.value,
+                InvalidReason.PSI_THRESHOLD_UNFROZEN.value,
+            }
 
 
 def test_host_record_needs_a_server_pid(tmp_path: Path) -> None:
