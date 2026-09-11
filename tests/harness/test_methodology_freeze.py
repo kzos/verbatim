@@ -286,3 +286,17 @@ def test_document_contains_no_measured_number() -> None:
         ):
             suspicious.append(line)
     assert not suspicious, f"unpermitted measured number: {suspicious}"
+
+
+def test_a_produced_run_stamps_the_frozen_schema_version() -> None:
+    """The freeze binds the code, not only the document.
+
+    Before this, `SCHEMA_VERSION_FOR_RUN` was referenced nowhere outside `constants.py`
+    and the frozen block: the document and the constant agreed, this file confirmed they
+    agreed, and `results.py` stamped a literal. Changing the frozen constant changed
+    nothing a row would carry, which is a freeze that cannot bind.
+    """
+    from verbatim_bench.results import RunResult
+
+    doc = RunResult(spec_dict={"arm": "t", "chunk_ms": 160}, sessions=[]).to_json_dict_v2()
+    assert doc["schema"] == constants.SCHEMA_VERSION_FOR_RUN

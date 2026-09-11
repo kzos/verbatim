@@ -186,7 +186,7 @@ class RunResult:
 
         doc = self.to_json_dict()
         doc.pop("checksum", None)
-        doc["schema"] = "vb-results/2"
+        doc["schema"] = constants.SCHEMA_VERSION_FOR_RUN
         raw_profile = (
             pacing_profile
             if pacing_profile is not None

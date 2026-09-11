@@ -109,7 +109,7 @@ promised date — that is for triage once an entry becomes an issue.
 
 ## Results schema and verify
 
-- **The frozen run-schema constant is read by nothing, and the code writes a different value.**
+- ~~**The frozen run-schema constant is read by nothing, and the code writes a different value.**
   Found 2026-09-10. `benchmarks/METHODOLOGY.md` and `bench/src/verbatim_bench/constants.py` both declare
   `SCHEMA_VERSION_FOR_RUN = "vb-results/2"`, and the freeze test confirms they agree. But
   `SCHEMA_VERSION_FOR_RUN` is referenced nowhere outside those two places: `results.py` stamps the
@@ -119,8 +119,15 @@ promised date — that is for triage once an entry becomes an issue.
   `constants.py` and never checks that the code path uses the constant. That is the same defect as the
   fabricated-sentence hole one level down: the guard verifies the wrong pair. Fix by making `results.py`
   read the constant, then add the assertion that a produced row's `schema` field equals
-  `constants.SCHEMA_VERSION_FOR_RUN`. Do this **before the first row is published**, because a row that
-  labels itself with the wrong schema is not correctable by a later edit — it needs a re-run.
+  `constants.SCHEMA_VERSION_FOR_RUN`.~~ **Resolved 2026-09-11, before the first row exists.**
+  `to_json_dict_v2` reads the constant and
+  `test_a_produced_run_stamps_the_frozen_schema_version` asserts a produced document carries it. The
+  guard was mutation-tested three ways: it stays quiet when a literal happens to agree with the
+  constant, it **fails** when the constant moves while the code keeps a literal, and it passes once the
+  code follows the constant. One correction to the entry as first written: `to_json_dict`'s
+  `vb-results/1` is a deliberate intermediate that `to_json_dict_v2` builds on, not a wrong value, so
+  the defect was never "the code writes v1" — it was that **the freeze bound two documents to each
+  other and nothing to the code.**
 
 - `tests/harness/test_methodology_freeze.py` — **the freeze guard does not catch a fabricated result
   sentence.** It enforces agreement between the frozen constants block and `constants.py`, and it
