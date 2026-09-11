@@ -18,6 +18,16 @@
 > ([DR-0005](docs/decisions/0005-the-ladder-runs-the-window-it-reports.md)); no run made before that
 > commit becomes a capacity retrospectively.
 >
+> **A rung now evaluates three of the four criteria the method defines, and the first thing those
+> checks do is invalidate every canonical rung**
+> ([DR-0006](docs/decisions/0006-the-three-criteria-the-returned-data-supports.md)). The load generator
+> misses its own frozen pacing tolerance: `PACING_SLIP_P99_MAX_MS` is 5.0 ms and the pooled slip p99 is
+> 10.8 ms, reproduced here against a null server that does no work at all, so it is the generator and
+> not any server under test. A rung over that tolerance is invalid rather than failed, two consecutive
+> invalid rungs abort the ladder as host unfit, and the ladder therefore yields no capacity today. The
+> fourth criterion, zero GPU throttle events across the window, is collected by nothing here, is absent
+> from every rung's `criteria_evaluated`, and so **no rung can report a pass at all** until it is.
+>
 > With the window applied the measurement is repeatable, and it shows what actually fails the budget.
 > **A session's latency is a phase offset drawn once when it connects and never repaid.** The client's
 > chunk cadence and the server's tick are both 160 ms and stay in lockstep, so stepping sixteen sessions'

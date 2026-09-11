@@ -524,6 +524,15 @@ def test_a_ladder_of_partially_evaluated_rungs_reports_no_passing_rung() -> None
     assert outcome.ending_criterion is None
 
 
+#: One transport frame per measurement chunk, which is not the frozen 20 ms framing.
+#: Canonical framing draws a fresh jitter offset for each frame's deadline while sleeping
+#: to the unjittered one, so the pooled pacing-slip p99 lands above the frozen tolerance
+#: and every rung comes back invalid, whatever the server did. At one frame per chunk the
+#: client draws no jitter and the generator meets the schedule it grades itself against,
+#: which is what these tests need in order to be about the ladder. The gate itself is
+#: tested on canonical framing, in `test_rung_criteria.py`.
+PACEABLE_FRAMING = ["--frame-ms", "160"]
+
 #: A rung small enough for a unit test, with the same three phases as a frozen one: a
 #: ramp, a warm-up whose readings are long enough to hold several chunks, and a window.
 #: Every duration is overridden, so every rung it produces is non-canonical by
@@ -539,6 +548,7 @@ FAST_RUNG = [
     "6.0",
     "--window-s",
     "1.5",
+    *PACEABLE_FRAMING,
 ]
 
 
@@ -677,6 +687,7 @@ async def test_a_warm_up_that_never_converges_produces_an_unstable_rung(tmp_path
             "2.0",
             "--window-s",
             "0.5",
+            *PACEABLE_FRAMING,
         ],
     )
     assert payload["rungs"]
@@ -758,10 +769,13 @@ def test_the_plan_no_longer_rewrites_the_warm_up_a_rung_reports() -> None:
 async def test_the_rung_executor_declares_only_the_criteria_it_established(tmp_path) -> None:
     """The defect DR-0004 names, checked at the executor that has it.
 
-    The rung this harness can run today measures latency and counts refusals. Word error
-    rate, dropped streams, missing finals and throttle events are written as literals by
-    nobody: they are simply absent from what the rung claims, so the rung cannot report a
-    pass, and it names no failing criterion because nothing it evaluated failed.
+    The rung this harness can run today measures latency, counts refusals, counts the
+    streams the server accepted and then lost, and counts the streams that ended without
+    a final. Word error rate is absent because this ladder was given no batch-1 reference
+    to compare against, and thermal is absent because nothing collects throttle events.
+    Neither is written as a literal by anybody: they are simply not in what the rung
+    claims, so the rung cannot report a pass, and it names no failing criterion because
+    nothing it evaluated failed.
     """
     # Same-directory import, not `tests.harness.test_pace`; see the note in test_schema_v2.
     from test_pace import make_manifest, make_wav
@@ -793,10 +807,18 @@ async def test_the_rung_executor_declares_only_the_criteria_it_established(tmp_p
     payload = json.loads((out_dir / "ladder.json").read_text(encoding="utf-8"))
     assert payload["rungs"]
     for rung in payload["rungs"]:
-        assert rung["criteria_evaluated"] == ["latency", "integrity:refused"]
+        assert rung["criteria_evaluated"] == [
+            "latency",
+            "integrity:refused",
+            "integrity:dropped",
+            "integrity:no_final",
+        ]
         assert rung["passed"] is False
         assert rung["first_failing_criterion"] is None
+        assert rung["wer_vs_batch1"] is None
         # Host fitness is a separate question and this host was fine.
         assert rung["valid"] is True
         assert rung["invalid_reason"] is None
+    # No reference was supplied, so nothing was compared and the run says so.
+    assert payload["config"]["wer_batch1"] is None
     assert payload["s"] == 0

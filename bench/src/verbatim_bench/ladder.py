@@ -13,10 +13,16 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from verbatim_bench import constants
 from verbatim_bench.env import GpuFacts, HostCounters
+from verbatim_bench.pace import executed_canonical_window, window_partial_samples
+from verbatim_bench.results import RunResult, percentile
+from verbatim_bench.wer import corpus_wer, within_window
+
+if TYPE_CHECKING:
+    from verbatim_bench.client import SessionResult
 
 
 class Criterion(StrEnum):
@@ -124,6 +130,201 @@ class Rung:
     def passed(self) -> bool:
         """True only when every pass criterion was evaluated and none of them failed."""
         return not self.criteria_unevaluated and self.first_failing_criterion is None
+
+
+@dataclass(frozen=True, slots=True)
+class IntegrityCounts:
+    """The three integrity failures a stream can show the load generator.
+
+    They are counts of sessions, not of disjoint sets: a stream the server never
+    acknowledged is refused and also ended without a final, and is counted in both.
+    Each answers its own question, and `first_failing_criterion` names the earliest in
+    the diagnosis order rather than trying to pick one owner per session.
+    """
+
+    refused: int
+    dropped: int
+    without_final: int
+
+
+def integrity_counts(sessions: Sequence[SessionResult]) -> IntegrityCounts:
+    """Count refused, dropped and final-less streams over one rung's whole load.
+
+    The line between refused and dropped is the server's own session acknowledgement:
+    a stream that failed without ever being given a server session id never got in, and
+    one that failed after being acknowledged was accepted and then lost. Before this
+    split every failure was filed as a refusal, which made a mid-stream drop look like
+    an admission decision.
+
+    `without_final` is a true count only because the load client now reads every final
+    a stream carries; while it stopped at the first, `finals_received` could not exceed
+    one and asking this question of it was meaningless.
+
+    These are counted over every session the rung ran, warm-up and window alike, not
+    over the window alone. Pacing-slip samples and stream outcomes carry no receive
+    timestamp to window them by, and the whole-run count is the conservative direction:
+    it is a superset of the window's failures, so it can only refuse to certify a rung
+    the window-only rule would also have refused, never certify one it would not.
+    """
+    refused = 0
+    dropped = 0
+    without_final = 0
+    for session in sessions:
+        if session.error is not None:
+            if session.server_session_id is None:
+                refused += 1
+            else:
+                dropped += 1
+        if session.finals_received == 0:
+            without_final += 1
+    return IntegrityCounts(refused=refused, dropped=dropped, without_final=without_final)
+
+
+def pacing_slip_validity(pacing_slip_p99_ms: float) -> InvalidReason | None:
+    """The one frozen validity threshold a rung can apply from its own load alone.
+
+    The load generator stamps every frame with how late it was against its own send
+    schedule. If the pooled p99 of that is over `PACING_SLIP_P99_MAX_MS` the generator
+    did not deliver the paced real-time load the rung asked for, so whatever latency
+    came back is not the server's answer to that load and cannot be read as one. That
+    is a host observation, not a server failure: the rung is invalid, and the ladder
+    discards and re-runs it rather than recording a pass or a fail.
+    """
+    if pacing_slip_p99_ms > constants.PACING_SLIP_P99_MAX_MS:
+        return InvalidReason.PACING_SLIP
+    return None
+
+
+#: The order `criteria_evaluated` is written in, which is the order
+#: `benchmarks/METHODOLOGY.md` section 56 names the criteria in.
+_CRITERION_ORDER: Final = (
+    Criterion.LATENCY,
+    Criterion.WER,
+    Criterion.INTEGRITY_REFUSED,
+    Criterion.INTEGRITY_DROPPED,
+    Criterion.INTEGRITY_NO_FINAL,
+)
+
+
+def rung_from_run(
+    result: RunResult,
+    *,
+    plan: RungPlan,
+    threshold_ms: float,
+    batch1_wer: float | None = None,
+) -> Rung:
+    """Reduce one executed load to the rung it supports, and to nothing more.
+
+    Written here rather than inside the ladder command so that what a rung claims is a
+    pure function of what the load returned, and can be tested against a run built by
+    hand instead of against four minutes of wall clock.
+
+    The order of the checks matters. Validity comes first: a generator that missed its
+    own schedule produced a load nobody asked for, so neither the percentile nor the
+    convergence of that load means anything. Failure to converge comes next and takes
+    the rung out as `UNSTABLE` with no window to measure in. Only then are the criteria
+    themselves evaluated, and only the ones this run established:
+
+    * latency, when the window produced samples to take a percentile of;
+    * word error rate, only when a batch-1 reference for this run's own checkpoint,
+      chunk, corpus and dtype was supplied and the corpus has reference words to divide
+      by. Without one the criterion is left out rather than compared against a number
+      invented here;
+    * the three integrity counts, which every session reports.
+
+    Thermal is never listed. Zero GPU throttle events needs a collection this harness
+    does not have, so no rung can pass, which is the correct answer until it does.
+
+    `first_failing_criterion` names the earliest failure in diagnosis order, integrity
+    before latency before word error rate, because a refused or dropped stream explains
+    a percentile and a percentile does not explain a refusal. That order is deliberately
+    not the listing order above, which answers the different question of what was
+    established.
+    """
+    sessions = result.sessions
+    counts = integrity_counts(sessions)
+    slips = [slip for session in sessions for slip in session.pacing_slip_ms]
+    warm_up_s = result.warm_up_length_s
+    ran: dict[str, Any] = {
+        "n": plan.n,
+        "seed": plan.seed,
+        "warm_up_s": float(warm_up_s if warm_up_s is not None else plan.warm_up_s),
+        "sessions_refused": counts.refused,
+        "sessions_dropped": counts.dropped,
+        "sessions_without_final": counts.without_final,
+        "canonical_window": executed_canonical_window(result),
+        "window_s": float(plan.window_s),
+        "wall_clock_s": float(result.wall_clock_s),
+    }
+    invalid_reason = pacing_slip_validity(percentile(slips, 99))
+    if invalid_reason is not None:
+        # An invalid rung is discarded whole, so it claims nothing: no criteria, and no
+        # percentile, because the load it was taken over is not the load the rung names.
+        return Rung(
+            p95_ms=float("inf"),
+            wer_vs_batch1=None,
+            first_failing_criterion=None,
+            valid=False,
+            invalid_reason=invalid_reason,
+            criteria_evaluated=(),
+            **ran,
+        )
+    if result.warm_up_converged is False:
+        return Rung(
+            p95_ms=float("inf"),
+            wer_vs_batch1=None,
+            first_failing_criterion=Criterion.UNSTABLE,
+            valid=True,
+            invalid_reason=None,
+            criteria_evaluated=(),
+            **ran,
+        )
+    samples = window_partial_samples(result)
+    p95 = percentile(samples, 95) if samples else float("inf")
+    measured_wer = corpus_wer(
+        (session.reference_text, session.final_text) for session in sessions
+    ).wer
+    wer_vs_batch1: float | None = None
+    failed: set[Criterion] = set()
+    evaluated: set[Criterion] = {
+        Criterion.INTEGRITY_REFUSED,
+        Criterion.INTEGRITY_DROPPED,
+        Criterion.INTEGRITY_NO_FINAL,
+    }
+    if counts.refused:
+        failed.add(Criterion.INTEGRITY_REFUSED)
+    if counts.dropped:
+        failed.add(Criterion.INTEGRITY_DROPPED)
+    if counts.without_final:
+        failed.add(Criterion.INTEGRITY_NO_FINAL)
+    if samples:
+        evaluated.add(Criterion.LATENCY)
+        if p95 > threshold_ms:
+            failed.add(Criterion.LATENCY)
+    if batch1_wer is not None and measured_wer is not None:
+        evaluated.add(Criterion.WER)
+        wer_vs_batch1 = measured_wer - batch1_wer
+        if not within_window(measured_wer, batch1_wer):
+            failed.add(Criterion.WER)
+    diagnosis = (
+        Criterion.INTEGRITY_REFUSED,
+        Criterion.INTEGRITY_DROPPED,
+        Criterion.INTEGRITY_NO_FINAL,
+        Criterion.LATENCY,
+        Criterion.WER,
+    )
+    first_failing = next((criterion for criterion in diagnosis if criterion in failed), None)
+    return Rung(
+        p95_ms=float(p95),
+        wer_vs_batch1=wer_vs_batch1,
+        first_failing_criterion=first_failing,
+        valid=True,
+        invalid_reason=None,
+        criteria_evaluated=tuple(
+            criterion for criterion in _CRITERION_ORDER if criterion in evaluated
+        ),
+        **ran,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -435,7 +636,13 @@ def _cpu_fraction(value: float) -> float:
 def rung_validity(
     counters: HostCounters, gpu: GpuFacts, pacing_slip_p99_ms: float
 ) -> InvalidReason | None:
-    """Apply every frozen host validity threshold to one measurement window."""
+    """Apply every frozen host validity threshold to one measurement window.
+
+    The pacing-slip threshold is not repeated here: it is `pacing_slip_validity`, which
+    the rung executor applies on its own because the load result carries the samples for
+    it and none of the host counters this function needs. One definition, reachable two
+    ways, so a rung run without a host record cannot end up with a different tolerance.
+    """
     if constants.PSI_CPU_SOME_MAX_PCT is None or constants.PSI_CPU_FULL_MAX_PCT is None:
         return InvalidReason.PSI_THRESHOLD_UNFROZEN
     client_fraction = _cpu_fraction(counters.client_cpu_pct_of_cpuset)
@@ -459,6 +666,4 @@ def rung_validity(
         return InvalidReason.THROTTLE_EVENT
     if len(gpu.compute_process_pids) > constants.FOREIGN_GPU_PROCESSES_MAX:
         return InvalidReason.FOREIGN_GPU_PROCESS
-    if pacing_slip_p99_ms > constants.PACING_SLIP_P99_MAX_MS:
-        return InvalidReason.PACING_SLIP
-    return None
+    return pacing_slip_validity(pacing_slip_p99_ms)

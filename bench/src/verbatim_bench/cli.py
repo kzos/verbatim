@@ -11,14 +11,10 @@ from typing import TYPE_CHECKING
 
 from verbatim_bench import constants
 from verbatim_bench.client import ChunkMode
-from verbatim_bench.pace import (
-    DEFAULT_RAMP_S,
-    LoadSpec,
-    executed_canonical_window,
-    run_load,
-    window_partial_samples,
-)
+from verbatim_bench.corpus import manifest_corpus_id
+from verbatim_bench.pace import DEFAULT_RAMP_S, LoadSpec, run_load
 from verbatim_bench.results import write_results
+from verbatim_bench.wer import Batch1Reference, ReferenceError, load_batch1_reference
 
 if TYPE_CHECKING:
     from verbatim_bench.ladder import RungPlan
@@ -62,6 +58,35 @@ def _build_parser() -> argparse.ArgumentParser:
     ladder.add_argument("--warm-up-convergence", type=float, default=constants.WARM_UP_CONVERGENCE)
     ladder.add_argument("--warm-up-cap-s", type=float, default=constants.WARM_UP_CAP_S)
     ladder.add_argument("--ramp-s", type=float, default=DEFAULT_RAMP_S)
+    ladder.add_argument(
+        "--frame-ms",
+        type=int,
+        default=constants.FRAME_MS,
+        help=(
+            "transport framing, frozen at 20 ms. The ladder could not express this at "
+            "all and silently took the default; anything else is non-canonical framing"
+        ),
+    )
+    ladder.add_argument(
+        "--wer-batch1",
+        type=Path,
+        default=None,
+        help=(
+            "JSON document holding the batch-1 corpus WER and the checkpoint, chunk, "
+            "corpus and dtype it was measured at. Without it a rung does not evaluate "
+            "word error rate at all"
+        ),
+    )
+    ladder.add_argument(
+        "--checkpoint",
+        default=None,
+        help="what the server under test is serving, declared; required by --wer-batch1",
+    )
+    ladder.add_argument(
+        "--dtype",
+        default=None,
+        help="the compute dtype class of the server under test; required by --wer-batch1",
+    )
     ladder.add_argument("--out", type=Path, required=True)
     return parser
 
@@ -222,6 +247,7 @@ def ladder_load_spec(args: argparse.Namespace, plan: RungPlan, chunk: ChunkMode)
         seed=plan.seed,
         arm=args.arm,
         ramp_s=float(args.ramp_s),
+        frame_ms=int(args.frame_ms),
         window_s=float(plan.window_s),
         warm_up_s=float(plan.warm_up_s),
         warm_up_reading_s=float(args.warm_up_reading_s),
@@ -230,11 +256,48 @@ def ladder_load_spec(args: argparse.Namespace, plan: RungPlan, chunk: ChunkMode)
     )
 
 
+def _resolve_wer_reference(args: argparse.Namespace, chunk: ChunkMode) -> Batch1Reference | None:
+    """Return the batch-1 reference this ladder may compare itself against, or `None`.
+
+    A reference is optional, and without one the rung leaves word error rate out of the
+    criteria it evaluated. A reference that was supplied and cannot be used is a usage
+    error rather than a quiet skip: silently dropping the criterion would look exactly
+    like not having asked for it, and the operator would never learn that the comparison
+    they thought they had configured never happened.
+
+    Two of the four coordinates the criterion is defined at are read from the run itself,
+    the chunk and the corpus. The other two, the checkpoint and the dtype, are declared
+    on the command line, because the ladder speaks to a server over a socket and never
+    learns what it loaded. They are declarations and are recorded as such.
+
+    Raises `ReferenceError` with a message fit to print.
+    """
+    if args.wer_batch1 is None:
+        return None
+    if not args.checkpoint or not args.dtype:
+        raise ReferenceError("--wer-batch1 needs --checkpoint and --dtype to compare against")
+    reference = load_batch1_reference(Path(args.wer_batch1))
+    corpus_id = manifest_corpus_id(Path(args.manifest))
+    if not reference.describes(
+        checkpoint=args.checkpoint,
+        chunk_ms=chunk.ms,
+        corpus_id=corpus_id,
+        dtype=args.dtype,
+    ):
+        raise ReferenceError(
+            f"batch-1 reference {args.wer_batch1} was measured at "
+            f"checkpoint={reference.checkpoint!r} chunk_ms={reference.chunk_ms} "
+            f"corpus_id={reference.corpus_id!r} dtype={reference.dtype!r}, and this run is "
+            f"checkpoint={args.checkpoint!r} chunk_ms={chunk.ms} corpus_id={corpus_id!r} "
+            f"dtype={args.dtype!r}: the criterion is not defined across them"
+        )
+    return reference
+
+
 def _ladder(args: argparse.Namespace) -> int:
     import asyncio
 
-    from verbatim_bench.ladder import Criterion, Rung, run_ladder
-    from verbatim_bench.results import percentile
+    from verbatim_bench.ladder import Rung, run_ladder, rung_from_run
 
     try:
         seeds = tuple(int(part) for part in str(args.seeds).split(",") if part.strip())
@@ -258,58 +321,19 @@ def _ladder(args: argparse.Namespace) -> int:
         print("verbatim-bench: warning: overridden durations mark the run non-canonical")
     chunk = ChunkMode.parse(160)
     threshold_ms = chunk.ms + constants.X_MS
+    try:
+        reference = _resolve_wer_reference(args, chunk)
+    except ReferenceError as exc:
+        print(f"verbatim-bench: {exc}")
+        return 1
 
     def _make_rung(plan: RungPlan) -> Rung:
         result = asyncio.run(run_load(ladder_load_spec(args, plan, chunk)))
-        refused = sum(1 for session in result.sessions if session.error is not None)
-        warm_up_s = result.warm_up_length_s
-        # What the load did, which is what the rung reports: the warm-up and window it
-        # ran, the wall clock it took, and whether that was the frozen window.
-        ran: dict[str, object] = {
-            "n": plan.n,
-            "seed": plan.seed,
-            "wer_vs_batch1": None,
-            "valid": True,
-            "invalid_reason": None,
-            "warm_up_s": float(warm_up_s if warm_up_s is not None else args.warm_up_s),
-            "sessions_refused": int(refused),
-            "sessions_dropped": 0,
-            "sessions_without_final": 0,
-            "canonical_window": executed_canonical_window(result),
-            "window_s": float(plan.window_s),
-            "wall_clock_s": float(result.wall_clock_s),
-        }
-        if result.warm_up_converged is False:
-            # The frozen document: failure to converge by the cap fails the rung as
-            # unstable. No window opened, so this rung established no criterion at all
-            # and has no percentile to report.
-            return Rung(
-                p95_ms=float("inf"),
-                first_failing_criterion=Criterion.UNSTABLE,
-                criteria_evaluated=(),
-                **ran,  # type: ignore[arg-type]
-            )
-        samples = window_partial_samples(result)
-        p95 = percentile(samples, 95) if samples else float("inf")
-        # Only two of the criteria a rung must meet are established here: latency, and
-        # then only when the window produced samples to take a p95 of, and the refused
-        # half of integrity, which is counted for every session. Word error rate, drops,
-        # missing finals and throttle events are not evaluated, so they are not listed
-        # and this rung cannot report a pass for them.
-        criteria: list[Criterion] = []
-        if samples:
-            criteria.append(Criterion.LATENCY)
-        criteria.append(Criterion.INTEGRITY_REFUSED)
-        criterion: Criterion | None = None
-        if refused:
-            criterion = Criterion.INTEGRITY_REFUSED
-        elif samples and p95 > threshold_ms:
-            criterion = Criterion.LATENCY
-        return Rung(
-            p95_ms=float(p95),
-            first_failing_criterion=criterion,
-            criteria_evaluated=tuple(criteria),
-            **ran,  # type: ignore[arg-type]
+        return rung_from_run(
+            result,
+            plan=plan,
+            threshold_ms=threshold_ms,
+            batch1_wer=reference.wer if reference is not None else None,
         )
 
     outcome = run_ladder(
@@ -340,6 +364,12 @@ def _ladder(args: argparse.Namespace) -> int:
             "warm_up_convergence": float(args.warm_up_convergence),
             "warm_up_cap_s": float(args.warm_up_cap_s),
             "ramp_s": float(args.ramp_s),
+            "frame_ms": int(args.frame_ms),
+            # Which batch-1 reference the WER criterion was read against, or null when
+            # no reference was supplied and no rung evaluated it. A rung's
+            # `wer_vs_batch1` is the signed difference from this number, so the two
+            # together give back the corpus WER the run measured.
+            "wer_batch1": reference.to_json_dict() if reference is not None else None,
         },
         "rungs": outcome.to_json_list(include_window=True),
     }
