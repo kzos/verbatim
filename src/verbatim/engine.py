@@ -307,10 +307,11 @@ class Engine(EngineHandle):
                 raise RuntimeError("engine tick loop is not running")
 
     def _run_ticks(self) -> None:
-        """Run ticks and perform one loop wake after each completed tick."""
+        """Run ticks; `_publish` queues each tick's results and wakes the loop once,
+        before that tick's sleep to the next boundary."""
         while self._running:
             try:
-                results = self._tick.run_tick(lock=self._lock)
+                self._tick.run_tick(lock=self._lock, publish=self._publish)
             except Exception as exc:
                 logger.exception("tick loop stopped after an unexpected scheduler failure")
                 self._running = False
@@ -324,23 +325,30 @@ class Engine(EngineHandle):
                     with suppress(RuntimeError):
                         loop.call_soon_threadsafe(self._wake)
                 return
-            for result in results:
-                self._emit.append(result)
-            for stream_id, error in self._tick.drain_errors():
-                self._emit.append(_ErrorEvent(stream_id, error))
-            self._observe_tick()
-            loop = self._loop
-            if loop is None:
-                self._running = False
-                self._dead = True
-                return
-            try:
-                loop.call_soon_threadsafe(self._wake)
-            except RuntimeError:
-                self._running = False
-                self._dead = True
-                return
-            self._loop_wakes += 1
+
+    def _publish(self, results: list[StepResult]) -> None:
+        """The tail of a tick, on the tick thread, between its stamping phase and its
+        sleep: queue the results and the errors, fold the tick into the counters, and
+        wake the loop once. A partial computed at boundary t therefore reaches the
+        transport at t plus the step, not at t+1. Called by `run_tick` outside the
+        engine lock; a lost loop ends the thread after this tick's sleep."""
+        for result in results:
+            self._emit.append(result)
+        for stream_id, error in self._tick.drain_errors():
+            self._emit.append(_ErrorEvent(stream_id, error))
+        self._observe_tick()
+        loop = self._loop
+        if loop is None:
+            self._running = False
+            self._dead = True
+            return
+        try:
+            loop.call_soon_threadsafe(self._wake)
+        except RuntimeError:
+            self._running = False
+            self._dead = True
+            return
+        self._loop_wakes += 1
 
     def _observe_tick(self) -> None:
         """Fold the tick just completed into the counters and the cost window, on the

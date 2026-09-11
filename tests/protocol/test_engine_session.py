@@ -631,7 +631,7 @@ async def _one_tick(engine: Engine, clock: _HeldClock) -> None:
 @asynccontextmanager
 async def _held_engine() -> AsyncIterator[tuple[Engine, _HeldClock]]:
     """A started engine whose thread has finished tick 1 and is parked in its sleep,
-    with tick 0's wake already processed on the loop. On exit the clock is opened and
+    with both ticks' wakes already processed on the loop. On exit the clock is opened and
     the engine stopped whatever the test did, so a failed assertion is a failure and
     not a process hung on the join of a thread parked in a sleep nobody releases."""
     clock = _HeldClock()
@@ -743,16 +743,59 @@ async def test_a_session_open_at_stop_is_told_unavailable_not_given_a_clean_end(
 
 
 @pytest.mark.asyncio
+class _HeldLastStep(FakePipelineAdapter):
+    """The step carrying a final frame blocks until released, so a thread can be held
+    between computing a final and publishing it."""
+
+    def __init__(self) -> None:
+        super().__init__(CHUNK, buckets=(1,))
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def transcribe_step(
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+    ) -> list[StepResult]:
+        if any(frame.is_last for frame in frames):
+            self.entered.set()
+            self.release.wait(timeout=10.0)
+        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+
+
 async def test_a_final_produced_by_the_last_tick_arrives_as_a_final_not_as_unavailable() -> None:
     """`stop()` tells a session UNAVAILABLE only after the join, so the thread's last
-    tick has run and its wake has been processed (the loop runs that callback before
-    the join's completion, in FIFO order; `stop()`'s own drain covers a wake still
-    queued). A session whose final that last tick produced finished its utterance: the
-    caller gets the final and a clean end, and only a stream still open after the
-    join is told the server went away. Told before the join, a finished utterance
-    would be reported abandoned. The scripted fake delivers the final two ticks after
-    `end()`, so the thread is held with the final exactly one tick away when `stop()`
-    begins."""
+    tick has published and its wake has been processed (the loop runs that callback
+    before the join's completion, in FIFO order; `stop()`'s own drain covers a wake
+    still queued). A session whose final that last tick produced finished its
+    utterance: the caller gets the final and a clean end, and only a stream still
+    open after the join is told the server went away. Told before the join, a
+    finished utterance would be reported abandoned. A tick publishes before it
+    sleeps, so the only place a computed final is not yet delivered is inside the
+    tick itself: the thread is held inside the step that carries the final when
+    `stop()` begins, and that tick completes during the join."""
+    pipeline = _HeldLastStep()
+    config = EngineConfig(chunk=CHUNK, buckets=(1,), edge_batch=1)
+    engine = Engine(config, pipeline, clock=ScaledMonotonicClock(100.0))
+    async with engine:
+        session = engine.open_session(OPTIONS)
+        assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
+        session.end()
+        await _until(lambda: pipeline.entered.is_set())  # inside the step of the final
+        assert 1 in engine._queues, "the final must still be in flight when stop() begins"
+        stopping = asyncio.create_task(engine.stop())
+        await asyncio.sleep(0.05)
+        assert not stopping.done(), "stop() joins the thread, which is inside its last step"
+        pipeline.release.set()  # the last tick publishes the final, then the thread exits
+        await asyncio.wait_for(stopping, timeout=5.0)
+    hypotheses = await _collect(session)
+    assert hypotheses[-1].is_final
+    assert hypotheses[-1].audio_processed_s == pytest.approx(0.16)
+
+
+async def test_a_ticks_results_reach_the_loop_before_the_thread_sleeps() -> None:
+    """The thread is released for exactly one tick, which steps the chunk, and parks
+    again; that tick's partial must already be on the session's queue. Published
+    after the sleep instead, it would wait a full period for the next release, which
+    on a real clock is the period every client's watermark latency carried."""
     clock = _HeldClock()
     engine = stub_engine(clock=clock)
     async with engine:
@@ -760,20 +803,13 @@ async def test_a_final_produced_by_the_last_tick_arrives_as_a_final_not_as_unava
             await _until(lambda: clock.sleeps >= 1)  # parked before tick 1
             session = engine.open_session(OPTIONS)
             assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
-            await _one_tick(engine, clock)  # the chunk is stepped
-            session.end()
-            await _one_tick(engine, clock)  # the drain has begun; the final is one tick away
-            assert 1 in engine._queues, "the final must still be in flight when stop() begins"
-            stopping = asyncio.create_task(engine.stop())
-            await asyncio.sleep(0.05)
-            assert not stopping.done(), "stop() joins the thread, which is parked in its sleep"
-            clock.release()  # the thread's last tick produces the final, then it exits
-            await asyncio.wait_for(stopping, timeout=5.0)
+            await _one_tick(engine, clock)  # tick 1 steps the chunk
+            await _until(lambda: clock.sleeps >= 2)  # and the thread is parked again
+            first = await asyncio.wait_for(anext(session.results()), timeout=2.0)
         finally:
             clock.open()
-    hypotheses = await _collect(session)
-    assert hypotheses[-1].is_final
-    assert hypotheses[-1].audio_processed_s == pytest.approx(0.16)
+    assert not first.is_final
+    assert first.audio_processed_s == pytest.approx(0.16)
 
 
 @pytest.mark.asyncio

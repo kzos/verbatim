@@ -5,7 +5,9 @@
 Per tick, per mode: collect exactly one chunk per ready session; plan the steady
 batch (padded to exactly ``B``) and the edge batches; one ``transcribe_step`` for
 the steady batch, one per edge batch; push ``StepResult`` records to the emit
-queue; record ``TickStats``; sleep to the next boundary.
+queue; record ``TickStats``; sleep to the next boundary. The push comes before
+the sleep, never after it: a result held across the sleep would reach its
+transport a full period late.
 
 Final (``is_last``) frames are never mixed into the steady call: NeMo's pipeline
 splits them into a ``keep_all_outputs=True`` sub-batch, which would shrink the
@@ -24,6 +26,7 @@ import logging
 import math
 import threading
 from collections import deque
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Final
 
@@ -227,7 +230,12 @@ class TickLoop:
         self._admission.observe(stats, tick_ms=step_ms + edge_ms)
         self._tick_id += 1
 
-    def run_tick(self, *, lock: threading.Lock | None = None) -> list[StepResult]:
+    def run_tick(
+        self,
+        *,
+        lock: threading.Lock | None = None,
+        publish: Callable[[list[StepResult]], None] | None = None,
+    ) -> list[StepResult]:
         """One tick, synchronously, on the caller's thread. Boundaries are fixed multiples
         of the period since start, so a late tick does not shift the ones after it.
 
@@ -235,6 +243,15 @@ class TickLoop:
         collect phase and the stamping and bookkeeping phase run under it; the
         `PipelineAdapter.transcribe_step` calls and the sleep to the next boundary
         never do. With `lock=None` the tick path takes no lock at all.
+
+        `publish`, when supplied, receives this tick's results after the stamping
+        phase and before the sleep to the next boundary, outside the lock; on a
+        scheduler failure it receives an empty list once `fail_live` has recorded
+        the errors, so the caller can drain them. The results are returned as well,
+        for `run_for` and the scheduler suite; a caller that publishes must not also
+        use the return value. Publishing after the sleep held every result for a
+        full period: a row computed at boundary t reached its transport at t+1, and
+        the engine's own latency figure, taken after the sleep, could not see it.
         """
         tick_id = self._tick_id
         boundary = self._start + tick_id * self._config.chunk.period_s
@@ -433,9 +450,13 @@ class TickLoop:
             finally:
                 if lock is not None:
                     lock.release()
+            if publish is not None:
+                publish([])
             self._clock.sleep_until(self._start + self._tick_id * self._config.chunk.period_s)
             return []
 
+        if publish is not None:
+            publish(results)
         self._clock.sleep_until(self._start + self._tick_id * self._config.chunk.period_s)
         return results
 
