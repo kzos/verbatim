@@ -521,7 +521,9 @@ verbatim serve nvidia/nemotron-3.5-asr-streaming-0.6b \
 - FP8/NVFP4 encoders (fp32 models; graphs skip autocast; NeMo #16147 is doing mixed precision)
 - speculative decoding
 - OpenAI-Realtime and Deepgram protocol compatibility
-- LiveKit/Pipecat plugin packages (the Riva path replaces them)
+- LiveKit/Pipecat plugin packages (the Riva path replaces them; the recipe is
+  [docs/recipes/livekit.md](docs/recipes/livekit.md), and its live-call test drives the real
+  `livekit-plugins-nvidia` against this server with zero plugin code)
 - diarization, PII, translation, TTS and speech-to-speech in year 1 (NeMo pipelines; the growth path)
 - a control plane, dashboards or a hosted service
 - CPU/edge/mobile runtimes (NeMo-Speech.cpp, parakeet.cpp, sherpa-onnx)

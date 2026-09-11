@@ -506,6 +506,33 @@ class EnvironmentRefusal(RuntimeError):
     unreadable cgroup quota."""
 
 
+def own_cgroup(procfs: Path = Path("/proc"), cgroupfs: Path = Path("/sys/fs/cgroup")) -> Path:
+    """The cgroup whose CPU quota constrains this process.
+
+    On cgroup v2 the root carries no ``cpu.max``, and the cpu controller is enabled only
+    as deep as an administrator delegated it: on a bare box a user session's own cgroup
+    has ``cpu.stat`` and nothing else, while ``user.slice`` above it has the quota and the
+    effective cpuset. Starting from the cgroup ``/proc/self/cgroup`` names, this walks up
+    to the nearest directory that carries ``cpu.max`` and returns it, so the quota, the
+    throttling counters and the cpuset are read where they are enforced. When no
+    ancestor carries one, the root is returned and the reader says the quota is
+    unreadable, as before.
+    """
+    text = _read_text_file(procfs / "self" / "cgroup") or ""
+    for line in text.splitlines():
+        parts = line.strip().split(":", 2)
+        if len(parts) == 3 and parts[0] == "0":
+            candidate = cgroupfs / parts[2].lstrip("/")
+            while True:
+                if (candidate / "cpu.max").is_file():
+                    return candidate
+                if candidate == cgroupfs or candidate.parent == candidate:
+                    break
+                candidate = candidate.parent
+            break
+    return cgroupfs
+
+
 def _read_text_file(path: Path) -> str | None:
     try:
         return path.read_text(encoding="utf-8").strip()
@@ -608,9 +635,12 @@ def read_box(
     *,
     procfs: Path = Path("/proc"),
     sysfs: Path = Path("/sys"),
-    cgroupfs: Path = Path("/sys/fs/cgroup"),
+    cgroupfs: Path | None = None,
 ) -> BoxFacts:
-    """Collect host identity and budget facts from kernel and cgroup files."""
+    """Collect host identity and budget facts from kernel and cgroup files. With no
+    ``cgroupfs`` the cgroup whose quota constrains this process is read (`own_cgroup`)."""
+    if cgroupfs is None:
+        cgroupfs = own_cgroup(procfs)
     boot_id = _read_text_file(procfs / "sys" / "kernel" / "random" / "boot_id") or "unknown"
     cpuinfo_text = _read_text_file(procfs / "cpuinfo") or ""
     if cpuinfo_text:
@@ -678,11 +708,11 @@ def read_box(
     )
 
 
-def box_id(box: BoxFacts, gpu: GpuFacts) -> str:
+def box_id(box: BoxFacts, gpu: GpuFacts | None) -> str:
     """Return the comparability identity for one box session."""
     material = "|".join(
         [
-            str(gpu.uuid or "no-gpu"),
+            str((gpu.uuid if gpu is not None else None) or "no-gpu"),
             box.boot_id,
             box.cpu_model,
             box.cgroup_cpu_max,
@@ -840,10 +870,12 @@ def collect(
     repo_root: Path,
     procfs: Path = Path("/proc"),
     sysfs: Path = Path("/sys"),
-    cgroupfs: Path = Path("/sys/fs/cgroup"),
+    cgroupfs: Path | None = None,
     declared: Mapping[str, str] | None = None,
 ) -> EnvironmentRecord:
     """Collect every machine-read field and refuse instead of guessing a row."""
+    if cgroupfs is None:
+        cgroupfs = own_cgroup(procfs)
     box = read_box(procfs=procfs, sysfs=sysfs, cgroupfs=cgroupfs)
     gpu_facts: GpuFacts | None = None
     if gpu.count() > gpu_index >= 0:
@@ -1147,8 +1179,10 @@ class HostSampler:
         server_pid: int | None = None,
         client_pid: int | None = None,
         procfs: Path = Path("/proc"),
-        cgroupfs: Path = Path("/sys/fs/cgroup"),
+        cgroupfs: Path | None = None,
     ) -> None:
+        if cgroupfs is None:
+            cgroupfs = own_cgroup(procfs)
         self._server_pid = server_pid
         self._client_pid = client_pid if client_pid is not None else os.getpid()
         self._procfs = procfs

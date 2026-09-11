@@ -117,6 +117,44 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="sample a saved `nvidia-smi -q -x` document instead of the live command",
     )
+
+    cal = sub.add_parser(
+        "calibrate-psi",
+        help=(
+            "the calibration METHODOLOGY section 7 asks for: the pressure thresholds, "
+            "from null-floor windows on this box, with provenance; refuses on a busy box"
+        ),
+    )
+    cal.add_argument("--manifest", required=True, type=Path)
+    cal.add_argument("--out", required=True, type=Path)
+    cal.add_argument(
+        "--n",
+        type=int,
+        default=constants.LADDER_N0_WITHOUT_CEILING,
+        help="streams per null-floor window (default: the ladder's start without a ceiling)",
+    )
+    cal.add_argument("--seeds", type=str, default=",".join(str(s) for s in constants.SEEDS))
+    cal.add_argument("--window-s", type=float, default=constants.WINDOW_S)
+    cal.add_argument(
+        "--warm-up-s",
+        type=float,
+        default=None,
+        help=(
+            "run the convergence warm-up before each window; the default is none, because "
+            "the null floor is at steady state the moment every stream is live"
+        ),
+    )
+    cal.add_argument("--warm-up-reading-s", type=float, default=constants.WARM_UP_READING_S)
+    cal.add_argument("--warm-up-convergence", type=float, default=constants.WARM_UP_CONVERGENCE)
+    cal.add_argument("--warm-up-cap-s", type=float, default=constants.WARM_UP_CAP_S)
+    cal.add_argument("--ramp-s", type=float, default=DEFAULT_RAMP_S)
+    cal.add_argument("--frame-ms", type=int, default=constants.FRAME_MS)
+    cal.add_argument("--interval-s", type=float, default=1.0, help="seconds between samples")
+    cal.add_argument("--quiet-s", type=float, default=None, help="quiet observation (default 10)")
+    cal.add_argument("--gpu-index", type=int, default=0)
+    cal.add_argument("--server-pid", type=int, default=None)
+    cal.add_argument("--from-smi-xml", type=Path, default=None)
+    cal.add_argument("--no-gpu", action="store_true", help="a box with no GPU record to sample")
     return parser
 
 
@@ -455,6 +493,62 @@ def _ladder(args: argparse.Namespace) -> int:
     return 0
 
 
+def _calibrate_psi(args: argparse.Namespace) -> int:
+    import asyncio
+
+    from verbatim_bench.calibrate import QUIET_OBSERVATION_S, CalibrationRefusal, calibrate
+    from verbatim_bench.env import SmiProbe
+    from verbatim_bench.hostrecord import LiveSmiProbe
+
+    try:
+        seeds = tuple(int(part) for part in str(args.seeds).split(",") if part.strip())
+    except ValueError:
+        print("verbatim-bench: --seeds must be comma-separated integers")
+        return 1
+    if not seeds or args.n < 1 or args.interval_s <= 0:
+        print("verbatim-bench: need at least one seed, --n >= 1 and a positive --interval-s")
+        return 1
+    if args.no_gpu:
+        probe = None
+    elif args.from_smi_xml is not None:
+        probe = SmiProbe.from_xml(Path(args.from_smi_xml).read_text(encoding="utf-8"))
+    else:
+        probe = LiveSmiProbe()
+    try:
+        record = asyncio.run(
+            calibrate(
+                manifest=Path(args.manifest),
+                n=int(args.n),
+                seeds=seeds,
+                window_s=float(args.window_s),
+                warm_up_s=None if args.warm_up_s is None else float(args.warm_up_s),
+                warm_up_reading_s=float(args.warm_up_reading_s),
+                warm_up_convergence=float(args.warm_up_convergence),
+                warm_up_cap_s=float(args.warm_up_cap_s),
+                ramp_s=float(args.ramp_s),
+                frame_ms=int(args.frame_ms),
+                interval_s=float(args.interval_s),
+                quiet_s=QUIET_OBSERVATION_S if args.quiet_s is None else float(args.quiet_s),
+                gpu=probe,
+                gpu_index=int(args.gpu_index),
+                server_pid=args.server_pid,
+                repo_root=Path.cwd(),
+            )
+        )
+    except CalibrationRefusal as exc:
+        print(f"verbatim-bench calibrate-psi refused: {exc}")
+        return 2
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "calibration.json").write_text(
+        json.dumps(record.to_json_dict(), indent=2) + "\n", encoding="utf-8"
+    )
+    if not record.canonical:
+        print("verbatim-bench: warning: overridden durations, seeds or framing: not canonical")
+    print(record.constants_lines(), end="")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Entry point: 0 on a completed run, 1 on a usage error, 2 if any session failed."""
     parser = _build_parser()
@@ -470,6 +564,8 @@ def main(argv: list[str] | None = None) -> int:
         return _verify(args)
     if args.command == "env":
         return _env(args)
+    if args.command == "calibrate-psi":
+        return _calibrate_psi(args)
     if args.command == "ladder":
         return _ladder(args)
     parser.print_usage()
