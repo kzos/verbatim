@@ -721,23 +721,25 @@ async def test_a_session_open_at_stop_is_told_unavailable_not_given_a_clean_end(
     abandoned one, and that is what decides whether it retries. Partials the engine
     had already produced still arrive first."""
     engine = _engine()
-    async with engine:
-        session = engine.open_session(OPTIONS)
-        assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
-        await engine.wait_for_ticks(2)  # the chunk has been stepped: a partial is queued
-    # the context exit stopped the engine with the session still open
     seen: list[Hypothesis] = []
 
     async def drain() -> None:
         async for hypothesis in session.results():
             seen.append(hypothesis)
 
+    async with engine:
+        session = engine.open_session(OPTIONS)
+        assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
+        drainer = asyncio.create_task(drain())
+        # Wait for a partial to arrive rather than for a count of wakes: a wake already
+        # queued from the tick before the feed counts, and that tick never saw the chunk.
+        await _until(lambda: len(seen) >= 1)
+    # the context exit stopped the engine with the session still open
     with pytest.raises(Unavailable) as raised:
-        await asyncio.wait_for(drain(), timeout=5.0)
+        await asyncio.wait_for(drainer, timeout=5.0)
     assert raised.value.code is ErrorCode.UNAVAILABLE
     assert "shutting down" in str(raised.value)
-    assert seen, "the partial produced before stop() must still be delivered"
-    assert all(not hypothesis.is_final for hypothesis in seen)
+    assert seen and all(not hypothesis.is_final for hypothesis in seen)
 
 
 @pytest.mark.asyncio

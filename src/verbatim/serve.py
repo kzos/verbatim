@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from verbatim.config import ChunkMode, EngineConfig
 from verbatim.engine import Engine
 from verbatim.pipelines.base import PipelineAdapter
+from verbatim.protocols.health import HealthReporter, ServiceFacts
 from verbatim.protocols.riva.server import RivaServer, RivaServerConfig
 from verbatim.protocols.ws.server import WsServer, WsServerConfig
 from verbatim.scheduler.graph_budget import ConfigError
@@ -125,9 +126,26 @@ async def run_server(
     *,
     shutdown: asyncio.Event,
     on_ready: Callable[[Endpoints], None] | None = None,
+    execution: str | None = None,
 ) -> None:
-    """Serve until ``shutdown`` is set. Listeners close before the engine stops."""
+    """Serve until ``shutdown`` is set. Listeners close before the engine stops.
+
+    ``execution`` names how the encoder step runs, "eager", "graph path" or "fake",
+    for the health endpoints and the metrics labels; the CLI knows it exactly and
+    passes it, and the default only derives it from the settings.
+    """
     engine = Engine(engine_config(settings), adapter)
+    if execution is None:
+        execution = (
+            "fake" if settings.pipeline == "fake" else ("eager" if settings.eager else "graph path")
+        )
+    facts = ServiceFacts(
+        model=settings.model,
+        chunk_ms=settings.chunk.ms,
+        precision="none" if settings.pipeline == "fake" else settings.compute_dtype,
+        execution=execution,
+        pipeline=settings.pipeline,
+    )
     riva = RivaServer(
         engine,
         RivaServerConfig(
@@ -137,7 +155,11 @@ async def run_server(
             language_code=settings.language_code,
         ),
     )
-    ws = WsServer(engine, WsServerConfig(host=settings.host, port=settings.ws_port))
+    ws = WsServer(
+        engine,
+        WsServerConfig(host=settings.host, port=settings.ws_port),
+        health=HealthReporter(engine, facts),
+    )
     async with engine, riva, ws:
         if on_ready is not None:
             on_ready(

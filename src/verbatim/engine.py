@@ -23,7 +23,7 @@ import threading
 from collections import deque
 from collections.abc import AsyncIterator, Sequence
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from verbatim.audio.pcm import decode_pcm16
@@ -38,6 +38,9 @@ from verbatim.core.errors import (
 from verbatim.core.registry import SessionRegistry
 from verbatim.core.session import Session, SessionState
 from verbatim.core.types import StepResult
+from verbatim.obs.counters import Counters
+from verbatim.obs.latency import LatencySketch
+from verbatim.obs.metrics import MetricsSnapshot
 from verbatim.pipelines.base import PipelineAdapter
 from verbatim.pipelines.fake import FakePipelineAdapter, ScriptSource
 from verbatim.protocols.base import EngineHandle, Hypothesis, SessionHandle, SessionOptions
@@ -97,6 +100,15 @@ class Engine(EngineHandle):
         self._dead = False
         self._loop_wakes = 0
         self._processed_wakes = 0
+        self._started = False
+        self._counters = Counters()
+        self._tick_costs = LatencySketch()
+        self._partial_latency = LatencySketch()
+        # (end time, lateness_ms) per completed tick, appended by the tick thread and
+        # drained by the loop's wake, which is where the partial becomes visible.
+        self._tick_ends: deque[tuple[float, float]] = deque()
+        self._last_tick_end: float | None = None
+        self._last_refusal_reason: str | None = None
 
     @property
     def chunk_ms(self) -> int:
@@ -128,6 +140,7 @@ class Engine(EngineHandle):
             return
         self._wake_event = asyncio.Event()
         self._running = True
+        self._started = True
         self._thread = threading.Thread(
             target=self._run_ticks,
             name="verbatim-tick-loop",
@@ -207,9 +220,13 @@ class Engine(EngineHandle):
         session.configure()
         with self._lock:
             if self._dead:
+                self._counters.observe_admission(False)
+                self._last_refusal_reason = "engine is not running"
                 raise ResourceExhausted("engine is not running", retry_after_ms=0)
             decision = self._tick.admit_session(session)
+            self._counters.observe_admission(decision.admitted)
             if not decision.admitted:
+                self._last_refusal_reason = decision.reason or "session admission refused"
                 raise ResourceExhausted(
                     decision.reason or "session admission refused",
                     retry_after_ms=decision.retry_after_ms,
@@ -270,6 +287,7 @@ class Engine(EngineHandle):
                 self._emit.append(result)
             for stream_id, error in self._tick.drain_errors():
                 self._emit.append(_ErrorEvent(stream_id, error))
+            self._observe_tick()
             loop = self._loop
             if loop is None:
                 self._running = False
@@ -283,6 +301,61 @@ class Engine(EngineHandle):
                 return
             self._loop_wakes += 1
 
+    def _observe_tick(self) -> None:
+        """Fold the tick just completed into the counters and the cost window, on the
+        tick thread, and hand its end time to the loop for the partial latency."""
+        stats = self._tick.last_stats
+        if stats is None:
+            return
+        end = self._tick.clock.now()
+        with self._lock:
+            self._counters.observe_tick(
+                stats, budget_ms=self._config.budget_ms, period_ms=float(self._config.chunk.ms)
+            )
+            self._tick_costs.observe(stats.step_ms + stats.edge_ms)
+        self._tick_ends.append((end, stats.lateness_ms))
+        self._last_tick_end = end
+
+    def snapshot(self) -> MetricsSnapshot:
+        """What the engine knows about itself right now, under its lock. Data only:
+        readiness and liveness are judged by the health reporter from this."""
+        with self._lock:
+            admission = self._tick.admission
+            slots = self._tick.slots
+            now = self._tick.clock.now()
+            age = None if self._last_tick_end is None else max(0.0, now - self._last_tick_end)
+            buckets = self._config.buckets or (0,)
+            return MetricsSnapshot(
+                chunk_ms=self._config.chunk.ms,
+                period_ms=float(self._config.chunk.ms),
+                budget_ms=self._config.budget_ms,
+                bucket=max(buckets),
+                started=self._started,
+                running=self._running,
+                dead=self._dead,
+                tick_id=self._tick.tick_id,
+                last_tick_age_s=age,
+                live_sessions=self._registry.live,
+                slots_capacity=slots.capacity,
+                slots_reserved=slots.reserved,
+                slots_free=slots.free(),
+                ceiling=admission.ceiling,
+                calibrated_ceiling=admission.calibrated_ceiling,
+                degradation_level=admission.degradation_level,
+                consecutive_overruns=admission.consecutive_overruns,
+                p95_tick_ms=admission.p95_ms,
+                eager_step_fraction=admission.eager_step_fraction,
+                counters=replace(self._counters),
+                latency_count=self._partial_latency.count,
+                partial_latency_ms=(
+                    self._partial_latency.p50,
+                    self._partial_latency.p95,
+                    self._partial_latency.p99,
+                ),
+                tick_cost_ms=(self._tick_costs.p50, self._tick_costs.p95, self._tick_costs.p99),
+                last_refusal_reason=self._last_refusal_reason,
+            )
+
     def _wake(self) -> None:
         """Move the lock-free emit deque into per-session asyncio queues.
 
@@ -292,6 +365,10 @@ class Engine(EngineHandle):
         handle go the session costs nothing. Before this the two dictionaries kept
         every closed session's ring buffer for the life of the process.
         """
+        now = self._tick.clock.now()
+        while self._tick_ends:
+            end, lateness_ms = self._tick_ends.popleft()
+            self._partial_latency.observe(lateness_ms + max(0.0, now - end) * 1000.0)
         while True:
             try:
                 item = self._emit.popleft()

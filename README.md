@@ -397,11 +397,12 @@ verbatim serve nvidia/nemotron-3.5-asr-streaming-0.6b --chunk 160ms --bucket 32 
 ```text
 [verbatim] checkpoint   nvidia/nemotron-3.5-asr-streaming-0.6b  (NeMo cache-aware RNNT)
 [verbatim] device       NVIDIA RTX A6000  ·  sm_86  ·  48 GB
-[verbatim] chunk mode   160 ms   (att_context_size [56, 1], fp32)
+[verbatim] chunk mode   160 ms   (att_context_size [56, 1])
 [verbatim] graphs       steady bucket B=<N> captured at warm-up (fixed-shape default) + eager edge batch B_edge=8  (1 of max_graphs)
+[verbatim] precision    float32: batch invariance holds. bfloat16 is measured to lose it; see DR-0003.
 [verbatim] admission    ceiling <N> streams @ p95 <= 310 ms  (measured tick budget, calibrated on this GPU — never typed in)
 [verbatim] riva  grpc   0.0.0.0:50051   StreamingRecognize (Riva-compatible subset)
-[verbatim] websocket    0.0.0.0:8080    /v1/stream  ·  demo page at /  ·  /healthz /readyz /metrics /admission
+[verbatim] websocket    0.0.0.0:8080    /v1/stream  ·  /healthz /readyz /metrics /admission
 ```
 
 Then, on the same GPU, put your own microphone in the same batch as `<N>` replayed LibriSpeech test-other
@@ -459,7 +460,9 @@ pip install verbatim
 - **Ports.** `50051` — the Riva-compatible gRPC `StreamingRecognize` subset, on the Riva convention
   (`livekit-plugins-nvidia` and Pipecat's `nvidia` STT service take any `host:port`; NeMo-Speech.cpp's
   `riva_server` binds `0.0.0.0:50051` by default). `8080` — the plain WebSocket for the demo
-  (`/v1/stream`), the demo page, and `/healthz`, `/readyz`, `/metrics`, `/admission`. No other listener.
+  (`/v1/stream`) and `/healthz`, `/readyz`, `/metrics`, `/admission`, which answer from the engine's own
+  snapshot and were served by a real pipeline for the first time on 2026-09-11. No other listener, and no
+  demo page: `GET /` is 404 today and this README claimed otherwise until the endpoints were probed.
 
 ```bash
 verbatim serve nvidia/nemotron-3.5-asr-streaming-0.6b \

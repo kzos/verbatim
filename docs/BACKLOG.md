@@ -140,6 +140,15 @@ promised date — that is for triage once an entry becomes an issue.
   number describing this project's own measured behaviour belongs only in a row under `rows/`, so the
   check is that no unfrozen numeric claim about Verbatim's performance appears in the document at all.
 
+- `README.md` — **the demo page at `/` does not exist.** The README listed it twice as a thing the
+  WebSocket listener serves. Probed against a live server on 2026-09-11: `GET /` and `GET /index.html`
+  are both 404, because `HealthReporter.ROUTES` is the four health paths and nothing else. The README is
+  corrected; either the page gets written or the claim stays deleted.
+
+- `src/verbatim/cli.py` — the ready banner's `websocket` line names only `/v1/stream`, so an operator
+  cannot discover `/healthz`, `/readyz`, `/metrics` or `/admission` from the process that serves them.
+  Small, and worth doing while the endpoints are new.
+
 - `bench/src/verbatim_bench/cli.py::_make_rung` — **the ladder never runs the window it reports.** The
   rung executor builds its `LoadSpec` without `window_s`, which in `run_load` takes the branch that runs
   each slot exactly once, and it overrides `ramp_s` to zero. `warm_up_s` reaches no measurement anywhere:

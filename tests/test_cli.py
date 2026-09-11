@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import threading
+import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -92,7 +93,7 @@ def _hooks(
     on_ready: Callable[[Endpoints, Callable[[], None]], None] | None = None,
 ) -> Hooks:
     async def no_server(
-        settings: ServeSettings, adapter: Any, *, shutdown: Any, on_ready: Any
+        settings: ServeSettings, adapter: Any, *, shutdown: Any, on_ready: Any, **_: Any
     ) -> None:
         captured.settings = settings
         captured.adapter = adapter
@@ -304,7 +305,9 @@ def test_doctor_verdicts() -> None:
 def test_an_unexpected_failure_is_exit_1_with_a_hint() -> None:
     captured = _Captured()
 
-    async def explode(settings: Any, adapter: Any, *, shutdown: Any, on_ready: Any) -> None:
+    async def explode(
+        settings: Any, adapter: Any, *, shutdown: Any, on_ready: Any, **_: Any
+    ) -> None:
         raise ValueError("boom")
 
     assert main(FAKE, hooks=_hooks(captured, run_server=explode)) == EXIT_UNEXPECTED
@@ -355,6 +358,16 @@ def test_serve_runs_the_fake_pipeline_end_to_end_until_told_to_stop() -> None:
         assert frames["session"]["type"] == "session"
         assert frames["session"]["chunk_ms"] == 160
         assert frames["partial"]["type"] == "partial"
+        # The health endpoints the README promises, on the same listener.
+        with urllib.request.urlopen(f"http://127.0.0.1:{found.ws_port}/readyz", timeout=5) as resp:
+            assert resp.status == 200
+            ready_body = json.loads(resp.read())
+        assert ready_body["ready"] is True
+        assert ready_body["execution"] == "fake" and ready_body["chunk_ms"] == 160
+        with urllib.request.urlopen(f"http://127.0.0.1:{found.ws_port}/metrics", timeout=5) as resp:
+            assert resp.status == 200
+            assert resp.headers["Content-Type"].startswith("text/plain; version=0.0.4")
+            assert b"verbatim_up{" in resp.read()
     finally:
         for stop in stoppers:
             stop()

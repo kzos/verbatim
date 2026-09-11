@@ -104,6 +104,15 @@ class TickLoop:
         return self._tick_id
 
     @property
+    def last_stats(self) -> TickStats | None:
+        """The most recent tick's ``TickStats``, or ``None`` before the first tick."""
+        return self._stats[-1] if self._stats else None
+
+    @property
+    def clock(self) -> Clock:
+        return self._clock
+
+    @property
     def stats(self) -> list[TickStats]:
         """One ``TickStats`` per completed tick, in order, for the most recent
         ``STATS_RETAINED`` ticks. ``tick_id`` keeps counting past that."""
@@ -208,6 +217,11 @@ class TickLoop:
             starved=starved,
             step_ms=step_ms,
             edge_ms=edge_ms,
+            lateness_ms=max(
+                0.0,
+                (self._clock.now() - (self._start + tick_id * self._config.chunk.period_s))
+                * 1000.0,
+            ),
         )
         self._stats.append(stats)
         self._admission.observe(stats, tick_ms=step_ms + edge_ms)
