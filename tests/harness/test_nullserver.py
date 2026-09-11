@@ -109,6 +109,53 @@ async def test_short_tail_emits_a_final_partial_so_the_floor_matches_the_server(
     assert session.chunks == 7
     assert session.partials_received == 7
     assert session.audio_s == pytest.approx(1.0)
+    # Every chunk, the 40 ms tail included, is acknowledged by a partial whose
+    # watermark covers it: seven matched samples, not six and an unmatched tail.
+    assert len(session.partial_ms) == 7
+
+
+async def test_the_tail_partial_is_stamped_with_every_byte_sent() -> None:
+    """The floor's last partial carries the tail's audio, as the server's padded final
+    chunk counts the real samples in it; a stamp at the last full chunk would leave
+    the client's tail chunk unmatched and the floor a chunk short of the server."""
+    async with (
+        NullServer(NullServerConfig()) as server,
+        websockets.connect(f"{server.endpoint}?chunk_ms=160") as ws,
+    ):
+        await recv_json(ws)
+        await ws.send(b"\x00" * (CHUNK_BYTES_160MS * 2 + CHUNK_BYTES_160MS // 4))  # 2.25 chunks
+        first = await recv_json(ws)
+        second = await recv_json(ws)
+        await ws.send(json.dumps({"type": "end"}))
+        tail = await recv_json(ws)
+        final = await recv_json(ws)
+    assert [first["audio_s"], second["audio_s"]] == pytest.approx([0.16, 0.32])
+    assert tail["type"] == "partial"
+    assert tail["audio_s"] == pytest.approx(0.36)
+    assert final["type"] == "final"
+    assert final["audio_s"] == pytest.approx(0.36)
+
+
+async def test_a_partial_is_stamped_with_the_chunk_it_acknowledges_not_the_bytes_received() -> None:
+    """A message that runs past a chunk boundary has been received past it, not
+    recognised past it. The server stamps its audio clock, which advances one chunk
+    per step; the floor must stamp the same, or a watermark match against the floor
+    measures a different thing from the same match against the server."""
+    async with (
+        NullServer(NullServerConfig()) as server,
+        websockets.connect(f"{server.endpoint}?chunk_ms=160") as ws,
+    ):
+        await recv_json(ws)
+        await ws.send(b"\x00" * (CHUNK_BYTES_160MS + CHUNK_BYTES_160MS // 2))  # 1.5 chunks
+        first = await recv_json(ws)
+        await ws.send(b"\x00" * (CHUNK_BYTES_160MS // 2))  # completes the second
+        second = await recv_json(ws)
+        await ws.send(json.dumps({"type": "end"}))
+        final = await recv_json(ws)
+    assert first["audio_s"] == pytest.approx(0.16)  # not 0.24, the bytes received
+    assert second["audio_s"] == pytest.approx(0.32)
+    assert final["type"] == "final"  # nothing pending: no tail partial
+    assert final["audio_s"] == pytest.approx(0.32)
 
 
 async def test_capacity_limited_mode_adds_delay_only_above_capacity() -> None:
