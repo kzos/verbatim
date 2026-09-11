@@ -111,6 +111,7 @@ def _snapshot(**overrides: object) -> MetricsSnapshot:
         partial_latency_ms=(21.0, 30.0, 33.0),
         tick_cost_ms=(9.0, 9.5, 9.9),
         last_refusal_reason="session refused: no free slot",
+        results_partials_dropped_total=3,
     )
     fields.update(overrides)
     return MetricsSnapshot(**fields)  # type: ignore[arg-type]
@@ -134,6 +135,8 @@ def test_the_exposition_carries_the_process_labels_on_every_series() -> None:
     labelled = 'chunk_ms="160",precision="bfloat16",execution="eager",quantile="0.95"'
     assert f"verbatim_partial_latency_ms{{{labelled}}} 30.0" in lines
     assert "# TYPE verbatim_ticks_total counter" in text
+    dropped = "verbatim_result_partials_dropped_total"
+    assert f'{dropped}{{chunk_ms="160",precision="bfloat16",execution="eager"}} 3' in lines
     assert "# TYPE verbatim_live_sessions gauge" in text
     assert text.endswith("\n")
 

@@ -66,3 +66,13 @@ def test_an_edge_batch_of_one_has_no_edge_pad_rows() -> None:
     config = EngineConfig(chunk=CHUNK, buckets=(8,), edge_batch=1, drain_margin=0)
     assert config.edge_pad_rows == 0
     assert config.num_slots == 8 + 8
+
+
+def test_max_result_backlog_must_be_a_positive_integer() -> None:
+    for bad in (0, -1, True):
+        with pytest.raises(ConfigError, match="max_result_backlog"):
+            EngineConfig(chunk=ChunkMode(160), buckets=(8,), max_result_backlog=bad)
+    assert (
+        EngineConfig(chunk=ChunkMode(160), buckets=(8,), max_result_backlog=1).max_result_backlog
+        == 1
+    )

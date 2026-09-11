@@ -774,3 +774,54 @@ async def test_a_final_produced_by_the_last_tick_arrives_as_a_final_not_as_unava
     hypotheses = await _collect(session)
     assert hypotheses[-1].is_final
     assert hypotheses[-1].audio_processed_s == pytest.approx(0.16)
+
+
+@pytest.mark.asyncio
+async def test_a_slow_consumer_keeps_its_final_and_the_backlog_stays_bounded() -> None:
+    """A session fed far more chunks than a small backlog holds, with nothing reading
+    until the end, drops its oldest partials but never its final: the engine chooses
+    losing superseded prefixes over closing a live session, and the count is visible.
+    The scripted fake produces a real final on end(), which the backlog must keep."""
+    config = EngineConfig(chunk=CHUNK, buckets=(1,), edge_batch=1, max_result_backlog=4)
+    pipeline = FakePipelineAdapter(
+        CHUNK,
+        buckets=(1,),
+        scripted=True,
+        script_for=lambda _options: ("alpha", "bravo", "charlie", "delta", "echo"),
+        partial_every=1,
+    )
+    engine = Engine(config, pipeline, clock=ScaledMonotonicClock(100.0))
+    async with engine:
+        session = engine.open_session(OPTIONS)
+        for _ in range(20):
+            assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
+            await engine.wait_for_ticks(1)
+        session.end()
+        # only now does anyone read
+        hypotheses = await _collect(session)
+    assert hypotheses[-1].is_final, "the final is delivered despite the backlog"
+    assert hypotheses[-1].text == "alpha bravo charlie delta echo"
+    assert 2 <= len(hypotheses) <= 8, "the backlog was bounded, not one row per chunk"
+    assert engine.snapshot().results_partials_dropped_total > 0
+    assert engine.snapshot().counters.ticks_total >= 20
+
+
+@pytest.mark.asyncio
+async def test_a_consumer_that_keeps_up_drops_nothing() -> None:
+    engine = _engine()
+    async with engine:
+        session = engine.open_session(OPTIONS)
+        received: list[Hypothesis] = []
+
+        async def read() -> None:
+            async for hypothesis in session.results():
+                received.append(hypothesis)
+
+        reader = asyncio.create_task(read())
+        for _ in range(8):
+            assert session.feed(b"\x00" * OPTIONS.chunk_bytes) == OPTIONS.chunk_bytes
+            await engine.wait_for_ticks(1)
+        session.end()
+        await asyncio.wait_for(reader, timeout=5.0)
+    assert received[-1].is_final
+    assert engine.snapshot().results_partials_dropped_total == 0

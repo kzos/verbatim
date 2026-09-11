@@ -130,6 +130,7 @@ class HealthReporter:
                 "admitted_total": counters.sessions_admitted_total,
                 "refused_total": counters.sessions_refused_total,
                 "last_refusal_reason": snapshot.last_refusal_reason,
+                "result_partials_dropped": snapshot.results_partials_dropped_total,
                 "p95_tick_ms": snapshot.p95_tick_ms,
                 "eager_step_fraction": snapshot.eager_step_fraction,
             },

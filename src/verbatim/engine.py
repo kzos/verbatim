@@ -67,6 +67,46 @@ _EmitItem = StepResult | _ErrorEvent
 _QueueItem = StepResult | _ErrorEvent
 
 
+def _is_pure_partial(item: _QueueItem) -> bool:
+    """A partial carries a running prefix the next one supersedes: droppable under
+    backlog. A final (``final_text``), an ``is_last`` row and an error are not."""
+    return isinstance(item, StepResult) and not item.is_last and item.final_text is None
+
+
+class _ResultQueue:
+    """A single-producer single-consumer queue, both on the event loop, that bounds its
+    backlog by dropping the oldest pure partials. Terminals are never dropped, so the
+    bound can be temporarily exceeded when the backlog is all finals, which never
+    happens: one utterance has one terminal. ``put`` returns how many it dropped."""
+
+    def __init__(self, max_backlog: int) -> None:
+        self._items: deque[_QueueItem] = deque()
+        self._event = asyncio.Event()
+        self._max = max_backlog
+
+    def put(self, item: _QueueItem) -> int:
+        self._items.append(item)
+        dropped = 0
+        while len(self._items) > self._max:
+            for index, held in enumerate(self._items):
+                if _is_pure_partial(held):
+                    del self._items[index]
+                    dropped += 1
+                    break
+            else:
+                break  # nothing droppable; keep the terminal-only backlog intact
+        self._event.set()
+        return dropped
+
+    async def get(self) -> _QueueItem:
+        while not self._items:
+            self._event.clear()
+            if self._items:
+                break
+            await self._event.wait()
+        return self._items.popleft()
+
+
 class Engine(EngineHandle):
     """One chunk mode's ``TickLoop`` on a dedicated thread.
 
@@ -91,7 +131,7 @@ class Engine(EngineHandle):
         self._tick = TickLoop(config, pipeline, self._registry, clock=clock)
         self._emit: deque[_EmitItem] = deque()
         self._sessions: dict[int, EngineSession] = {}
-        self._queues: dict[int, asyncio.Queue[_QueueItem]] = {}
+        self._queues: dict[int, _ResultQueue] = {}
         self._next_session_id = 1
         self._loop = loop
         self._wake_event: asyncio.Event | None = None
@@ -101,6 +141,7 @@ class Engine(EngineHandle):
         self._loop_wakes = 0
         self._processed_wakes = 0
         self._started = False
+        self._results_dropped_total = 0
         self._counters = Counters()
         self._tick_costs = LatencySketch()
         self._partial_latency = LatencySketch()
@@ -187,7 +228,7 @@ class Engine(EngineHandle):
             # stream as if the utterance had completed. A caller cannot distinguish a
             # clean end from an abandoned one, and that decides whether it retries.
             for stream_id, queue in self._queues.items():
-                queue.put_nowait(_ErrorEvent(stream_id, Unavailable("the server is shutting down")))
+                queue.put(_ErrorEvent(stream_id, Unavailable("the server is shutting down")))
             self._queues.clear()
             self._sessions.clear()
 
@@ -231,7 +272,7 @@ class Engine(EngineHandle):
                     decision.reason or "session admission refused",
                     retry_after_ms=decision.retry_after_ms,
                 )
-            queue: asyncio.Queue[_QueueItem] = asyncio.Queue()
+            queue = _ResultQueue(self._config.max_result_backlog)
             handle = EngineSession(self, session, queue)
             self._sessions[session_id] = handle
             self._queues[session_id] = queue
@@ -354,6 +395,7 @@ class Engine(EngineHandle):
                 ),
                 tick_cost_ms=(self._tick_costs.p50, self._tick_costs.p95, self._tick_costs.p99),
                 last_refusal_reason=self._last_refusal_reason,
+                results_partials_dropped_total=self._results_dropped_total,
             )
 
     def _wake(self) -> None:
@@ -376,7 +418,7 @@ class Engine(EngineHandle):
                 break
             queue = self._queues.get(item.stream_id)
             if queue is not None:
-                queue.put_nowait(item)
+                self._results_dropped_total += queue.put(item)
                 if isinstance(item, _ErrorEvent) or item.is_last:
                     del self._queues[item.stream_id]
                     self._sessions.pop(item.stream_id, None)
@@ -420,7 +462,7 @@ class EngineSession(SessionHandle):
         self,
         engine: Engine,
         session: Session,
-        queue: asyncio.Queue[_QueueItem],
+        queue: _ResultQueue,
     ) -> None:
         self._engine = engine
         self._session = session

@@ -90,6 +90,12 @@ class EngineConfig:
     counted in ticks on the engine's own clock, so it lives here rather than in
     either transport and both wires inherit it. ``None`` disables it, which is what
     the CPU test harness does; a server should not.
+
+    ``max_result_backlog`` is the most unread hypotheses a session's result queue holds
+    before the engine drops its oldest *partials* to stay within it; a final and an
+    error are never dropped. A partial is a running prefix the next partial supersedes,
+    so a consumer that falls behind loses only detail it would have overwritten, and
+    keeps its final. A slow consumer is not closed for being slow.
     """
 
     chunk: ChunkMode
@@ -105,6 +111,7 @@ class EngineConfig:
     pipeline: str = "fake"
     stop_history_eou_ms: int = 800
     idle_timeout_s: float | None = 30.0
+    max_result_backlog: int = 1024
 
     def __post_init__(self) -> None:
         buckets = self.buckets
@@ -164,6 +171,10 @@ class EngineConfig:
         ):
             raise ConfigError(
                 f"idle_timeout_s must be positive or None, got {self.idle_timeout_s!r}"
+            )
+        if isinstance(self.max_result_backlog, bool) or self.max_result_backlog < 1:
+            raise ConfigError(
+                f"max_result_backlog must be a positive integer, got {self.max_result_backlog!r}"
             )
         assert_graph_budget({self.chunk.ms: buckets}, self.max_graphs)
 
