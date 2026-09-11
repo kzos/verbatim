@@ -182,11 +182,14 @@ promised date — that is for triage once an entry becomes an issue.
   worktrees, on a 48-core machine at load average 8, both passing 500 s without finishing while the same
   tests run one at a time take 38 s.
 
-- `tests/` — **a test waits unbounded for a failed tick's errors.** Found while mutation-testing the
-  tick-publish fix on 2026-09-11: removing the failure-path `publish([])` reddens its own test as
-  intended, but also hangs the suite, killed at 194 s. Some engine test awaits results from a tick that
-  failed and now never publishes, with no timeout of its own. A test that cannot fail in bounded time
-  is not a guard, which this project has already learned twice. Bound every receive in that path.
+- ~~`tests/` — a test waits unbounded for a failed tick's errors: removing the failure-path
+  `publish([])` reddens its own test but also hangs the suite, killed at 194 s.~~ **Withdrawn
+  2026-09-11.** Re-taken on the finished branch, the same mutation reddens exactly
+  `test_a_failed_tick_publishes_before_its_sleep_with_the_errors_recorded` and nothing else, one failed
+  and 711 passed in 37 s, with the engine file itself 31 of 31 in 1.3 s under the mutation. The 194-second
+  hang was the held-clock livelock that every full run hit that hour, not the mutation. **Two findings
+  taken in the same window, one real and one an artefact of the other**, which is the cost of running a
+  mutation pass while an unrelated livelock is live in the tree.
 
 - `bench/src/verbatim_bench/client.py` — **the pacing slip is scored against a deadline the sender does
   not follow.** The slip is measured against `t0 + i * frame_period + jitter`, jitter uniform in plus or
