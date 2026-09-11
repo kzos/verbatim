@@ -26,12 +26,18 @@ lockstep.  Against a 310 ms budget and a 95th-percentile criterion, clients
 arriving at arbitrary times give a p95 near 320 ms at any concurrency, including
 one stream.
 
+Time to the first word rides the same sawtooth: measured across every phase it is
+the steady-state latency plus the 800 ms endpointing window, constant to within a
+millisecond.  The first word carries the same phase penalty as every later chunk,
+so there is no trade between the two latencies to make.
+
 Run it against any live server; it takes about twenty seconds:
 
     PYTHONPATH=bench/src python probes/tick_phase_sweep.py \
         --endpoint ws://127.0.0.1:8081/v1/stream \
         --manifest <corpus>.jsonl --out sweep.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -81,6 +87,10 @@ async def main() -> int:
             "step": i,
             "start_delay_ms": i * step_ms,
             "error": result.error,
+            # Time from the first audio sent to the first partial carrying any text.
+            # The phase fix is expected to improve the steady-state percentile and can
+            # regress this, so both arms need it measured rather than assumed.
+            "first_word_ms": result.first_partial_ms,
             "n": len(samples),
             "median_ms": statistics.median(samples) if samples else None,
             "min_ms": min(samples) if samples else None,
@@ -99,15 +109,19 @@ async def main() -> int:
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(doc, indent=2))
-    print(f"utterance {utterance.stream_id}, {utterance.duration_s:.1f} s, period {args.period_ms} ms")
-    print(" delay(ms)  n   median   min     max    within-session spread")
+    print(
+        f"utterance {utterance.stream_id}, {utterance.duration_s:.1f} s, period {args.period_ms} ms"
+    )
+    print(" delay(ms)  n   median   min     max    spread   first word")
     for r in rows:
         if r["median_ms"] is None:
             print(f"  {r['start_delay_ms']:7.1f}  --  error: {r['error']}")
             continue
+        fw = r["first_word_ms"]
         print(
             f"  {r['start_delay_ms']:7.1f} {r['n']:3d}  {r['median_ms']:7.1f} "
             f"{r['min_ms']:7.1f} {r['max_ms']:7.1f}   {r['spread_ms']:6.1f}"
+            f"   {'--' if fw is None else f'{fw:8.1f}'}"
         )
     return 0
 
