@@ -148,18 +148,38 @@ def _parse_throttle_reasons(gpu: ET.Element) -> dict[str, int]:
 
 
 def _parse_pids(gpu: ET.Element) -> tuple[int, ...]:
+    """The compute processes on the GPU, by pid.
+
+    nvidia-smi types each entry: ``C`` for a compute context, ``G`` for a graphics one,
+    ``C+G`` for both. A display server holding a graphics context is on the GPU but is
+    not a compute tenant, and the frozen threshold names compute processes, so only an
+    entry whose type carries ``C`` is kept. An entry with no type (the older
+    ``compute_processes`` block) is compute by its block's name.
+    """
     pids: list[int] = []
     for parent_tag in ("processes", "compute_processes"):
         parent = gpu.find(parent_tag)
         if parent is None:
             continue
-        for pid_el in parent.findall(".//pid"):
-            if pid_el.text is None:
+        for info in parent.findall(".//process_info"):
+            pid_el = info.find("pid")
+            if pid_el is None or pid_el.text is None:
+                continue
+            type_text = (_child_text(info, ["type"]) or "").strip().upper()
+            if type_text and "C" not in type_text:
                 continue
             try:
                 pids.append(int(pid_el.text.strip().split()[0]))
             except ValueError:
                 continue
+        if parent.find(".//process_info") is None:
+            for pid_el in parent.findall(".//pid"):
+                if pid_el.text is None:
+                    continue
+                try:
+                    pids.append(int(pid_el.text.strip().split()[0]))
+                except ValueError:
+                    continue
     return tuple(pids)
 
 

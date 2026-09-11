@@ -30,9 +30,11 @@ PRESSURE = (
 )
 
 
-def _window(some: float | None, full: float | None, seed: int = 1) -> WindowReading:
+def _window(
+    some: float | None, full: float | None, seed: int = 1, *, n: int = 1, clean: bool = True
+) -> WindowReading:
     return WindowReading(
-        n=1,
+        n=n,
         seed=seed,
         window_open_s=10.0,
         window_close_s=11.0,
@@ -44,7 +46,17 @@ def _window(some: float | None, full: float | None, seed: int = 1) -> WindowRead
         psi_full_at_close=full,
         client_cpu_pct_of_cpuset=1.0,
         pacing_slip_p99_ms=1.0,
+        clean=clean,
+        unclean_reason=None if clean else "did not drive cleanly",
     )
+
+
+def test_an_unclean_window_is_recorded_and_excluded_from_the_maximum() -> None:
+    """A window the generator did not drive cleanly says so and does not set the bar."""
+    windows = [_window(0.10, 0.02, n=16), _window(0.90, 0.40, n=128, clean=False)]
+    assert thresholds_from(windows) == (0.10, 0.02)
+    with pytest.raises(CalibrationRefusal, match="clean"):
+        thresholds_from([_window(0.9, 0.4, clean=False)])
 
 
 def test_a_threshold_is_the_ceiling_of_the_maximum_over_every_window() -> None:
@@ -133,7 +145,7 @@ async def test_calibration_runs_the_null_floor_and_writes_provenance(tmp_path: P
     manifest = make_manifest(tmp_path / "m.jsonl", [wav], ["utt-0"])
     record = await calibrate(
         manifest=manifest,
-        n=1,
+        ns=(1, 2),
         seeds=(constants.SEEDS[0], constants.SEEDS[1]),
         window_s=0.6,
         warm_up_s=None,  # no warm-up: the window opens at once
@@ -149,15 +161,18 @@ async def test_calibration_runs_the_null_floor_and_writes_provenance(tmp_path: P
     # The thresholds are the ceiling of the maximum the fake pressure file showed.
     assert record.psi_cpu_some_max_pct == pytest.approx(0.12)
     assert record.psi_cpu_full_max_pct == pytest.approx(0.03)
-    assert len(record.windows) == 2
+    assert len(record.windows) == 4  # two concurrencies, two seeds each
+    assert [w.n for w in record.windows] == [1, 1, 2, 2]
     assert all(w.psi_samples >= 3 for w in record.windows)
+    assert all(w.clean for w in record.windows)
     assert record.canonical is False
     assert record.quiet.refusal is None
     doc = record.to_json_dict()
     assert doc["schema"] == "vb-psi-calibration/1"
     assert doc["thresholds"]["PSI_CPU_SOME_MAX_PCT"] == pytest.approx(0.12)
     assert doc["box"]["boot_id"] == "boot-1234"
-    assert doc["load"]["n"] == 1 and doc["load"]["seeds"] == list(record.seeds)
+    assert doc["load"]["ns"] == [1, 2] and doc["load"]["seeds"] == list(record.seeds)
+    assert doc["load"]["clean_windows"] == 4 and doc["load"]["unclean_windows"] == []
     assert doc["harness"]["version"]
     assert "PSI_CPU_SOME_MAX_PCT: Final[float | None] = 0.12" in record.constants_lines()
     json.dumps(doc)
@@ -180,7 +195,7 @@ def test_the_cli_writes_the_record_and_prints_the_two_lines(tmp_path: Path, caps
             str(manifest),
             "--out",
             str(tmp_path / "cal"),
-            "--n",
+            "--ns",
             "1",
             "--seeds",
             str(constants.SEEDS[0]),
