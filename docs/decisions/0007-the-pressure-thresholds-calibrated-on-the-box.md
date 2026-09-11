@@ -21,6 +21,18 @@ The document specifies the calibration and not its workload, so three choices we
    idle-box threshold would sit below what a clean run of the generator itself produces, so the first
    honest run would fail its own validity gate. That would be a guard that cannot pass, built the same
    day four that could not fail were removed.
+
+   **Amended 2026-09-12: this was right in its reasoning and one step short in its application, and the
+   first capacity search failed on it.** The null floor excludes the server under test, which on a
+   single box serving and measuring at once is part of the clean baseline rather than foreign to it.
+   The calibrated 0.4 is the box's own 0.325 background stall plus about 0.07 from the generator, with
+   nothing left for the server; a real run at the same concurrency reads 0.4209 and 0.4221 and is
+   rejected by five percent. **Re-calibrate with the complete measurement running, the real server and
+   the generator together, at a reference concurrency where the server is independently known healthy.**
+   Six streams is that concurrency: it was measured at p95 193.7 ms against a 310 ms budget with 116 ms
+   of margin. The circularity is real and is bounded by that reference rather than denied: a threshold
+   taken with the server running absorbs whatever pressure that server causes, which is why the
+   reference state has to be one that was shown healthy by a different instrument.
 2. **Maximum over three concurrencies, not one.** `N = 16` is `LADDER_N0_WITHOUT_CEILING`, the only
    concurrency the document itself names; 32 and 128 are `CEILING_BATCH_SIZES`, and between them they
    cover every concurrency the method contemplates. Client-side pressure was expected to rise with
