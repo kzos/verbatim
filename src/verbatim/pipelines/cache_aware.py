@@ -345,11 +345,24 @@ class CacheAwareAdapter(PipelineAdapter):
         return int(self._boundary.retained_graphs())
 
     def graph_capability(self) -> GraphCapability:
-        """Two facts, kept apart: what the pipeline was built for, and what the
-        runtime has. Only ``use_cuda_graphs=True`` on a runtime that carries both
-        halves of NeMo PR #15863 is the graph path; ``use_cuda_graphs=True`` without
-        them is the refusal ``docs/decisions/0002`` records, and is reported as such
-        rather than quietly becoming an eager run."""
+        """Three facts, and the narrowest of them wins: what the pipeline was built
+        for, what the installed package carries, and what *this pipeline object*
+        actually has attached.
+
+        The third is the one that was missing. ``graph_step_available`` is a probe of
+        the installed wheel -- does the module carry ``CudaGraphsStreamingEncoderStep``
+        and does the cache-aware RNNT wrapper carry ``set_streaming_cuda_graphs`` -- and
+        it answers for the package, not for the pipeline in front of us. The only
+        observation of a real capture reads ``_graphs`` off this object. When the
+        package says yes and the object has no graphed step, those two disagree, and a
+        capability that reported the package's answer would let the run announce the
+        graph path while every tick ran eager. The CTC pipeline is the concrete case:
+        the probe reads the RNNT wrapper for both, because where PR #15863 puts the CTC
+        switch cannot be read from an installed wheel here.
+
+        So a pipeline that cannot be asked how many graphs it holds does not get to
+        claim the graph path. See ``docs/decisions/0011``.
+        """
         if not self._use_cuda_graphs:
             return GraphCapability.eager(
                 "the pipeline was built with asr.use_cuda_graphs=false, so the encoder "
@@ -360,6 +373,14 @@ class CacheAwareAdapter(PipelineAdapter):
                 "the installed NeMo lacks the graphed streaming encoder step "
                 "(NeMo PR #15863: streaming_encoder_cuda_graphs."
                 "CudaGraphsStreamingEncoderStep and set_streaming_cuda_graphs)"
+            )
+        if self._boundary.retained_graphs is None:
+            return GraphCapability.missing(
+                "the installed NeMo carries the graphed streaming encoder step but this "
+                f"built {type(self._boundary.pipeline).__name__} has none attached: none "
+                f"of {_GRAPH_STEP_PATHS} reaches a step holding graphs. The package's "
+                "answer is not this pipeline's answer, and a capture here could never be "
+                "observed, so the graph path is reported missing rather than claimed"
             )
         return GraphCapability.graphed()
 

@@ -232,8 +232,10 @@ class CaptureController:
 
         The runtime's own retained-graph count is read before and after each shape, and
         a count that did not rise is ``CaptureNotRetained`` rather than a key recorded
-        as captured. An adapter that cannot report a count (``None``) is taken at its
-        word and not read as zero.
+        as captured. So is an adapter that claims the graph path and cannot report a
+        count at all: "cannot tell" is an honest answer from an eager adapter, which
+        never reaches here, and an inadmissible one from a graphed adapter, because it
+        would skip the only check in this loop.
         """
         if self._warmed:
             raise ConfigError("warmup runs once; the captured graphs are retained after it")
@@ -243,12 +245,24 @@ class CaptureController:
         captured: list[GraphKey] = []
         for key in self._plan.keys:
             before = self._pipeline.retained_graphs()
+            if before is None:
+                # An adapter that claims the graph path and cannot say how many graphs it
+                # holds gives this loop nothing to check, and the branch below would be
+                # skipped -- which is DR-0011's guard restored, in silence, in exactly the
+                # case it exists for. "Cannot tell" is an honest answer from an eager
+                # adapter and an inadmissible one from a graphed adapter.
+                raise CaptureNotRetained(
+                    f"{type(self._pipeline).__name__} reports the graph path available and "
+                    "cannot report how many graphs the runtime holds, so a capture here "
+                    "could never be observed. Refusing rather than recording a warm-up "
+                    "nothing checked"
+                )
             for _ in range(self._warmup_steps):
                 pads.reset()
                 frames = pads.take(key.batch_size)
                 self._pipeline.transcribe_step(frames, keep_all_outputs=False, graph=True)
             after = self._pipeline.retained_graphs()
-            if before is not None and after is not None and after <= before:
+            if after is not None and after <= before:
                 raise CaptureNotRetained(
                     f"warm-up stepped {key} {self._warmup_steps} times and the runtime is "
                     f"holding {after} graphs, the same as before ({before}). Upstream "

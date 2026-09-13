@@ -582,3 +582,41 @@ def test_a_ctc_steady_batch_on_an_available_graph_path_runs() -> None:
     )
     assert pipeline.step_calls == 1
     assert result.stream_id == 1
+
+
+def test_a_pipeline_the_package_can_graph_but_this_object_cannot_is_reported_missing() -> None:
+    """The crossed case, and the reachable one.
+
+    ``graph_step_available`` is a probe of the installed wheel: does the module carry
+    ``CudaGraphsStreamingEncoderStep``, and does the cache-aware RNNT wrapper carry
+    ``set_streaming_cuda_graphs``. It answers for the package. The only observation of a
+    real capture reads ``_graphs`` off the built pipeline object. When the package says
+    yes and nothing is attached to the object, a capability that reported the package's
+    answer would let a run announce the graph path and step every tick eager.
+
+    CTC is where this is reachable rather than hypothetical: ``serve`` takes the graph
+    flag from a probe of the RNNT wrapper for both pipelines, because where PR #15863
+    puts the CTC switch cannot be read from an installed wheel here. So a NeMo carrying
+    the RNNT half only would serve CTC claiming graphs it does not have.
+    """
+    pipeline = FakeCacheAwareCTCPipeline(CHUNK.ms, num_slots=_config().num_slots)
+    boundary = dataclasses.replace(
+        boundary_for(pipeline, graph_step_available=True), retained_graphs=None
+    )
+    adapter = CacheAwareCTCAdapter(
+        CHUNK,
+        boundary,
+        buckets=(BUCKET,),
+        required_slots=_config().num_slots,
+        use_cuda_graphs=True,
+    )
+    capability = adapter.graph_capability()
+    assert (capability.requested, capability.available) == (True, False)
+    assert "has none attached" in (capability.reason or "")
+    # And the step refuses rather than running: the package's answer never reaches NeMo.
+    adapter.open_stream(1, None)
+    with pytest.raises(GraphPathUnavailable, match="has none attached"):
+        adapter.transcribe_step(
+            [_frame(1, _speech(70), is_first=True)], keep_all_outputs=False, graph=True
+        )
+    assert pipeline.step_calls == 0

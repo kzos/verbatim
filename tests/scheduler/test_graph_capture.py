@@ -169,10 +169,15 @@ def test_a_warmup_that_did_capture_is_accepted() -> None:
     assert pipeline.retained_graphs() == 1
 
 
-def test_an_adapter_that_cannot_count_graphs_is_taken_at_its_word() -> None:
-    """``retained_graphs()`` returning None means "no answer", which is not zero. A
-    third-party adapter that cannot see its runtime's internals must still be able to
-    warm up."""
+def test_an_adapter_that_claims_the_graph_path_and_cannot_count_is_refused() -> None:
+    """The guard that disabled itself. ``retained_graphs()`` returning None means "no
+    answer", and warm-up used to take that at its word and record the key -- which skips
+    the only check in the loop, in exactly the case the check exists for.
+
+    The reachable instance is a pipeline the installed package can graph and this object
+    cannot: the package-level probe says available, nothing is attached to the object, so
+    nothing could ever observe a capture. "Cannot tell" is honest from an eager adapter,
+    which never reaches this loop, and inadmissible from a graphed one."""
 
     class _Speechless(FakePipelineAdapter):
         def retained_graphs(self) -> int | None:
@@ -180,7 +185,25 @@ def test_an_adapter_that_cannot_count_graphs_is_taken_at_its_word() -> None:
 
     pipeline = _Speechless(CHUNK, buckets=(8,), graphs=GraphCapability.graphed())
     controller = CaptureController(_config((8,)), pipeline)
-    assert controller.warmup(PadPool(16, CHUNK)) == (controller.plan.steady_key(8),)
+    with pytest.raises(CaptureNotRetained, match="cannot report how many graphs"):
+        controller.warmup(PadPool(16, CHUNK))
+    assert controller.captured_keys == frozenset()
+
+
+def test_an_eager_adapter_that_cannot_count_graphs_warms_up_fine() -> None:
+    """The other side of it: the refusal above must not reach an adapter that never
+    claimed the graph path. Eager warm-up captures nothing and asks nothing."""
+
+    class _Speechless(FakePipelineAdapter):
+        def retained_graphs(self) -> int | None:
+            return None
+
+    pipeline = _Speechless(
+        CHUNK, buckets=(8,), graphs=GraphCapability.eager("this fake runs no graphs")
+    )
+    controller = CaptureController(_config((8,)), pipeline)
+    assert controller.warmup(PadPool(16, CHUNK)) == ()
+    assert controller.mode == "eager"
 
 
 def test_a_warmup_of_no_steps_is_refused() -> None:

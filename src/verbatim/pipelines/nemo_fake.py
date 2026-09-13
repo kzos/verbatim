@@ -145,6 +145,27 @@ class FakeCacheAwarePipeline:
         #: Set to an exception to raise it where NeMo's encoder raises: after the
         #: bufferer and context manager allocated, before either cleaned up.
         self.raise_in_encoder: BaseException | None = None
+        #: Shapes this fake has "captured", standing in for the private ``_graphs``
+        #: dict upstream's ``CudaGraphsStreamingEncoderStep`` keeps. It follows
+        #: upstream's rule -- a shape is captured on the call whose count at that
+        #: shape exceeds ``graph_warmup_steps`` -- so the count a boundary reads back
+        #: here moves when and only when upstream's would.
+        self.graph_warmup_steps = 3
+        self._graph_key_counts: dict[tuple[int, bool], int] = {}
+        self._graphs: set[tuple[int, bool]] = set()
+
+    def retained_graphs(self) -> int:
+        """How many shapes this fake is holding, as NeMo's own step would report."""
+        return len(self._graphs)
+
+    def note_graph_step(self, batch_size: int, keep_all_outputs: bool) -> None:
+        """Record a step upstream would have considered for capture."""
+        key = (batch_size, keep_all_outputs)
+        if key in self._graphs or keep_all_outputs:
+            return
+        self._graph_key_counts[key] = self._graph_key_counts.get(key, 0) + 1
+        if self._graph_key_counts[key] > self.graph_warmup_steps:
+            self._graphs.add(key)
 
     # --- the state pool, as BasePipeline has it ---
 
@@ -187,6 +208,8 @@ class FakeCacheAwarePipeline:
         if len(requests) == 0:
             raise IndexError("list index out of range")  # NeMo indexes requests[0]
         self.step_calls += 1
+        # Upstream considers every step for capture; a final sub-batch is never captured.
+        self.note_graph_step(len(requests), any(r.is_last for r in requests))
         states: list[_State | None] = []
         for request in requests:
             if request.is_first:
@@ -275,15 +298,26 @@ class FakeCacheAwareCTCPipeline(FakeCacheAwarePipeline):
 
 
 def boundary_for(
-    pipeline: FakeCacheAwarePipeline, *, graph_step_available: bool = False
+    pipeline: FakeCacheAwarePipeline,
+    *,
+    graph_step_available: bool = False,
+    step_attached: bool | None = None,
 ) -> NeMoBoundary:
     """The adapter's boundary bound to the fake: numpy samples pass through untouched.
 
-    ``graph_step_available`` stands in for the runtime probe. False is what every
-    released NeMo wheel and this machine report; true is the source-built track of
-    NeMo PR #15863, which the CPU suite has to be able to express precisely because
-    it is the arm that cannot be run here.
+    ``graph_step_available`` stands in for the runtime probe of the installed *package*.
+    False is what every released NeMo wheel and this machine report; true is the
+    source-built track of NeMo PR #15863, which the CPU suite has to be able to express
+    precisely because it is the arm that cannot be run here.
+
+    ``step_attached`` is the separate fact: whether *this pipeline object* has a graphed
+    step on it, which is what a retained-graph count can be read from. It defaults to
+    following ``graph_step_available``, because a package that has the class normally
+    attaches it. Passing ``step_attached=False`` with ``graph_step_available=True`` is
+    the crossed case -- the package can graph and this object cannot -- which is the CTC
+    pipeline's situation if upstream's CTC branch never calls the switch.
     """
+    attached = graph_step_available if step_attached is None else step_attached
     return NeMoBoundary(
         pipeline=pipeline,
         make_frame=FakeFrame,
@@ -291,4 +325,5 @@ def boundary_for(
         to_samples=lambda samples: np.asarray(samples, dtype=np.float32),
         release_stream=pipeline.release_stream,
         graph_step_available=graph_step_available,
+        retained_graphs=pipeline.retained_graphs if attached else None,
     )
