@@ -448,6 +448,7 @@ def _ladder(args: argparse.Namespace) -> int:
     )
     from verbatim_bench.ladder import Rung, run_ladder, rung_from_run
     from verbatim_bench.multiproc import run_sharded_load
+    from verbatim_bench.serverfacts import ArmContradiction, check_arm, read_server_facts
 
     try:
         seeds = tuple(int(part) for part in str(args.seeds).split(",") if part.strip())
@@ -479,6 +480,28 @@ def _ladder(args: argparse.Namespace) -> int:
         reference = _resolve_wer_reference(args, chunk)
     except ReferenceError as exc:
         print(f"verbatim-bench: {exc}")
+        return 1
+
+    # Read the server before a single stream is opened, and refuse a run whose label
+    # contradicts it. A row mislabelled at the top carries real numbers under the wrong
+    # arm and nothing downstream can tell -- the same defect class as a warm-up that
+    # recorded a capture it never made (docs/decisions/0011).
+    server_facts = read_server_facts(args.endpoint)
+    if server_facts is None:
+        print(
+            "verbatim-bench: warning: the server did not answer /readyz, so this run "
+            "records no observation of what it was serving and its arm name is the only "
+            "statement of it"
+        )
+    try:
+        check_arm(
+            server_facts,
+            arm=str(args.arm),
+            declared_dtype=args.dtype,
+            declared_chunk_ms=chunk.ms,
+        )
+    except ArmContradiction as exc:
+        print(f"verbatim-bench: refusing to run: {exc}")
         return 1
 
     probe = None
@@ -568,6 +591,10 @@ def _ladder(args: argparse.Namespace) -> int:
             # what every ladder before this ran; anything more is the same rung split
             # across that many, combined over one shared window.
             "processes": processes,
+            # What the server said it was running, read from /readyz before the first
+            # stream opened. Null when it did not answer, which is "no observation" and
+            # not "agreed".
+            "server": server_facts.to_json_dict() if server_facts is not None else None,
             # Which batch-1 reference the WER criterion was read against, or null when
             # no reference was supplied and no rung evaluated it. A rung's
             # `wer_vs_batch1` is the signed difference from this number, so the two
