@@ -101,3 +101,39 @@ jobs:
         # The two differ in whether the working directory lands on sys.path, and that difference
         # is what let a broken cross-module import pass locally and fail here.
         run: python -m pytest -q
+
+  invariance-gate:
+    name: batch-invariance gate (fake pipeline)
+    # SCOPE item 3: the same corpus at concurrency 1 / 32 / maximum, outputs diffed against
+    # each other. The fake pipeline is invariant by construction, so this job proves the
+    # gate runs end to end on a free runner, not that the model is invariant; the unit
+    # tests above prove the gate goes red on a fake made to leak. The real pipeline runs
+    # the same command against a served checkpoint on owned hardware.
+    #
+    # Cost: the corpus's duration at concurrency 1 (128 clips x 0.4 s, about 60 s) plus
+    # three short concurrent levels; about two minutes including the install.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install the server and the harness
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install -e ./bench
+      - name: Serve the fake pipeline
+        run: |
+          verbatim serve stub --pipeline fake --chunk 80ms --bucket 128 \
+            --host 127.0.0.1 --grpc-port 0 --ws-port 8080 > serve.log 2>&1 &
+          echo $! > serve.pid
+          for _ in $(seq 1 60); do grep -q ready serve.log && break; sleep 0.5; done
+          grep -q ready serve.log || { cat serve.log; exit 1; }
+      - name: Run the gate at 1 / 32a / 32b / max
+        run: |
+          verbatim-bench invariance --endpoint ws://127.0.0.1:8080/v1/stream \
+            --synthetic 128 --synthetic-s 0.4 --chunk 80ms --max 128 --out invariance.json
+      - name: Stop the fake server
+        if: always()
+        run: kill "$(cat serve.pid)" 2>/dev/null || true

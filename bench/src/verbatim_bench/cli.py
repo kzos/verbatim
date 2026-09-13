@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from verbatim_bench import constants
+from verbatim_bench import invariance as invariance_gate
 from verbatim_bench.client import ChunkMode
 from verbatim_bench.corpus import manifest_corpus_id
 from verbatim_bench.pace import DEFAULT_RAMP_S, LoadSpec, run_load
@@ -176,6 +177,43 @@ def _build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--server-pid", type=int, default=None)
     cal.add_argument("--from-smi-xml", type=Path, default=None)
     cal.add_argument("--no-gpu", action="store_true", help="a box with no GPU record to sample")
+    gate = sub.add_parser(
+        "invariance",
+        help=(
+            "the batch-invariance gate: one corpus through a running server at concurrency "
+            "1 / 32a / 32b / max, finals diffed against each other; exit 0 invariant, "
+            "1 divergent, 2 no verdict"
+        ),
+    )
+    gate.add_argument("--endpoint", required=True, help="ws://host:port/v1/stream")
+    corpus = gate.add_mutually_exclusive_group(required=True)
+    corpus.add_argument("--manifest", type=Path, help="NeMo-compatible JSONL, 16 kHz mono")
+    corpus.add_argument(
+        "--synthetic", type=int, metavar="N", help="N clips of seeded noise instead of a manifest"
+    )
+    gate.add_argument(
+        "--synthetic-s",
+        type=float,
+        default=invariance_gate.DEFAULT_SYNTHETIC_S,
+        metavar="S",
+        help=f"synthetic clip duration (default {invariance_gate.DEFAULT_SYNTHETIC_S})",
+    )
+    gate.add_argument("--seed", type=int, default=invariance_gate.DEFAULT_SEED)
+    gate.add_argument("--chunk", default="160ms")
+    gate.add_argument(
+        "--max",
+        type=int,
+        default=invariance_gate.DEFAULT_MAX_CONCURRENCY,
+        metavar="N",
+        help=(
+            "the max level: the server's ceiling once a capacity search has named it; "
+            f"until then the largest ceiling batch size, {invariance_gate.DEFAULT_MAX_CONCURRENCY}"
+        ),
+    )
+    gate.add_argument("--lang", default="en-US")
+    gate.add_argument(
+        "--out", type=Path, default=None, help="write the vb-invariance/1 record here"
+    )
     return parser
 
 
@@ -587,6 +625,48 @@ def _calibrate_psi(args: argparse.Namespace) -> int:
     return 0
 
 
+def _invariance(args: argparse.Namespace) -> int:
+    """The gate: 0 invariant, 1 divergent, 2 no verdict (refused, errored or vacuous)."""
+    import asyncio
+
+    chunk = ChunkMode.parse(args.chunk)
+    try:
+        if args.manifest is not None:
+            clips = invariance_gate.manifest_corpus(args.manifest)
+            corpus = {
+                "kind": "manifest",
+                "path": str(args.manifest),
+                "id": manifest_corpus_id(args.manifest),
+                "utterances": len(clips),
+            }
+        else:
+            clips = invariance_gate.synthetic_corpus(
+                args.synthetic, duration_s=args.synthetic_s, seed=args.seed
+            )
+            corpus = {
+                "kind": "synthetic",
+                "utterances": len(clips),
+                "duration_s": args.synthetic_s,
+                "seed": args.seed,
+            }
+        levels = invariance_gate.default_levels(args.max)
+        invariance_gate.check_levels(levels, len(clips))
+    except (invariance_gate.GateRefusal, ValueError) as exc:
+        print(f"refused: {exc}")
+        return invariance_gate.EXIT_NO_VERDICT
+    report = asyncio.run(
+        invariance_gate.run_gate(
+            args.endpoint, clips, levels, chunk=chunk, lang=args.lang, seed=args.seed, corpus=corpus
+        )
+    )
+    print(report.render())
+    if args.out is not None:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(report.to_json_dict(), indent=2) + "\n", encoding="utf-8")
+        print(f"record: {args.out}")
+    return report.exit_code
+
+
 def main(argv: list[str] | None = None) -> int:
     """Entry point: 0 on a completed run, 1 on a usage error, 2 if any session failed."""
     parser = _build_parser()
@@ -606,6 +686,8 @@ def main(argv: list[str] | None = None) -> int:
         return _calibrate_psi(args)
     if args.command == "ladder":
         return _ladder(args)
+    if args.command == "invariance":
+        return _invariance(args)
     parser.print_usage()
     return 1
 

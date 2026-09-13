@@ -178,7 +178,9 @@ class RunResult:
                     "finals_received": s.finals_received,
                     "final_text": s.final_text,
                     "reference_text": s.reference_text,
-                    "words": [],
+                    "words": [
+                        {"w": w, "s": start_ms, "e": end_ms} for w, start_ms, end_ms in s.words
+                    ],
                     "error": s.error,
                 }
                 for s in self.sessions
