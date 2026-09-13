@@ -16,6 +16,10 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from verbatim_bench import constants
+
+# Re-exported: the vocabulary lives in `criteria` so `verify` can read it without the
+# load stack this module needs.
+from verbatim_bench.criteria import RUNG_PASS_CRITERIA, Criterion
 from verbatim_bench.env import HostCounters
 from verbatim_bench.hostrecord import HostWindow
 from verbatim_bench.pace import executed_canonical_window, window_partial_samples
@@ -24,35 +28,6 @@ from verbatim_bench.wer import corpus_wer, within_window
 
 if TYPE_CHECKING:
     from verbatim_bench.client import SessionResult
-
-
-class Criterion(StrEnum):
-    LATENCY = "latency"
-    WER = "wer"
-    INTEGRITY_REFUSED = "integrity:refused"
-    INTEGRITY_DROPPED = "integrity:dropped"
-    INTEGRITY_NO_FINAL = "integrity:no_final"
-    THERMAL = "thermal"
-    UNSTABLE = "unstable"
-    INVALID_HOST = "invalid_host"
-
-
-#: The four criteria the frozen methodology names for a rung to pass, written in the
-#: vocabulary of `Criterion`. Its third criterion, integrity, is three values here,
-#: because a stream can be refused, dropped, or end without a final transcript.
-#: `UNSTABLE` and `INVALID_HOST` are deliberately absent: they name a rung that produced
-#: no measurement window and a host that was unfit to measure on, neither of which is a
-#: criterion the run is asked to establish.
-RUNG_PASS_CRITERIA: Final = frozenset(
-    {
-        Criterion.LATENCY,
-        Criterion.WER,
-        Criterion.INTEGRITY_REFUSED,
-        Criterion.INTEGRITY_DROPPED,
-        Criterion.INTEGRITY_NO_FINAL,
-        Criterion.THERMAL,
-    }
-)
 
 
 class InvalidReason(StrEnum):

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -357,19 +358,29 @@ def test_cli_json_output_is_parseable(tmp_path: Path, capsys: Any) -> None:
 
 
 def test_verify_needs_no_optional_dependency() -> None:
+    """A reviewer recomputes a published row with nothing but the standard library, so
+    importing `verify` must not drag in the load generator's numpy or a model runtime.
+    The subprocess is pointed at THIS tree: it does not inherit pytest's conftest, and
+    the editable install may point at another checkout, which is how this guard passed
+    on a box for two days while it failed in CI."""
+    repo = Path(__file__).resolve().parents[2]
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(str(repo / d) for d in ("bench/src", "src"))}
     proc = subprocess.run(
         [
             sys.executable,
             "-c",
             "import sys; import verbatim_bench.verify; "
             "assert 'torch' not in sys.modules, 'torch leaked'; "
-            "assert 'numpy' not in sys.modules, 'numpy leaked'",
+            "assert 'numpy' not in sys.modules, 'numpy leaked'; "
+            "print(verbatim_bench.verify.__file__)",
         ],
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == str(repo / "bench" / "src" / "verbatim_bench" / "verify.py")
 
 
 def test_partials_received_reconciles_against_per_session_counts() -> None:
