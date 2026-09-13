@@ -30,7 +30,12 @@ from verbatim.protocols.riva.server import RivaServer, RivaServerConfig
 from verbatim.protocols.ws.server import WsServer, WsServerConfig
 from verbatim.scheduler.graph_budget import ConfigError
 
-__all__ = ["Endpoints", "ServeSettings", "engine_config", "run_server"]
+__all__ = ["PIPELINES", "Endpoints", "ServeSettings", "engine_config", "run_server"]
+
+#: What ``--pipeline`` accepts, in the order the help lists them. The two cache-aware
+#: names are NeMo's two ``ASRDecodingType`` branches for its cache-aware builder; the
+#: adapter each names refuses a pipeline built for the other.
+PIPELINES: tuple[str, ...] = ("cache_aware_rnnt", "cache_aware_ctc", "fake")
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,8 +90,9 @@ class ServeSettings:
             raise ConfigError(
                 f"--stop-history-eou-ms must be >= 0, got {self.stop_history_eou_ms!r}"
             )
-        if self.pipeline not in ("cache_aware_rnnt", "fake"):
-            raise ConfigError(f"--pipeline must be cache_aware_rnnt or fake, got {self.pipeline!r}")
+        if self.pipeline not in PIPELINES:
+            named = ", ".join(PIPELINES)
+            raise ConfigError(f"--pipeline must be one of {named}, got {self.pipeline!r}")
         if not self.host:
             raise ConfigError("--host must not be empty")
 

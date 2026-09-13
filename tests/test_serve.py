@@ -48,6 +48,14 @@ def test_ports_and_hosts_are_checked() -> None:
         ServeSettings(model=MODEL, chunk=CHUNK, bucket=8, pipeline="whisper")
 
 
+def test_both_cache_aware_branches_and_the_fake_are_servable_and_nothing_else() -> None:
+    for name in ("cache_aware_rnnt", "cache_aware_ctc", "fake"):
+        settings = ServeSettings(model=MODEL, chunk=CHUNK, bucket=8, pipeline=name)
+        assert engine_config(settings).pipeline == name
+    with pytest.raises(ConfigError, match="cache_aware_ctc"):
+        ServeSettings(model=MODEL, chunk=CHUNK, bucket=8, pipeline="ctc")
+
+
 def test_a_ceiling_is_the_calibrated_ceiling_and_the_single_bucket() -> None:
     config = engine_config(ServeSettings(model=MODEL, chunk=CHUNK, ceiling=24, idle_timeout_s=45))
     assert config.buckets == (24,)

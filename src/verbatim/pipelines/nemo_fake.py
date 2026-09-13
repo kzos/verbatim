@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2026 Zaheer Sheriff K
-"""A fake of NeMo's cache-aware pipeline at NeMo's own seam. No torch, no NeMo.
+"""A fake of NeMo's cache-aware pipelines at NeMo's own seam. No torch, no NeMo.
 
-It stands where ``CacheAwareRNNTPipeline`` stands, so the adapter's translation of
-frames, options and step outputs is exercised for real by the CPU suite rather than
-restated. What it copies from NeMo, read from ``nemo.collections.asr.inference``:
+It stands where ``CacheAwareRNNTPipeline`` and ``CacheAwareCTCPipeline`` stand, so the
+adapter's translation of frames, options and step outputs is exercised for real by the
+CPU suite rather than restated. Both real pipelines inherit ``BasePipeline`` unchanged,
+so one body is faithful to both; ``FakeCacheAwareRNNTPipeline`` and
+``FakeCacheAwareCTCPipeline`` add the two places the seam can tell them apart.
+What the body copies from NeMo, read from ``nemo.collections.asr.inference``:
 
 - ``transcribe_step(requests)`` creates a stream's state on ``is_first`` and deletes
   it on ``is_last``; a request for a stream with no state dereferences ``None``, as
@@ -23,6 +26,11 @@ property the real pipeline must have; here it holds by construction.
 
 This is a test double that ships in the package on purpose, like the CPU fake
 adapter: the adapter must be testable by anyone, on any machine, without a GPU.
+
+``FakeCacheAwarePipeline`` itself declares neither pipeline's greedy decoder, because
+that is also a real case the adapters must accept: a third party's pipeline, or a
+double, that says nothing about which of the two it is. The crossed-wire guard only
+fires on a pipeline that positively declares the sibling's.
 """
 
 from __future__ import annotations
@@ -33,10 +41,12 @@ from typing import Any
 
 import numpy as np
 
-from verbatim.pipelines.cache_aware_rnnt import NeMoBoundary
+from verbatim.pipelines.cache_aware import NeMoBoundary
 
 __all__ = [
+    "FakeCacheAwareCTCPipeline",
     "FakeCacheAwarePipeline",
+    "FakeCacheAwareRNNTPipeline",
     "FakeFrame",
     "FakeRequestOptions",
     "FakeStepOutput",
@@ -107,6 +117,13 @@ class _State:
 
 class FakeCacheAwarePipeline:
     """The fake pipeline. Records every request it was handed in ``seen``."""
+
+    #: What NeMo dereferences on a state that was never created. The RNNT pipeline
+    #: reaches ``state.get_previous_hypothesis()`` before the encoder step; the CTC
+    #: one reaches ``state.label_buffer`` in ``decode_log_probs``, after it. Either
+    #: way it is an ``AttributeError`` on ``None``, and either way the adapter
+    #: refuses the frame before NeMo sees it.
+    missing_state_attribute = "get_previous_hypothesis"
 
     def __init__(
         self,
@@ -189,8 +206,9 @@ class FakeCacheAwarePipeline:
         for request, state in zip(requests, states, strict=True):
             self.seen.append(request)
             if state is None:
-                # NeMo: cache_aware_transcribe_step calls state.get_previous_hypothesis()
-                raise AttributeError("'NoneType' object has no attribute 'get_previous_hypothesis'")
+                raise AttributeError(
+                    f"'NoneType' object has no attribute '{self.missing_state_attribute}'"
+                )
             valid = np.asarray(request.samples, dtype=np.float32)[: request.valid_size]
             start = state.frames_seen * self.chunk_size_in_secs
             state.frames_seen += 1
@@ -224,6 +242,36 @@ class FakeCacheAwarePipeline:
                 self.delete_state(request.stream_id)
                 self._slots.discard(request.stream_id)
         return outputs
+
+
+class FakeCacheAwareRNNTPipeline(FakeCacheAwarePipeline):
+    """The body, declaring itself RNNT the way NeMo's does.
+
+    ``CacheAwareRNNTPipeline.init_greedy_rnnt_decoder`` sets ``greedy_rnnt_decoder``;
+    that attribute is the only thing at this seam that says which of the two
+    pipelines a boundary is bound to, so the fake carries it rather than a flag of
+    Verbatim's invention.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.greedy_rnnt_decoder = object()
+
+
+class FakeCacheAwareCTCPipeline(FakeCacheAwarePipeline):
+    """The body, declaring itself CTC the way NeMo's does.
+
+    ``CacheAwareCTCPipeline.init_greedy_ctc_decoder`` sets ``greedy_ctc_decoder``, and
+    its ``create_state`` never resolves a prompt index, so a ``language_code`` is
+    recorded on the options and read by nothing -- which is what the body already
+    does, so nothing here has to undo a prompt path that does not exist.
+    """
+
+    missing_state_attribute = "label_buffer"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.greedy_ctc_decoder = object()
 
 
 def boundary_for(pipeline: FakeCacheAwarePipeline) -> NeMoBoundary:

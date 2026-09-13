@@ -245,6 +245,8 @@ Its shipped config, `examples/asr/conf/asr_streaming_inference/cache_aware_ctc.y
 - [ ] Add a CTC measurement row on the RTX A6000 at 160 ms and 560 ms.
 - [ ] Explicitly defer Sortformer sessions in the design note, citing `NVIDIA-NeMo/Speech` PRs #16174 and #16210 rather than smuggling them into this issue.
 
+**What has landed, and what has not.** The adapter exists as `src/verbatim/pipelines/cache_aware_ctc.py`, registered as `cache_aware_ctc` and selectable with `verbatim serve --pipeline cache_aware_ctc` — the registered name matches the module and its RNNT sibling rather than the bare `ctc` written above. `PipelineAdapter` in `base.py` did not need extending: the lifecycle both cache-aware adapters drive moved to `src/verbatim/pipelines/cache_aware.py` unchanged, because NeMo shares it too, and the RNNT suite is green untouched. Not done, and not claimable without a GPU and a checkpoint: a live Riva call on a CTC checkpoint, the graph budget re-derived for CTC shapes, the invariance gate extended to CTC, and any CTC measurement row.
+
 **Who this suits:** A serving-backend engineer who wants a bounded piece and is comfortable waiting for a gate; best done by whoever owned Issue 3.
 
 ## Coverage
