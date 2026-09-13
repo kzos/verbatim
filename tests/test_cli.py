@@ -513,3 +513,22 @@ def test_python_m_verbatim_is_the_console_script_too() -> None:
     proc = _run_module("verbatim", "--help")
     assert proc.returncode == 0, proc.stderr
     assert "serve" in proc.stdout and "doctor" in proc.stdout
+
+
+def test_serve_says_loudly_when_it_is_running_the_ragged_control_arm() -> None:
+    """A server that is not batch-invariant must not look like one that is.
+
+    The ragged arm exists so the invariance gate has something it could fail against. A
+    row taken from it is a control, and an operator who reached it by accident has to be
+    told before a single session connects -- the same pattern as the precision warning.
+    """
+    captured = _Captured()
+    argv = [*NEMO, "--eager", "--padding", "ragged"]
+    assert main(argv, hooks=_hooks(captured, report=RELEASED_REPORT)) == EXIT_OK
+    assert "padding      RAGGED" in captured.out
+    assert "NOT batch-invariant" in captured.out
+    assert "control arm" in captured.out
+
+    quiet = _Captured()
+    assert main([*NEMO, "--eager"], hooks=_hooks(quiet, report=RELEASED_REPORT)) == EXIT_OK
+    assert "RAGGED" not in quiet.out

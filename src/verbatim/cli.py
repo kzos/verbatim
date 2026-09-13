@@ -199,6 +199,15 @@ def _parser() -> argparse.ArgumentParser:
         "without it, serve refuses rather than degrades",
     )
     serve.add_argument(
+        "--padding",
+        choices=("fixed", "ragged"),
+        default="fixed",
+        help="fixed pads the steady batch to the bucket at every occupancy, so the "
+        "encoder sees one shape and a transcript cannot depend on who else is connected; "
+        "ragged steps the live rows and is the eager CONTROL ARM the methodology asks "
+        "for, not a serving mode (docs/decisions/0014)",
+    )
+    serve.add_argument(
         "--att-context-left",
         type=int,
         metavar="N",
@@ -242,6 +251,7 @@ def _settings(args: argparse.Namespace) -> ServeSettings:
             stop_history_eou_ms=args.stop_history_eou_ms,
             pipeline=args.pipeline,
             eager=args.eager,
+            padding=args.padding,
             att_context_left=args.att_context_left,
             language_code=args.language_code,
             compute_dtype=args.compute_dtype,
@@ -343,6 +353,16 @@ def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapt
             f"nemo         {report.nemo_version}, torch {report.torch_version}",
             f"chunk mode   {settings.chunk.ms} ms (att_context_size {att_context})",
             f"graphs       {graphs}",
+            *(
+                [
+                    "padding      RAGGED: the steady batch follows occupancy, so this "
+                    "server is NOT batch-invariant.",
+                    "             This is the control arm for the invariance gate "
+                    "(docs/decisions/0014), not a serving mode.",
+                ]
+                if settings.padding == "ragged"
+                else []
+            ),
             *_language_lines(decoding, settings.language_code),
         ],
         "graph path" if use_graphs else "eager",

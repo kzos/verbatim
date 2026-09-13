@@ -55,6 +55,7 @@ class ServeSettings:
     stop_history_eou_ms: int = 800
     pipeline: str = "cache_aware_rnnt"
     eager: bool = False
+    padding: str = "fixed"
     att_context_left: int | None = None
     language_code: str = "en-US"
     compute_dtype: str = "bfloat16"
@@ -113,6 +114,7 @@ def engine_config(settings: ServeSettings) -> EngineConfig:
         pipeline=settings.pipeline,
         stop_history_eou_ms=settings.stop_history_eou_ms,
         idle_timeout_s=settings.idle_timeout_s,
+        padding=settings.padding,
     )
 
 

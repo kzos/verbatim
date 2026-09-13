@@ -79,6 +79,15 @@ class EngineConfig:
     own shape changes shape with occupancy, which is a batch invariance break by
     configuration.
 
+    ``padding`` is ``"fixed"`` (the default and the shipped policy: the steady batch is
+    padded to exactly the bucket at every occupancy, so the encoder sees one shape and a
+    session's output cannot depend on who else is connected) or ``"ragged"`` (the steady
+    batch is exactly the live rows). Ragged exists as the CONTROL ARM the methodology's
+    kill condition 3 asks for -- "the same corpus re-run with fixed-shape batching
+    disabled" -- because without it the invariance gate's passing result is partly
+    guaranteed by the padding it is meant to be testing. It is not a serving mode:
+    ``docs/decisions/0014`` records what a clean ragged run would mean.
+
     ``pipeline`` names a factory in ``verbatim.pipelines.registry``; the default is
     the CPU fake, so no configuration silently loads a model. ``stop_history_eou_ms``
     is the end-of-utterance silence NeMo's endpointer waits for when a session does
@@ -109,6 +118,7 @@ class EngineConfig:
     ring_seconds: float = 3.0
     elastic_buckets: bool = False
     pipeline: str = "fake"
+    padding: str = "fixed"
     stop_history_eou_ms: int = 800
     idle_timeout_s: float | None = 30.0
     max_result_backlog: int = 1024
@@ -135,6 +145,8 @@ class EngineConfig:
         object.__setattr__(self, "buckets", tuple(buckets))
         if self.edge_batch < 1:
             raise ConfigError(f"edge_batch must be >= 1, got {self.edge_batch!r}")
+        if self.padding not in ("fixed", "ragged"):
+            raise ConfigError(f'padding must be "fixed" or "ragged", got {self.padding!r}')
         if self.pad_pool < 0:
             raise ConfigError(f"pad_pool must be >= 0, got {self.pad_pool!r}")
         if 0 < self.pad_pool < max(buckets):

@@ -368,3 +368,31 @@ def test_warmup_runs_once_and_the_graphs_are_retained() -> None:
     with pytest.raises(ConfigError, match="runs once"):
         loop.capture.warmup(loop.scheduler.pads)
     assert pipeline.captures == list(loop.captured_graphs)
+
+
+def test_ragged_padding_and_the_graph_path_cannot_both_be_asked_for() -> None:
+    """The control arm has no shape to capture.
+
+    A ragged steady batch tracks live occupancy, so its shape changes every time a
+    session joins or leaves and upstream's key changes with it. Asking for both is not a
+    trade-off to resolve silently in one direction -- a run that dropped one of them
+    would publish a row naming both -- so it is refused where both numbers are in one
+    place.
+    """
+    config = EngineConfig(
+        chunk=CHUNK, buckets=(8,), calibrated_ceiling=8, edge_batch=8, padding="ragged"
+    )
+    with pytest.raises(ConfigError, match="no shape to capture"):
+        CaptureController(config, _pipeline((8,)))
+
+
+def test_ragged_padding_is_fine_on_the_eager_arm() -> None:
+    """The positive control: the refusal above must not reach the arm the ragged
+    control is actually run on."""
+    config = EngineConfig(
+        chunk=CHUNK, buckets=(8,), calibrated_ceiling=8, edge_batch=8, padding="ragged"
+    )
+    pipeline = _pipeline((8,), graphs=GraphCapability.eager("the control arm runs eager"))
+    controller = CaptureController(config, pipeline)
+    assert controller.mode == "eager"
+    assert controller.warmup(PadPool(16, CHUNK)) == ()

@@ -177,6 +177,17 @@ class CaptureController:
                 f"but {type(pipeline).__name__} was built for {declared}: "
                 f"{missing} would be stepped at a shape it has no graph for"
             )
+        if config.padding == "ragged" and _capability_of(pipeline).available:
+            # A ragged batch changes shape with occupancy, so it has no stable graph key
+            # and nothing could be captured for it. The two settings are not a trade-off
+            # to be resolved silently in one direction; they are incoherent together, and
+            # a run that quietly dropped one of them would publish a row naming both.
+            raise ConfigError(
+                "padding='ragged' and the graph path cannot both be asked for: a ragged "
+                "steady batch changes shape with occupancy, so there is no shape to "
+                "capture. The ragged arm is the eager control (docs/decisions/0014); "
+                "pass --eager with it"
+            )
         capability = _capability_of(pipeline)
         if capability.requested and not capability.available:
             raise GraphPathUnavailable(

@@ -129,3 +129,56 @@ def test_pad_rows_are_not_shared_between_the_steady_and_edge_batches() -> None:
             assert set(group).isdisjoint(other)
     seen = [sid for group in groups for sid in group]
     assert len(set(seen)) == len(seen)
+
+
+# --- the ragged control arm ------------------------------------------------------------
+
+
+def test_the_ragged_arm_lets_the_steady_shape_follow_occupancy() -> None:
+    """The whole point of the control arm, stated as the difference it makes.
+
+    Under the shipped policy the steady batch is the bucket at every occupancy, so the
+    encoder sees one shape whoever is connected -- which is why the invariance gate
+    passes, and also why its passing is partly guaranteed by the design it is testing.
+    Under ragged the shape tracks the live rows, which is the arm that could show the
+    property failing.
+    """
+    fixed = BucketScheduler(_config())
+    ragged = BucketScheduler(_config(padding="ragged"))
+    for live in (1, 3, 8):
+        frames = [_live_frame(i) for i in range(1, live + 1)]
+        fixed_plan = fixed.plan(frames, [])
+        ragged_plan = ragged.plan(frames, [])
+        # Fixed: one shape at every occupancy, made up with pad rows.
+        assert len(fixed_plan.steady) == BUCKET
+        assert fixed_plan.pad_rows == BUCKET - live
+        # Ragged: exactly the live rows, and no pad row anywhere in the batch.
+        assert len(ragged_plan.steady) == live
+        assert ragged_plan.pad_rows == 0
+        assert all(frame.stream_id >= 0 for frame in ragged_plan.steady)
+
+
+def test_the_ragged_arm_does_not_pad_the_edge_batches_either() -> None:
+    """An arm that disabled padding on the steady batch and kept it on the edge batch
+    would not be the arm the methodology asks for."""
+    ragged = BucketScheduler(_config(padding="ragged", edge_batch=4))
+    finals = [_live_frame(i, is_last=True) for i in range(1, 6)]
+    plan = ragged.plan([], finals)
+    # Five finals at edge_batch 4: one batch of four and one of one, neither padded.
+    assert [len(batch) for batch in plan.edge_batches] == [4, 1]
+    assert all(frame.stream_id >= 0 for batch in plan.edge_batches for frame in batch)
+
+
+def test_an_empty_ragged_tick_plans_nothing_rather_than_a_batch_of_pads() -> None:
+    """With no live sessions the fixed arm still steps a full bucket of pad rows, because
+    the shape has to be held. The ragged arm has no shape to hold."""
+    ragged = BucketScheduler(_config(padding="ragged"))
+    plan = ragged.plan([], [])
+    assert plan.steady == ()
+    assert plan.bucket == 0
+    assert plan.edge_batches == ()
+
+
+def test_padding_must_be_one_of_the_two_names() -> None:
+    with pytest.raises(Exception, match="padding must be"):
+        _config(padding="elastic")

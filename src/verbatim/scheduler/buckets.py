@@ -93,9 +93,19 @@ class BucketScheduler:
                     f"finals must be passed separately so they never enter the steady batch"
                 )
         live = sorted(non_final, key=lambda f: f.stream_id)
-        bucket = self.select_bucket(len(live))
-        steady = tuple(live) + self._pads.take(bucket - len(live))
-        edge_batches = partition_edge_batches(tuple(final), self._config.edge_batch, self._pads)
+        if self._config.padding == "ragged":
+            # The control arm. No pads anywhere: the steady batch is exactly the live
+            # rows and the edge batches are exactly the finals, so the shape the encoder
+            # sees tracks occupancy instead of being held constant. This is the arm that
+            # can show the invariance property FAILING, which is what makes the fixed arm
+            # a measurement rather than a restatement of the design.
+            steady = tuple(live)
+            bucket = len(live)
+            edge_batches = _ragged_edge_batches(tuple(final), self._config.edge_batch)
+        else:
+            bucket = self.select_bucket(len(live))
+            steady = tuple(live) + self._pads.take(bucket - len(live))
+            edge_batches = partition_edge_batches(tuple(final), self._config.edge_batch, self._pads)
         return BucketPlan(
             bucket=bucket,
             steady=steady,
@@ -104,3 +114,19 @@ class BucketScheduler:
             pad_rows=bucket - len(live),
             eager_rows=sum(len(batch) for batch in edge_batches),
         )
+
+
+def _ragged_edge_batches(
+    finals: Sequence[PcmFrame], edge_batch: int
+) -> tuple[tuple[PcmFrame, ...], ...]:
+    """Finals chunked by ``edge_batch`` and not padded: the edge half of the control arm.
+
+    ``partition_edge_batches`` pads each group to exactly ``edge_batch``, which is right
+    for the shipped policy and wrong here -- an arm that disabled padding on the steady
+    batch and kept it on the edge batch would not be the arm the methodology asks for.
+    """
+    if edge_batch < 1:
+        raise ValueError(f"edge_batch must be >= 1, got {edge_batch!r}")
+    return tuple(
+        tuple(finals[start : start + edge_batch]) for start in range(0, len(finals), edge_batch)
+    )
