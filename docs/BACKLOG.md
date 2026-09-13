@@ -258,6 +258,16 @@ promised date — that is for triage once an entry becomes an issue.
   script on purpose, so that the denominator of a comparison this project wants to win is not written by
   this project.
 
+- `bench/src/verbatim_bench/pace.py` — **build the multi-process generator: the target is now measured
+  and sits three and a half times above what one process can drive.** NVIDIA's own file-driven script,
+  at the release we run, with our checkpoint and corpus on an A6000, reaches 139.71 times real time with
+  a warm-up step. The MVP bar is eight tenths of that, so about 112 concurrent streams sustained. One
+  event-loop process loses its own send schedule at about 32. **A server that cleared the bar could not
+  be shown to have cleared it.** This supersedes the earlier decision to defer the work until a ladder
+  reached the pacing gate: that deferral rested on the necessity being a prediction, and it is now a
+  measurement of the target rather than a forecast of the instrument. The real work is not the processes
+  but aggregating per-process samples into one rung without double-counting a window.
+
 - `bench/src/verbatim_bench/pace.py` — **the load generator is the binding constraint on this box, not
   the server.** Measured 2026-09-11 while calibrating the pressure thresholds, nine 180 s null-floor
   windows at three concurrencies: pacing slip p99 is 2.5 ms at 16 streams, 3.9 to 5.4 ms at 32 with one
