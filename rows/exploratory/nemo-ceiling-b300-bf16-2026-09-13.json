@@ -1,0 +1,98 @@
+{
+  "measurement": "NeMo file-driven ceiling, cache-aware RNNT, the frozen method",
+  "method": {
+    "source": "NeMo examples/asr/asr_streaming_inference/asr_streaming_infer.py",
+    "num_slots_equals_batch": true,
+    "warmup_steps": 1,
+    "run_steps": 3,
+    "median_of": 5,
+    "note": "constants.py freezes this method; nothing in bench executes it, so it is a scripted run"
+  },
+  "machine": "NVIDIA B300 SXM6 AC",
+  "nemo": "3.1.0+abb8254da (carries PR #15863)",
+  "torch": "2.11.0+cu128",
+  "checkpoint": "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi",
+  "chunk_ms": 160,
+  "att_context": [
+    70,
+    1
+  ],
+  "compute_dtype": "bfloat16",
+  "corpus_id": "sha256:6a142a960379d48ed31d5ec8c3bc07dbdfcd34ef2b6db041a888b07bdc0003be",
+  "corpus_audio_s": 1684.29,
+  "date": "2026-09-13",
+  "arms": {
+    "batch32_eager": {
+      "rtfx_runs": [
+        90.96,
+        93.06,
+        91.01,
+        95.81,
+        92.46
+      ],
+      "rtfx_median": 92.46,
+      "rtfx_min": 90.96,
+      "rtfx_max": 95.81,
+      "spread_pct_of_median": 5.2
+    },
+    "batch32_graphed": {
+      "rtfx_runs": [
+        113.9,
+        120.28,
+        119.27,
+        115.25,
+        120.01
+      ],
+      "rtfx_median": 119.27,
+      "rtfx_min": 113.9,
+      "rtfx_max": 120.28,
+      "spread_pct_of_median": 5.3
+    },
+    "batch128_eager": {
+      "rtfx_runs": [
+        146.31,
+        153.4,
+        157.2,
+        149.48,
+        133.68
+      ],
+      "rtfx_median": 149.48,
+      "rtfx_min": 133.68,
+      "rtfx_max": 157.2,
+      "spread_pct_of_median": 15.7
+    },
+    "batch128_graphed": {
+      "rtfx_runs": [
+        134.06,
+        148.97,
+        134.31,
+        143.75,
+        147.73
+      ],
+      "rtfx_median": 143.75,
+      "rtfx_min": 134.06,
+      "rtfx_max": 148.97,
+      "spread_pct_of_median": 10.4
+    }
+  },
+  "wer": {
+    "batch32": 0.0693294701986755,
+    "batch128": 0.07057119205298014,
+    "note": "identical between the eager and graphed arms at each batch, to every digit printed"
+  },
+  "graph_path_ratio": {
+    "batch32": 1.29,
+    "batch128": 0.962
+  },
+  "reads": [
+    "At batch 32 the graph path is worth x1.29 on upstream's own file-driven path. Real, and far short of what would close a capacity gap of this size.",
+    "At batch 128 it is worth nothing (x0.96, inside the eager arm's own 16% spread). The step stops being host-launch-bound once the batch is large enough, which is the whole mechanism the graph path addresses.",
+    "The graphed and eager arms produce the same WER to every printed digit at each batch, which is the expected result: upstream asserts torch.equal against eager, not a tolerance.",
+    "The eager batch-128 arm spreads 16% of its own median across five repeats, so a ratio inside about 1.16 at that batch is not distinguishable from noise here."
+  ],
+  "denominator": {
+    "value": 149.48,
+    "arm": "batch128_eager",
+    "note": "the largest ceiling the frozen method names; the MVP bar is 0.8 of it"
+  }
+}
