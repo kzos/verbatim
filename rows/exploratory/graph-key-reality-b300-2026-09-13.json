@@ -1,0 +1,96 @@
+{
+  "probe": "graph_key_reality",
+  "machine": "NVIDIA B300 SXM6 AC",
+  "nemo": "3.1.0+abb8254da (carries PR #15863)",
+  "torch": "2.11.0+cu128",
+  "verbatim_commit": "2b9e796",
+  "date": "2026-09-13",
+  "questions": {
+    "crossed_wire_guard_has_something_to_hold": {
+      "answer": "yes, on the outer pipeline only",
+      "evidence": {
+        "pipeline_type": "CacheAwareRNNTPipeline",
+        "inner_wrapper_type": "CacheAwareRNNTInferenceWrapper",
+        "declares_greedy_rnnt_decoder": true,
+        "declares_greedy_ctc_decoder": false,
+        "inner_declares_greedy_rnnt_decoder": false,
+        "inner_declares_greedy_ctc_decoder": false
+      },
+      "reads": "The built CacheAwareRNNTPipeline declares greedy_rnnt_decoder and not greedy_ctc_decoder, so the adapter's refusal discriminates rather than accepting both. The inner CacheAwareRNNTInferenceWrapper declares neither, so the check has to be made on the object the boundary binds, which is what it binds."
+    },
+    "a_graph_captured_on_one_thread_replays_on_another": {
+      "answer": "yes",
+      "evidence": {
+        "after_warmup": {
+          "graphs": 1,
+          "key_counts": {
+            "['(32, 80, 25)', 'torch.bfloat16', '0', 'False', '2', '(70, 1)', '70', '2']": 4
+          }
+        },
+        "other_thread_step": {
+          "raised": null,
+          "graphs": 1,
+          "key_counts": {
+            "['(32, 80, 25)', 'torch.bfloat16', '0', 'False', '2', '(70, 1)', '70', '2']": 4
+          }
+        }
+      },
+      "reads": "Warm-up runs on the constructing thread and live steps on the tick thread, and torch's current stream is thread-local. A step taken from a second thread did not raise, left the graph count at 1, and did not raise upstream's call count for the key -- which is replay, not a second warm-up."
+    },
+    "a_live_first_frame_shares_the_steady_key": {
+      "answer": "yes",
+      "evidence": {
+        "live_first_frame_step": {
+          "graphs": 1,
+          "key_counts": {
+            "['(32, 80, 25)', 'torch.bfloat16', '0', 'False', '2', '(70, 1)', '70', '2']": 4
+          }
+        },
+        "live_steady_step": {
+          "graphs": 1,
+          "key_counts": {
+            "['(32, 80, 25)', 'torch.bfloat16', '0', 'False', '2', '(70, 1)', '70', '2']": 4
+          }
+        }
+      },
+      "reads": "Upstream's key carries drop_extra_pre_encoded, and a session's first frame was the candidate for setting a different one. A real first frame batched with 31 pad rows left exactly one key at count 4, as did the steady frame after it. CapturePlan's one-key-per-bucket assumption is measured, not assumed, and the graph budget is not understated."
+    }
+  },
+  "raw": {
+    "model": "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi",
+    "compute_dtype": "bfloat16",
+    "crossed_wire_guard": {
+      "pipeline_type": "CacheAwareRNNTPipeline",
+      "inner_wrapper_type": "CacheAwareRNNTInferenceWrapper",
+      "declares_greedy_rnnt_decoder": true,
+      "declares_greedy_ctc_decoder": false,
+      "inner_declares_greedy_rnnt_decoder": false,
+      "inner_declares_greedy_ctc_decoder": false
+    },
+    "after_warmup": {
+      "graphs": 1,
+      "key_counts": {
+        "['(32, 80, 25)', 'torch.bfloat16', '0', 'False', '2', '(70, 1)', '70', '2']": 4
+      }
+    },
+    "other_thread_step": {
+      "raised": null,
+      "graphs": 1,
+      "key_counts": {
+        "['(32, 80, 25)', 'torch.bfloat16', '0', 'False', '2', '(70, 1)', '70', '2']": 4
+      }
+    },
+    "live_first_frame_step": {
+      "graphs": 1,
+      "key_counts": {
+        "['(32, 80, 25)', 'torch.bfloat16', '0', 'False', '2', '(70, 1)', '70', '2']": 4
+      }
+    },
+    "live_steady_step": {
+      "graphs": 1,
+      "key_counts": {
+        "['(32, 80, 25)', 'torch.bfloat16', '0', 'False', '2', '(70, 1)', '70', '2']": 4
+      }
+    }
+  }
+}

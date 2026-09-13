@@ -565,3 +565,50 @@ def test_a_leaf_without_cpu_pressure_is_reported_not_widened(
     assert unavailable.psi_scope == "unavailable"
     assert rung_validity(unavailable, fake_gpu_facts(), 1.0) is None
     assert InvalidReason.PSI.value == "psi"  # the reason survives for older records
+
+
+def test_client_cpu_is_summed_over_every_load_process_not_just_the_coordinator(
+    tmp_path: Path,
+) -> None:
+    """A rung split across processes spends its client CPU in the children.
+
+    The coordinator forks and then waits, so a budget applied to it alone reads a
+    sleeping process and the client-CPU validity gate never bites. That gate is the one
+    most likely to bind at the concurrencies the multi-process generator exists to
+    reach, and until this test there was nothing to stop the accounting quietly
+    collapsing to the parent -- the whole harness suite passed with the children left
+    out.
+
+    So: an idle coordinator and three children that burn, and the record has to see the
+    children's jiffies.
+    """
+    procfs = _fake_host_tree(tmp_path)
+    cgroupfs = tmp_path / "cgroup"
+    coordinator, children = 900000, (900001, 900002, 900003)
+    _write_pid_stat(procfs, coordinator, 100, 0)
+    for pid in children:
+        _write_pid_stat(procfs, pid, 100, 0)
+
+    ticks = iter((1000.0, 1010.0))  # a ten-second window, so the arithmetic is checkable
+    sampler = HostSampler(
+        server_pid=None,
+        client_pid=coordinator,
+        procfs=procfs,
+        cgroupfs=cgroupfs,
+        clock=lambda: next(ticks),
+    )
+    sampler.add_client_pids(children)
+    sampler.start()
+    # The coordinator does not move; each child burns 200 jiffies.
+    _write_pid_stat(procfs, coordinator, 100, 0)
+    for pid in children:
+        _write_pid_stat(procfs, pid, 250, 50)
+    counters = sampler.stop()
+
+    assert counters.client_processes == 1 + len(children)
+    hertz = os.sysconf("SC_CLK_TCK")
+    burnt_s = len(children) * 200 / float(hertz)
+    # cpuset.cpus.effective is 0-3 in the fake tree, so four CPUs, over ten seconds.
+    expected_pct = burnt_s / 10.0 / 4.0 * 100.0
+    assert counters.client_cpu_pct_of_cpuset == pytest.approx(expected_pct, rel=1e-6)
+    assert counters.client_cpu_pct_of_cpuset > 0.0

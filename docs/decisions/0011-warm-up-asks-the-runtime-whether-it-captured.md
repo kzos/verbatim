@@ -88,10 +88,29 @@ for. The whole CPU suite passed on an adapter that captured on step one, so no a
 `GRAPH_WARMUP_STEPS` could have failed a test. The fake now implements the rule it is standing in
 for, and `GRAPH_WARMUP_STEPS = 3` turns ten scheduler tests red.
 
+## Settled afterwards, on the same box
+
+Three things this record left open or a cold read raised, all measured the same day
+(`probes/graph_key_reality.py`, `rows/exploratory/graph-key-reality-b300-2026-09-13.json`):
+
+- **A live steady batch presents the key warm-up captured.** This record's open question. A real
+  first frame batched with 31 pad rows left exactly one key at count 4, as did the steady frame
+  after it, so `drop_extra_pre_encoded` is the same for both and `CapturePlan`'s one-key-per-bucket
+  assumption holds. The graph budget is not understated.
+- **A graph captured on the constructing thread replays on another thread.** Warm-up runs where the
+  `TickLoop` is built and live steps run on the tick thread; torch's current stream is thread-local,
+  so this was not obvious. A step from a second thread did not raise, left the count at one graph,
+  and did not raise upstream's call count, which is replay rather than a second warm-up.
+- **The crossed-wire guard discriminates.** The built `CacheAwareRNNTPipeline` declares
+  `greedy_rnnt_decoder` and not `greedy_ctc_decoder`, so the adapters' mutual refusal rests on a
+  real difference rather than accepting both in silence. It has to be read on the outer pipeline:
+  the inner `CacheAwareRNNTInferenceWrapper` declares neither, and that is the object a future
+  refactor could accidentally bind.
+
 ## What is still not proven here
 
-That the shape upstream retains is the shape a *live* tick presents. Warm-up steps pad rows; a live
-steady batch carries real sessions, and a session's first frame may set a different
-`drop_extra_pre_encoded`, which is part of upstream's key. If it does, the first frame costs a
-second key rather than sharing one, which `CapturePlan` currently assumes it does not. Reading
-`_key_counts` after a real ladder rung answers it; that is a measurement, and it is in the backlog.
+That a row's `graphed` label is derived from the capture rather than from the request. `serve`'s
+banner and `obs/counters.py` both compute the execution mode from the `--eager` flag, not from
+`CaptureController.mode`. With warm-up now refusing to start when nothing was captured, a server
+that says graphed did capture -- but the label and the fact still travel by different routes, and
+only one of them is checked.

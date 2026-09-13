@@ -499,8 +499,8 @@ promised date — that is for triage once an entry becomes an issue.
   in DR-0011. It is the right switch for a *measurement* run specifically, where a row that quietly
   went eager is worse than a run that stops. Decide it as a serve flag, not as a default.
 
-- `src/verbatim/scheduler/capture.py` and `probes/graph_capture_truth.py` — `CapturePlan` assumes a
-  session's first frame shares the steady key. Upstream's key includes `drop_extra_pre_encoded`, and a
-  first frame may set a different one, in which case the first frame costs a second key rather than
-  sharing one and the graph budget is understated by one key per chunk mode. Read `_key_counts` after a
-  real ladder rung to settle it: more than one steady key means the assumption is wrong.
+- `src/verbatim/obs/counters.py` and `src/verbatim/cli.py` — a row's `execution` field and the startup
+  banner both derive "graph path" or "eager" from the `--eager` flag rather than from
+  `CaptureController.mode`, so the label a row carries and the capture it describes travel by
+  different routes. Warm-up now refuses to start when nothing was captured, which closes the way this
+  could have been wrong in practice, but the label should read the controller.
