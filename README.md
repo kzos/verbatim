@@ -104,6 +104,11 @@ the section below says exactly what has been measured and what has not.
 
 ## Batch invariance: what is measured, and what is not
 
+The nine measurements, their controls, and the one claim withdrawn are written up on their own
+page: [docs/batch-invariance-findings.md](docs/batch-invariance-findings.md). It describes NeMo,
+not Verbatim, and says so throughout.
+
+
 Three things have been measured in exploratory probes on stock NeMo, not on Verbatim, which is not
 implemented. The probes used `nvidia/stt_en_fastconformer_hybrid_large_streaming_multi` — a cache-aware
 streaming FastConformer with a hybrid RNNT decoder, loaded through NeMo — on an RTX A6000. They are not

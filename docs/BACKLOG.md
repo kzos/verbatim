@@ -243,6 +243,21 @@ promised date — that is for triage once an entry becomes an issue.
   changes the frozen document. **Until one is chosen, no ladder on this box can produce a row**, and the
   other validity checks are unaffected.
 
+- `docs/SCOPE.md` and `KILL.md` — **the MVP bar's denominator cannot be measured on the die the verdict
+  is read on.** The bar is "at least 0.8 times the graphed file-driven ceiling measured by NeMo's own
+  `asr_streaming_infer.py` with `use_cuda_graphs=true` on the same box on the same day", and
+  `VERDICT_DIE` is the RTX A6000. Confirmed 2026-09-13 by `verbatim doctor` on that box: "graphed step
+  ABSENT: serve refuses the graph path", driver 550.144.03. DR-0002 records why, that the graph path is
+  in no released wheel and needs a driver supporting CUDA 12.6 or later. **So the ratio the MVP is
+  defined by is unmeasurable on the verdict die and can only come from the B300**, which the same
+  documents call the confirmation die rather than the verdict die.
+  Three ways out, all the author's: measure the ratio on the B300 and say the verdict die changed;
+  redefine the bar against the eager file-driven ceiling, which is measurable on the A6000 and is an
+  eager-to-eager comparison since the server is also eager there; or upgrade the A6000 box's driver and
+  build NeMo from source on it. **Do not write our own file-driven baseline.** The bar names NeMo's
+  script on purpose, so that the denominator of a comparison this project wants to win is not written by
+  this project.
+
 - `bench/src/verbatim_bench/pace.py` — **the load generator is the binding constraint on this box, not
   the server.** Measured 2026-09-11 while calibrating the pressure thresholds, nine 180 s null-floor
   windows at three concurrencies: pacing slip p99 is 2.5 ms at 16 streams, 3.9 to 5.4 ms at 32 with one
