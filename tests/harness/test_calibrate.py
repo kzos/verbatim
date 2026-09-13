@@ -79,7 +79,9 @@ def test_no_pressure_samples_is_a_refusal_not_a_zero() -> None:
         thresholds_from([])
 
 
-LEAF = "user.slice/user-1001.slice/session-4.scope"
+#: A leaf no real host has. A name copied from a real box let the sampler find the
+#: real cgroup of that name when a test forgot the fake root, and pass by coincidence.
+LEAF = "verbatim-tests.slice/quiet-tree.scope"
 
 
 def _quiet_tree(tmp_path: Path, *, steal: int = 0, load: str = "0.20 0.10 0.10 1/100 1\n"):
@@ -317,11 +319,17 @@ async def test_a_calibration_against_the_server_under_test_names_it_and_the_refe
             quiet_s=0.0,
             procfs=procfs,
             cgroupfs=cgroupfs,
+            cgroup_root=cgroupfs,
             sysfs=sysfs,
             repo_root=Path(__file__).resolve().parents[2],
             sleep=lambda s: None,
         )
     assert record.mode == "under-test"
+    # The scoped reading came from the fake tree's leaf, not from whatever cgroup the
+    # test process really runs in: on a runner whose cgroup has no cpu.pressure the
+    # real leaf is "unavailable" and the calibration refuses, which is how this test
+    # failed in CI while passing on a box that has it.
+    assert [w.psi_scope for w in record.windows] == ["cgroup:/" + LEAF]
     assert record.endpoint == server.endpoint
     assert record.ns == (CALIBRATION_REFERENCE_N,) == (6,)
     assert [w.n for w in record.windows] == [6]

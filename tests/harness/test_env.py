@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -372,9 +373,19 @@ def test_single_thread_score_takes_the_best_of_its_samples(
         single_thread_score(duration_s=0.02, best_of=0)
 
 
+def _this_tree_env() -> dict[str, str]:
+    """A subprocess does not inherit pytest's conftest, and the editable install may point
+    at another checkout; put this tree's packages first so the guard reads the code under
+    test."""
+    repo = Path(__file__).resolve().parents[2]
+    path = os.pathsep.join(str(repo / d) for d in ("bench/src", "src"))
+    return {**os.environ, "PYTHONPATH": path}
+
+
 def test_env_collector_imports_no_optional_dependency() -> None:
     proc = subprocess.run(
         [sys.executable, "-c", "import verbatim_bench.env"],
+        env=_this_tree_env(),
         capture_output=True,
         text=True,
         check=False,
@@ -382,6 +393,7 @@ def test_env_collector_imports_no_optional_dependency() -> None:
     assert proc.returncode == 0, proc.stderr
     proc = subprocess.run(
         [sys.executable, "-c", "import sys, verbatim_bench.env; assert 'torch' not in sys.modules"],
+        env=_this_tree_env(),
         capture_output=True,
         text=True,
         check=False,

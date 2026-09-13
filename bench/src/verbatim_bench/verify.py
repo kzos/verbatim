@@ -25,7 +25,7 @@ from typing import Any, Final
 from verbatim_bench import constants
 from verbatim_bench import schema as _schema
 from verbatim_bench.canonical import verify_checksum
-from verbatim_bench.ladder import RUNG_PASS_CRITERIA
+from verbatim_bench.criteria import RUNG_PASS_CRITERIA
 from verbatim_bench.results import percentile
 
 PERCENTILE_TOLERANCE_MS: Final = 0.1
