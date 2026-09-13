@@ -161,6 +161,18 @@ class Engine(EngineHandle):
         return self._tick.tick_id
 
     @property
+    def execution(self) -> str:
+        """How the encoder step actually runs, read from the capture controller.
+
+        The controller decided it from the adapter's reported capability and then proved
+        it by warming up: a graphed server that captured nothing refuses to start
+        (``docs/decisions/0011``). Anything that labels a row or a metric reads this,
+        rather than re-deriving the answer from the flag the operator passed, so the
+        label and the fact cannot travel by different routes.
+        """
+        return self._tick.capture.mode
+
+    @property
     def loop_wakes(self) -> int:
         """Number of per-tick ``call_soon_threadsafe`` calls made."""
         return self._loop_wakes

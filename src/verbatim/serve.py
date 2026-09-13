@@ -144,9 +144,12 @@ async def run_server(
     """
     engine = Engine(engine_config(settings), adapter)
     if execution is None:
-        execution = (
-            "fake" if settings.pipeline == "fake" else ("eager" if settings.eager else "graph path")
-        )
+        # Read from the capture controller, which decided the mode from the adapter's
+        # capability and then proved it by warming up, rather than re-derived from the
+        # flag the operator passed. The two agreed through the CLI path and could not be
+        # made to disagree there -- but they were two answers to one question, and the
+        # one that is checked is this one.
+        execution = "fake" if settings.pipeline == "fake" else engine.execution
     facts = ServiceFacts(
         model=settings.model,
         chunk_ms=settings.chunk.ms,
