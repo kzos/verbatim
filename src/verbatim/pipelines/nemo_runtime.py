@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2026 Zaheer Sheriff K
-"""Building NeMo's cache-aware RNNT pipeline for ``verbatim serve``, and the pre-flight
+"""Building NeMo's cache-aware pipelines for ``verbatim serve``, and the pre-flight
 ``verbatim doctor`` runs first.
 
 Three things live here, and NeMo is imported by exactly two of them, at call time:
@@ -9,14 +9,18 @@ Three things live here, and NeMo is imported by exactly two of them, at call tim
   ``PipelineBuilder`` reads. It is a plain dictionary with the keys of NeMo's own
   ``examples/asr/conf/asr_streaming_inference/cache_aware_rnnt.yaml`` (Speech
   ``353d190``), which the wheel does not ship, so the keys are carried here. Pure,
-  and tested without NeMo.
+  and tested without NeMo. ``spec.decoding`` picks the branch
+  ``CacheAwarePipelineBuilder.build`` takes: ``rnnt`` or ``ctc``.
 - ``inspect_runtime`` reports which NeMo track is installed and whether it carries
   the graphed streaming encoder step of NeMo PR #15863: the module
   ``nemo.collections.asr.parts.submodules.streaming_encoder_cuda_graphs`` with
   ``CudaGraphsStreamingEncoderStep``, and ``set_streaming_cuda_graphs`` on the
   cache-aware inference wrapper, which the builder calls with ``asr.use_cuda_graphs``.
   Both were read from that PR's source; neither released wheel (2.7.3, 3.0.0) has
-  them, and ``serve`` refuses the graph path rather than running eager unasked.
+  them, and ``serve`` refuses the graph path rather than running eager unasked. The
+  probe stays keyed on the cache-aware RNNT wrapper for both decoding types: it
+  answers "which NeMo track is installed", and where that PR put the switch for the
+  CTC wrapper is not something an installed wheel here can be read for.
 - ``build_pipeline`` runs NeMo's builder and turns whatever it raises into a
   ``PipelineBuildError`` an operator can act on: the checkpoint, the chunk mode and
   its ``att_context_size``, the slots asked for, and NeMo's own words.
@@ -24,6 +28,7 @@ Three things live here, and NeMo is imported by exactly two of them, at call tim
 
 from __future__ import annotations
 
+import copy
 import importlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -101,6 +106,9 @@ class NeMoPipelineSpec:
     att_context: tuple[int, int]
     num_slots: int
     batch_size: int
+    #: Which branch of ``CacheAwarePipelineBuilder.build`` to take: "rnnt" or "ctc".
+    #: Not inferable from the checkpoint here, so the caller states it.
+    decoding: str = "rnnt"
     stop_history_eou_ms: int = 800
     use_cuda_graphs: bool = False
     compute_dtype: str = "bfloat16"
@@ -126,6 +134,35 @@ class NeMoPipelineSpec:
             raise ConfigError(
                 f"compute_dtype must be bfloat16, float16 or float32, got {self.compute_dtype!r}"
             )
+        if self.decoding not in ("rnnt", "ctc"):
+            raise ConfigError(
+                f"decoding must be rnnt or ctc, got {self.decoding!r}: NeMo's "
+                "CacheAwarePipelineBuilder has those two branches and no other"
+            )
+
+
+#: ``asr.decoding`` for the RNNT branch: NeMo merges it over ``RNNTDecodingConfig``.
+_RNNT_DECODING: dict[str, Any] = {
+    "strategy": "greedy_batch",
+    "preserve_alignments": False,
+    "fused_batch_size": -1,
+    "greedy": {
+        "use_cuda_graph_decoder": False,
+        "enable_per_stream_biasing": False,
+        "preserve_frame_confidence": False,
+        "max_symbols": 10,
+        "ngram_lm_model": None,
+        "ngram_lm_alpha": 0.0,
+        "boosting_tree": {
+            "model_path": None,
+            "key_phrases_file": None,
+            "key_phrases_list": None,
+            "key_phrase_items_list": None,
+            "source_lang": "en",
+        },
+        "boosting_tree_alpha": 0.0,
+    },
+}
 
 
 def pipeline_config(spec: NeMoPipelineSpec) -> dict[str, Any]:
@@ -138,8 +175,22 @@ def pipeline_config(spec: NeMoPipelineSpec) -> dict[str, Any]:
     ITN, translation and metrics are off (not this server's); output granularity is
     ``word`` so finals carry word timings; ``return_tail_result`` stays false, the
     published streaming defect is measured with it that way.
+
+    The ``asr.decoding`` block follows ``spec.decoding``. It is the RNNT block NeMo's
+    ``get_rnnt_decoding_cfg`` merges over ``RNNTDecodingConfig``, or, for CTC, the two
+    fields ``get_ctc_decoding_cfg`` sets on a fresh ``CTCDecodingConfig``. That method
+    takes no config argument and reads nothing from here, so the CTC block is a record
+    of what NeMo will build rather than an instruction to it: writing the RNNT greedy
+    knobs there would claim a configuration nothing applies. ``return_tail_result`` is
+    likewise inert for CTC under ``use_cache: true``, because the wrapper only slices a
+    tail when ``valid_out_len`` is set, and it is ``None`` whenever the cache is on.
     """
     left, right = spec.att_context
+    if spec.decoding == "ctc":
+        decoding: dict[str, Any] = {"strategy": "greedy", "preserve_alignments": False}
+    else:
+        # A copy: the caller gets a configuration it may edit, not this module's state.
+        decoding = copy.deepcopy(_RNNT_DECODING)
     return {
         "asr": {
             "model_name": spec.model,
@@ -148,27 +199,7 @@ def pipeline_config(spec: NeMoPipelineSpec) -> dict[str, Any]:
             "compute_dtype": spec.compute_dtype,
             "use_amp": False,
             "use_cuda_graphs": spec.use_cuda_graphs,
-            "decoding": {
-                "strategy": "greedy_batch",
-                "preserve_alignments": False,
-                "fused_batch_size": -1,
-                "greedy": {
-                    "use_cuda_graph_decoder": False,
-                    "enable_per_stream_biasing": False,
-                    "preserve_frame_confidence": False,
-                    "max_symbols": 10,
-                    "ngram_lm_model": None,
-                    "ngram_lm_alpha": 0.0,
-                    "boosting_tree": {
-                        "model_path": None,
-                        "key_phrases_file": None,
-                        "key_phrases_list": None,
-                        "key_phrase_items_list": None,
-                        "source_lang": "en",
-                    },
-                    "boosting_tree_alpha": 0.0,
-                },
-            },
+            "decoding": decoding,
             "per_stream_biasing_defaults": {
                 "boosting_model_alpha": 1.0,
                 "boosting_model_cfg": {
@@ -214,7 +245,7 @@ def pipeline_config(spec: NeMoPipelineSpec) -> dict[str, Any]:
         "matmul_precision": spec.matmul_precision,
         "log_level": spec.log_level,
         "pipeline_type": "cache_aware",
-        "asr_decoding_type": "rnnt",
+        "asr_decoding_type": spec.decoding,
         "audio_file": None,
         "output_filename": None,
         "output_dir": None,
@@ -336,7 +367,8 @@ def build_pipeline(
     """
     left, right = spec.att_context
     asked = (
-        f"checkpoint {spec.model!r}, chunk {spec.chunk.ms} ms "
+        f"checkpoint {spec.model!r}, cache-aware {spec.decoding.upper()}, "
+        f"chunk {spec.chunk.ms} ms "
         f"(att_context_size [{left}, {right}]), num_slots {spec.num_slots}, "
         f"batch_size {spec.batch_size}, {spec.compute_dtype} on cuda:{spec.device_id}, "
         f"{'CUDA graphs' if spec.use_cuda_graphs else 'eager encoder step'}"

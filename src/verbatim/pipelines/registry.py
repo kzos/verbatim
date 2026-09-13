@@ -7,10 +7,15 @@ so an operator can carry a private adapter without forking: an entry point whose
 name is not registered here is loaded on first use.
 
 A factory takes the ``EngineConfig`` and keyword arguments that only that adapter
-understands. ``cache_aware_rnnt`` needs a built NeMo pipeline, passed as
-``pipeline=``, or an already-bound ``boundary=``; it cannot build one itself,
-because building one is a model download and a forty-field NeMo config that belong
-to the caller.
+understands. ``cache_aware_rnnt`` and ``cache_aware_ctc`` need a built NeMo pipeline,
+passed as ``pipeline=``, or an already-bound ``boundary=``; neither can build one
+itself, because building one is a model download and a forty-field NeMo config that
+belong to the caller.
+
+The two cache-aware factories are the same call with a different adapter class, which
+is what NeMo's own builder is: one ``CacheAwarePipelineBuilder`` branching on
+``asr_decoding_type``. The adapter each returns refuses a boundary bound to the other
+pipeline, so ``pipeline=`` and the registered name cannot silently disagree.
 """
 
 from __future__ import annotations
@@ -22,7 +27,9 @@ from typing import Any
 from verbatim.config import EngineConfig
 from verbatim.core.errors import InvalidArgument
 from verbatim.pipelines.base import PipelineAdapter
-from verbatim.pipelines.cache_aware_rnnt import CacheAwareRNNTAdapter, NeMoBoundary
+from verbatim.pipelines.cache_aware import CacheAwareAdapter, NeMoBoundary
+from verbatim.pipelines.cache_aware_ctc import CacheAwareCTCAdapter
+from verbatim.pipelines.cache_aware_rnnt import CacheAwareRNNTAdapter
 from verbatim.pipelines.fake import FakePipelineAdapter
 
 __all__ = ["ENTRY_POINT_GROUP", "PipelineFactory", "build", "build_for", "names", "register"]
@@ -78,29 +85,38 @@ def _fake_factory(config: EngineConfig, **kwargs: Any) -> PipelineAdapter:
     return FakePipelineAdapter(config.chunk, buckets=config.buckets or (), **kwargs)
 
 
-def _cache_aware_rnnt_factory(
-    config: EngineConfig,
-    *,
-    pipeline: Any = None,
-    boundary: NeMoBoundary | None = None,
-    language_code: str | None = None,
-) -> PipelineAdapter:
-    if boundary is None:
-        if pipeline is None:
-            raise InvalidArgument(
-                "cache_aware_rnnt needs a built NeMo CacheAwareRNNTPipeline: "
-                "pass pipeline=<pipeline> or boundary=<NeMoBoundary>"
-            )
-        boundary = NeMoBoundary.from_pipeline(pipeline)
-    return CacheAwareRNNTAdapter(
-        config.chunk,
-        boundary,
-        buckets=config.buckets or (),
-        required_slots=config.num_slots,
-        stop_history_eou_ms=config.stop_history_eou_ms,
-        language_code=language_code,
-    )
+def _cache_aware_factory(
+    adapter_class: type[CacheAwareAdapter], nemo_class: str
+) -> PipelineFactory:
+    """The factory for one cache-aware adapter. ``nemo_class`` names the NeMo pipeline
+    the caller has to have built, so the refusal says which one."""
+
+    def factory(
+        config: EngineConfig,
+        *,
+        pipeline: Any = None,
+        boundary: NeMoBoundary | None = None,
+        language_code: str | None = None,
+    ) -> PipelineAdapter:
+        if boundary is None:
+            if pipeline is None:
+                raise InvalidArgument(
+                    f"{adapter_class.registry_name} needs a built NeMo {nemo_class}: "
+                    "pass pipeline=<pipeline> or boundary=<NeMoBoundary>"
+                )
+            boundary = NeMoBoundary.from_pipeline(pipeline)
+        return adapter_class(
+            config.chunk,
+            boundary,
+            buckets=config.buckets or (),
+            required_slots=config.num_slots,
+            stop_history_eou_ms=config.stop_history_eou_ms,
+            language_code=language_code,
+        )
+
+    return factory
 
 
 register("fake", _fake_factory)
-register("cache_aware_rnnt", _cache_aware_rnnt_factory)
+register("cache_aware_rnnt", _cache_aware_factory(CacheAwareRNNTAdapter, "CacheAwareRNNTPipeline"))
+register("cache_aware_ctc", _cache_aware_factory(CacheAwareCTCAdapter, "CacheAwareCTCPipeline"))

@@ -27,9 +27,14 @@ from websockets.asyncio.client import connect
 
 from verbatim.cli import EXIT_CONFIG, EXIT_OK, EXIT_RUNTIME, EXIT_UNEXPECTED, Hooks, main
 from verbatim.config import ChunkMode
+from verbatim.pipelines.cache_aware_ctc import CacheAwareCTCAdapter
 from verbatim.pipelines.cache_aware_rnnt import CacheAwareRNNTAdapter
 from verbatim.pipelines.fake import FakePipelineAdapter
-from verbatim.pipelines.nemo_fake import FakeCacheAwarePipeline, boundary_for
+from verbatim.pipelines.nemo_fake import (
+    FakeCacheAwareCTCPipeline,
+    FakeCacheAwarePipeline,
+    boundary_for,
+)
 from verbatim.pipelines.nemo_runtime import NeMoPipelineSpec, PipelineBuildError, RuntimeReport
 from verbatim.serve import Endpoints, ServeSettings
 
@@ -227,6 +232,46 @@ def test_eager_serves_a_nemo_shaped_pipeline_through_the_real_adapter() -> None:
     assert spec.stop_history_eou_ms == 800
     assert "EAGER" in captured.out
     assert "att_context_size [56, 1]" in captured.out
+
+
+def test_the_ctc_pipeline_is_selectable_and_says_what_it_cannot_do_with_a_language_code() -> None:
+    """`--pipeline cache_aware_ctc` takes NeMo's other cache-aware branch through the
+    same engine. A language code still rides on every request, because every Riva client
+    sends one and the options are the record of what was asked, but cache-aware CTC has
+    no prompt path to act on it, so the operator is told at startup rather than left to
+    infer it from a transcript."""
+    captured = _Captured()
+
+    def build_ctc(spec: NeMoPipelineSpec) -> Any:
+        return boundary_for(
+            FakeCacheAwareCTCPipeline(spec.chunk.ms, num_slots=max(64, spec.num_slots))
+        )
+
+    argv = [*NEMO, "--eager", "--pipeline", "cache_aware_ctc", "--language-code", "de-DE"]
+    assert main(argv, hooks=_hooks(captured, build=build_ctc)) == EXIT_OK
+    assert isinstance(captured.adapter, CacheAwareCTCAdapter)
+    assert captured.specs[0].decoding == "ctc"
+    assert "NeMo cache-aware CTC" in captured.out
+    assert "de-DE is recorded on each request and NOT acted on" in captured.out
+
+    rnnt = _Captured()
+    assert main([*NEMO, "--eager"], hooks=_hooks(rnnt)) == EXIT_OK
+    assert rnnt.specs[0].decoding == "rnnt"
+    assert "NeMo cache-aware RNNT" in rnnt.out
+    assert "NOT acted on" not in rnnt.out
+
+
+def test_an_rnnt_build_served_under_the_ctc_name_is_refused_before_a_session_joins() -> None:
+    captured = _Captured()
+
+    def build_ctc(spec: NeMoPipelineSpec) -> Any:
+        return boundary_for(
+            FakeCacheAwareCTCPipeline(spec.chunk.ms, num_slots=max(64, spec.num_slots))
+        )
+
+    assert main([*NEMO, "--eager"], hooks=_hooks(captured, build=build_ctc)) == EXIT_CONFIG
+    assert "does not fit the scheduler configuration" in captured.err
+    assert "--pipeline cache_aware_ctc" in captured.err
 
 
 def test_the_pr_track_takes_the_graph_path_without_being_asked() -> None:

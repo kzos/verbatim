@@ -43,6 +43,7 @@ SERVER_MODULES = [
     "verbatim.scheduler.clock",
     "verbatim.pipelines",
     "verbatim.pipelines.base",
+    "verbatim.pipelines.cache_aware",
     "verbatim.pipelines.cache_aware_rnnt",
     "verbatim.pipelines.cache_aware_ctc",
     "verbatim.pipelines.nemo_compat",

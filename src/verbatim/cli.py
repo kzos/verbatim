@@ -49,7 +49,7 @@ from verbatim.pipelines.nemo_runtime import (
     inspect_runtime,
 )
 from verbatim.scheduler.graph_budget import ConfigError
-from verbatim.serve import Endpoints, ServeSettings, engine_config, run_server
+from verbatim.serve import PIPELINES, Endpoints, ServeSettings, engine_config, run_server
 
 __all__ = ["EXIT_CONFIG", "EXIT_OK", "EXIT_RUNTIME", "EXIT_UNEXPECTED", "Hooks", "main"]
 
@@ -187,9 +187,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     serve.add_argument(
         "--pipeline",
-        choices=("cache_aware_rnnt", "fake"),
+        choices=PIPELINES,
         default="cache_aware_rnnt",
-        help="cache_aware_rnnt loads the checkpoint; fake serves scripted transcripts, loudly",
+        help="cache_aware_rnnt and cache_aware_ctc load the checkpoint through NeMo's two "
+        "cache-aware branches; fake serves scripted transcripts, loudly",
     )
     serve.add_argument(
         "--eager",
@@ -291,6 +292,7 @@ def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapt
             + "\n  ".join(report.lines()),
         )
     use_graphs = report.graph_step and not settings.eager
+    decoding = "ctc" if settings.pipeline == "cache_aware_ctc" else "rnnt"
     try:
         att_context = att_context_size(
             settings.model, settings.chunk, left=settings.att_context_left
@@ -301,6 +303,7 @@ def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapt
             att_context=(att_context[0], att_context[1]),
             num_slots=config.num_slots,
             batch_size=max(config.buckets or (1,)),
+            decoding=decoding,
             stop_history_eou_ms=settings.stop_history_eou_ms,
             use_cuda_graphs=use_graphs,
             compute_dtype=settings.compute_dtype,
@@ -329,15 +332,30 @@ def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapt
     return (
         adapter,
         [
-            f"pipeline     NeMo cache-aware RNNT, {settings.compute_dtype} "
+            f"pipeline     NeMo cache-aware {decoding.upper()}, {settings.compute_dtype} "
             f"on cuda:{settings.device_id}"
             + (f" ({report.device_name})" if report.device_name else ""),
             f"nemo         {report.nemo_version}, torch {report.torch_version}",
             f"chunk mode   {settings.chunk.ms} ms (att_context_size {att_context})",
             f"graphs       {graphs}",
+            *_language_lines(decoding, settings.language_code),
         ],
         "graph path" if use_graphs else "eager",
     )
+
+
+def _language_lines(decoding: str, language_code: str) -> list[str]:
+    """Cache-aware CTC has no prompt path: ``CacheAwareCTCPipeline`` never calls
+    ``init_prompt_support`` and its ``create_state`` never resolves a prompt index, so
+    a language code rides on every request and is read by nothing. The operator who
+    passed ``--language-code`` reads that here rather than inferring it from a
+    transcript, the same reason the precision lines exist."""
+    if decoding != "ctc":
+        return []
+    return [
+        f"language     {language_code} is recorded on each request and NOT acted on: "
+        "cache-aware CTC has no prompt path",
+    ]
 
 
 def _precision_lines(settings: ServeSettings) -> list[str]:
