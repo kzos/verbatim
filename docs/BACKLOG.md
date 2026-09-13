@@ -515,3 +515,13 @@ promised date — that is for triage once an entry becomes an issue.
   own file-driven ceiling is 149.48 RTFx at batch 128 against 92.46 at batch 32
   (`rows/exploratory/nemo-ceiling-b300-bf16-2026-09-13.json`). At `k = 2` the measured 150 ms spread
   would fall to about 75 ms. Both halves of the trade are numbers; the decision is the author's.
+
+## The price of invariance, after DR-0014
+
+- `benchmarks/METHODOLOGY.md` and `bench/` — the control arm establishes that fixed-shape
+  padding is what buys batch invariance (128 of 256 streams diverge without it). It does not
+  price it. A 38-row steady step at 12 live sessions spends 26 rows on padding, and the
+  occupancy-weighted cost of the guarantee across a realistic session-length distribution is
+  the number a buyer will ask for first. The ragged arm can now measure the capacity side of
+  it directly: run the same ladder on `--padding ragged` and the difference in sustained
+  streams is the price, with the divergence count as what it buys.

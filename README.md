@@ -87,7 +87,15 @@
 
 **License:** Apache-2.0 (see `LICENSE`)
 
-> Verbatim has not been benchmarked. Every number describing Verbatim's own behaviour in this README is an angle-bracketed placeholder until a row under `rows/` fills it. The batch-invariance section below reports exploratory probes on stock NeMo, not on Verbatim, which is not implemented. Two external figures are cited to their sources: the checkpoint's monthly download count and the CUDA-graph speedup range; neither is a measurement of this project.
+> **Verbatim has no canonical benchmark row yet.** Every number describing Verbatim's own behaviour in this README is an angle-bracketed placeholder until a row under `rows/` fills it, and the capacity figures below are exploratory: the runs that produced them used shortened warm-up and window durations, which the harness itself marks non-canonical.
+>
+> What *has* been measured on Verbatim, on an NVIDIA B300 on 2026-09-13/14, and is published under `rows/exploratory/`:
+>
+> - **Batch invariance holds, and the control arm shows it is the padding that holds it.** The gate ran the same 256-utterance corpus through a live server at concurrency 1 / 32 / 32 / 38: with fixed-shape padding, one identical digest across all four levels and zero errors; with padding disabled, **128 of 256 streams diverge** from what the same audio produced at concurrency 1. In both arms the two runs at concurrency 32 agree, so the divergence is batch dependence rather than run-to-run noise. Both arms eager, bfloat16. ([control-arm record](rows/exploratory/invariance-control-arm-b300-2026-09-14.json), [DR-0014](docs/decisions/0014-the-ragged-control-arm.md))
+> - **The CUDA-graph path is worth ×1.29 at batch 32 and nothing at batch 128** on NVIDIA's own file-driven path, same die and corpus. ([ceiling record](rows/exploratory/nemo-ceiling-b300-bf16-2026-09-13.json))
+> - **A session's latency is set by when it connects**, spanning 150 ms of a 310 ms budget, and [DR-0012](docs/decisions/0012-the-tick-phase-offset-is-irreducible-not-a-defect.md) records why that is structural rather than a defect to be fixed.
+>
+> The batch-invariance section further down reports the earlier exploratory probes on stock NeMo; those describe NeMo, not this server. Two external figures are cited to their sources: the checkpoint's monthly download count and the CUDA-graph speedup range; neither is a measurement of this project.
 >
 > [KILL.md](KILL.md) — the dated conditions under which this stops, written before the runs.<br>
 > [docs/SCOPE.md](docs/SCOPE.md) — fixed boundary and growth trigger.<br>

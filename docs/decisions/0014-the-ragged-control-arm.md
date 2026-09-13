@@ -60,6 +60,32 @@ This is written down **before** the arm is run, which is the point of writing it
 - **Fixed diverges.** The gate's own fake-leak tests already show it can go red, so this would be a
   finding about the server rather than about the gate, and the more urgent of the two.
 
+## The outcome, measured 2026-09-14
+
+The arm was run the day it was built, on the same B300, same corpus, same checkpoint, same
+bucket, both arms eager so the graph path is not a variable. Record:
+`rows/exploratory/invariance-control-arm-b300-2026-09-14.json`.
+
+| arm | verdict | digests across 1 / 32a / 32b / 38 | streams differing from concurrency 1 |
+|---|---|---|---|
+| fixed | **invariant** | one digest, `d1838571238f`, all four levels | 0 of 256 |
+| ragged | **divergent** | three distinct digests | **128 of 256** |
+
+The expected outcome, and the decisive detail is not the divergence count. **In both arms 32a
+and 32b agree**: the ragged server is deterministic at a given concurrency and
+non-deterministic *across* concurrencies. That is batch dependence, not run-to-run noise, and
+it is exactly the property the fixed arm is claimed to remove.
+
+Divergence appears in both channels the gate compares — transcript text (one stream reads
+"they" at concurrency 1 and "there" at 38) and word timings (a word moving from 720–800 ms to
+800–880 ms).
+
+So the first outcome listed above is the one that happened: fixed-shape padding is what buys
+the invariance, and the gate's passing result on the fixed arm is a measurement rather than a
+restatement of the design. What remains unpriced is the cost — padding a 38-row step for a
+smaller live count spends the difference on rows that exist only to hold a shape, and the
+occupancy-weighted price of the guarantee is in `docs/BACKLOG.md`.
+
 ## Rejected alternatives
 
 **Leave the caveat in the commit message and move on.** It was already written down in three places
