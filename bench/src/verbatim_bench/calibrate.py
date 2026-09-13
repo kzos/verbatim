@@ -18,10 +18,20 @@ framing against the harness's own null server, so a run that shows more pressure
 the floor showed is a run whose host was doing more than the floor's host was, and that
 is the condition to reject.
 
-**On the gate's own estimator, which is exact.** ``rung_validity`` compares what
-``HostSampler.stop`` computed for the window: the delta of ``/proc/pressure/cpu``'s
-monotonic ``total`` stall counters over the window, as a percentage of it, for ``some`` and
-for ``full`` each from its own counter. That is the window's pressure and nothing else: no
+**On the gate's own estimator, which is exact and scoped to us.** ``rung_validity``
+compares what ``HostSampler.stop`` computed for the window: the delta of the monotonic
+``total`` stall counters in the ``cpu.pressure`` file of the session's own leaf cgroup, as a
+percentage of the window, for ``some`` and for ``full`` each from its own counter. The
+leaf, not the system file and not the ancestor that enforces the quota: everything ever
+measured system-wide fell between 0.22 and 0.42 percent while the idle box alone stalls
+0.325, so that file is dominated by background this measurement neither causes nor
+controls, and reading our own cgroup removes it by construction instead of calibrating
+around it. ``full`` is not a zero threshold there: a cgroup stalls in full when all of its
+own tasks are stalled, which happens, where the whole machine almost never is. The
+system-wide deltas ride in every record as context, so the background being removed is
+visible. A leaf without ``cpu.pressure`` is reported as unavailable and the rung is invalid
+for pressure; the gate never widens its scope on its own.
+That is the window's pressure and nothing else: no
 time constant, no decay, no memory of what came before the window opened. The earlier
 estimator, ``avg60`` read at the close, was an exponentially decaying average that carried
 the minute before the window into it; it let the tail of a test suite that had ended
@@ -164,6 +174,9 @@ class QuietReading:
     psi_full_start: float | None = None
     psi_some_window_pct: float | None = None
     psi_full_window_pct: float | None = None
+    psi_scope: str = "unavailable"
+    psi_system_some_pct: float | None = None
+    psi_system_full_pct: float | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -174,8 +187,11 @@ class QuietReading:
             "loadavg_1m": self.loadavg_1m,
             "cpuset_size": self.cpuset_size,
             "loadavg_max_fraction_of_cpuset": QUIET_LOADAVG_MAX_FRACTION_OF_CPUSET,
+            "psi_scope": self.psi_scope,
             "psi_some_window_pct": self.psi_some_window_pct,
             "psi_full_window_pct": self.psi_full_window_pct,
+            "psi_system_some_pct": self.psi_system_some_pct,
+            "psi_system_full_pct": self.psi_system_full_pct,
             "avg60_some_start": self.psi_some_start,
             "avg60_full_start": self.psi_full_start,
             "avg60_some_end": self.psi_some,
@@ -195,11 +211,18 @@ def observe_quiet(
     gpu_index: int = 0,
     server_pid: int | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    cgroup_root: Path = Path("/sys/fs/cgroup"),
 ) -> QuietReading:
     """Observe the box for ``duration_s`` with the generator not running, and judge it."""
     if cgroupfs is None:
-        cgroupfs = own_cgroup(procfs)
-    sampler = HostSampler(server_pid=None, client_pid=os.getpid(), procfs=procfs, cgroupfs=cgroupfs)
+        cgroupfs = own_cgroup(procfs, cgroup_root)
+    sampler = HostSampler(
+        server_pid=None,
+        client_pid=os.getpid(),
+        procfs=procfs,
+        cgroupfs=cgroupfs,
+        cgroup_root=cgroup_root,
+    )
     some_start, full_start = _read_pressure_avg(procfs)
     sampler.start()
     sleep(duration_s)
@@ -248,6 +271,9 @@ def observe_quiet(
         psi_full_start=full_start,
         psi_some_window_pct=counters.psi_cpu_some_avg,
         psi_full_window_pct=counters.psi_cpu_full_avg,
+        psi_scope=counters.psi_scope,
+        psi_system_some_pct=counters.psi_system_some_pct,
+        psi_system_full_pct=counters.psi_system_full_pct,
     )
 
 
@@ -273,6 +299,9 @@ class WindowReading:
     sessions_failed: int = 0
     clean: bool = True
     unclean_reason: str | None = None
+    psi_scope: str = "unavailable"
+    psi_system_some_pct: float | None = None
+    psi_system_full_pct: float | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -285,8 +314,11 @@ class WindowReading:
             "window_open_s": self.window_open_s,
             "window_close_s": self.window_close_s,
             "warm_up_converged": self.warm_up_converged,
+            "psi_scope": self.psi_scope,
             "psi_some_window_pct": self.psi_some_window_pct,
             "psi_full_window_pct": self.psi_full_window_pct,
+            "psi_system_some_pct": self.psi_system_some_pct,
+            "psi_system_full_pct": self.psi_system_full_pct,
             "avg60_samples": self.psi_samples,
             "avg60_some_max": self.psi_some_max,
             "avg60_full_max": self.psi_full_max,
@@ -312,8 +344,8 @@ def thresholds_from(
     fulls = [w.psi_full_window_pct for w in clean if w.psi_full_window_pct is not None]
     if not clean or not somes or not fulls:
         raise CalibrationRefusal(
-            "no pressure samples inside any clean window: the box exposes no "
-            "/proc/pressure/cpu, no window was held, or no window drove cleanly"
+            "no scoped pressure reading in any clean window: the session's cgroup has no "
+            "cpu.pressure, no window was held, or no window drove cleanly"
         )
     return ceil_to_precision(max(somes), precision), ceil_to_precision(max(fulls), precision)
 
@@ -357,10 +389,11 @@ class CalibrationRecord:
                 "PSI_CPU_SOME_MAX_PCT": self.psi_cpu_some_max_pct,
                 "PSI_CPU_FULL_MAX_PCT": self.psi_cpu_full_max_pct,
                 "precision_pct": self.precision_pct,
-                "rule": "ceiling to precision of the maximum over every clean null-floor "
-                "window's pressure, the delta of /proc/pressure/cpu's total stall counter over "
-                "the window as a percentage of it, some and full each from its own counter, "
-                "no factor; avg60 samples recorded as context only",
+                "rule": "ceiling to precision of the maximum over every clean window's "
+                "pressure, the delta of the session's own leaf cgroup cpu.pressure total "
+                "stall counter over the window as a percentage of it, some and full each "
+                "from its own counter, no factor; the system-wide deltas and avg60 samples "
+                "recorded as context only",
             },
             "taken_at": self.taken_at,
             "box": {
@@ -437,6 +470,9 @@ def _reading(result: Any, host: HostWindow, *, n: int, seed: int) -> WindowReadi
         warm_up_converged=result.warm_up_converged,
         psi_some_window_pct=host.counters.psi_cpu_some_avg,
         psi_full_window_pct=host.counters.psi_cpu_full_avg,
+        psi_scope=host.counters.psi_scope,
+        psi_system_some_pct=host.counters.psi_system_some_pct,
+        psi_system_full_pct=host.counters.psi_system_full_pct,
         psi_samples=host.psi.samples,
         psi_some_max=host.psi.some_max,
         psi_full_max=host.psi.full_max,
@@ -475,6 +511,7 @@ async def calibrate(
     repo_root: Path | None = None,
     sleep: Callable[[float], None] = time.sleep,
     precision: float = PRECISION_PCT,
+    cgroup_root: Path = Path("/sys/fs/cgroup"),
 ) -> CalibrationRecord:
     """Observe the box quiet, run the floor once per seed at each N with the window recorder,
     and reduce the windows' pressure to the two thresholds with their provenance. Without
@@ -488,7 +525,7 @@ async def calibrate(
             "the record and its compute process is not counted foreign"
         )
     if cgroupfs is None:
-        cgroupfs = own_cgroup(procfs)
+        cgroupfs = own_cgroup(procfs, cgroup_root)
     quiet = observe_quiet(
         duration_s=quiet_s,
         procfs=procfs,
@@ -497,6 +534,7 @@ async def calibrate(
         gpu_index=gpu_index,
         server_pid=server_pid,
         sleep=sleep,
+        cgroup_root=cgroup_root,
     )
     if quiet.refusal is not None:
         raise CalibrationRefusal(f"the box is not quiet: {quiet.refusal}")
@@ -537,6 +575,7 @@ async def calibrate(
                 interval_s=interval_s,
                 procfs=procfs,
                 cgroupfs=cgroupfs,
+                cgroup_root=cgroup_root,
             )
             result = await run_load_recorded(spec, recorder)
             host = recorder.finish()

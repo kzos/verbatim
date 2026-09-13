@@ -133,12 +133,13 @@ class PsiSample:
 @dataclass(frozen=True, slots=True)
 class PsiWindow:
     """CPU pressure over one window. `some_window_pct` and `full_window_pct` are what the
-    validity gate reads: the delta of `/proc/pressure/cpu`'s `total` stall counters over
-    the window, as a percentage of it, exact and carrying nothing from before the window
-    opened. `some_max` and `full_max` are the peaks of the `avg60` samples polled inside
-    the window, kept as context while the two estimators are compared; `avg60` decays
-    exponentially and remembers the minute before the window, which is why it is not the
-    gate."""
+    validity gate reads: the delta of the `total` stall counters in the session's own leaf
+    cgroup's `cpu.pressure` over the window, as a percentage of it, exact, carrying nothing
+    from before the window opened and nothing the rest of the box was doing; the
+    system-wide file's deltas ride in the counters as context. `some_max` and `full_max`
+    are the peaks of the `avg60` samples polled inside the window, kept as context while
+    the estimators are compared; `avg60` decays exponentially and remembers the minute
+    before the window, which is why it is not the gate."""
 
     samples: int
     some_max: float | None
@@ -198,6 +199,9 @@ class HostWindow:
                 "client_cpu_pct_of_cpuset": c.client_cpu_pct_of_cpuset,
                 "client_processes": c.client_processes,
                 "server_cpu_s_per_stream_hour": c.server_cpu_s_per_stream_hour,
+                "psi_scope": c.psi_scope,
+                "psi_system_some_pct_window": c.psi_system_some_pct,
+                "psi_system_full_pct_window": c.psi_system_full_pct,
             },
             "gpu": self.gpu.to_json_dict(),
             "psi": self.psi.to_json_dict(),
@@ -292,8 +296,9 @@ class WindowRecorder:
         client_pid: int | None = None,
         interval_s: float = DEFAULT_INTERVAL_S,
         procfs: Path = Path("/proc"),
-        cgroupfs: Path = Path("/sys/fs/cgroup"),
+        cgroupfs: Path | None = None,
         clock: Callable[[], float] = time.monotonic,
+        cgroup_root: Path = Path("/sys/fs/cgroup"),
     ) -> None:
         if interval_s <= 0:
             raise ValueError(f"interval_s must be positive, got {interval_s!r}")
@@ -304,7 +309,11 @@ class WindowRecorder:
         self._clock = clock
         self._procfs = procfs
         self._sampler = HostSampler(
-            server_pid=server_pid, client_pid=client_pid, procfs=procfs, cgroupfs=cgroupfs
+            server_pid=server_pid,
+            client_pid=client_pid,
+            procfs=procfs,
+            cgroupfs=cgroupfs,
+            cgroup_root=cgroup_root,
         )
         self._samples: list[GpuSample] = []
         self._psi: list[PsiSample] = []

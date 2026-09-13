@@ -26,7 +26,7 @@ The workload constants are `SESSION_PROFILE = "m180"`, `PACING_PROFILE = "unifor
 
 The ceiling constants are `CEILING_BATCH_SIZES = (32, 128)`, `CEILING_NUM_SLOTS_EQUALS_BATCH = true`, `CEILING_WARMUP_STEPS = 1`, `CEILING_RUN_STEPS = 3`, `CEILING_MEDIAN_OF = 5`, `CEILING_MIN_INPUT_STREAMS_PER_BATCH_SLOT = 4`, and `CEILING_RTFX_CROSS_CHECK = 0.02`. The kill constants are `KILL_RULE_1_THRESHOLD = 0.7`, `KILL_RULE_2_THRESHOLD = 0.5`, `F_MAINTAINER_RERUN_ABOVE = 1.1`, and `WER_WINDOW_ABSOLUTE = 0.1`.
 
-The validity constants are `CLIENT_CPU_MAX_FRACTION_OF_CPUSET = 0.5`, `PACING_SLIP_P99_MAX_MS = 5.0`, `CLIENT_LIMITED_FLOOR_MULTIPLE = 2.0`, `STEAL_PCT_MAX = 0.0`, `CGROUP_THROTTLED_DELTA_MAX = 0`, `NVML_THROTTLE_EVENTS_MAX = 0`, `FOREIGN_GPU_PROCESSES_MAX = 0`, and `GPU_PERSISTENCE_MODE_REQUIRED = true`. The two pressure thresholds named in section 7 were calibrated on the box by the harness and are `PSI_CPU_SOME_MAX_PCT = 0.4` and `PSI_CPU_FULL_MAX_PCT = 0.0` (DR-0007); the other two calibration values named there are intentionally still `null`.
+The validity constants are `CLIENT_CPU_MAX_FRACTION_OF_CPUSET = 0.5`, `PACING_SLIP_P99_MAX_MS = 5.0`, `CLIENT_LIMITED_FLOOR_MULTIPLE = 2.0`, `STEAL_PCT_MAX = 0.0`, `CGROUP_THROTTLED_DELTA_MAX = 0`, `NVML_THROTTLE_EVENTS_MAX = 0`, `FOREIGN_GPU_PROCESSES_MAX = 0`, and `GPU_PERSISTENCE_MODE_REQUIRED = true`. The two pressure thresholds named in section 7 are `null` again: the values calibrated on 2026-09-11 (DR-0007) were taken from the system-wide pressure file, which this measurement neither causes nor controls, and the gate now reads the session's own cgroup, so they are re-calibrated on that instrument before the first run; the other two calibration values named there are intentionally still `null`.
 
 The day-21 corpus manifest SHA-256 is `<corpus-manifest-sha256>`, and its stratified-sample seed is `<day-21-stratified-sample-seed>`. The session-builder version and seed are `<session-builder-version>` and `<session-builder-seed>`. The room-noise source revision is `<room-noise-source-revision>`, and the filler/evaluation split is `<filler-evaluation-split>`. The checkpoint revision and checkpoint-file SHA-256 are `<checkpoint-revision>` and `<checkpoint-file-sha256>`. The toolkit commit SHA is `<toolkit-commit-sha>`, the container-digest policy is `<container-digest-policy>`, and the normaliser package version is `<normaliser-package-version>`. These placeholders stay angle-bracketed and unfilled until the corresponding artifacts exist; no value is inferred.
 
@@ -71,7 +71,7 @@ The validity thresholds are `CLIENT_CPU_MAX_FRACTION_OF_CPUSET <= 0.5`, `PACING_
 
 ### Not Yet Frozen
 
-`AA_SPREAD_MAX_PCT` and `NULL_FLOOR_TOLERANCE_PCT` are `null` because no calibration has produced a value. `PSI_CPU_SOME_MAX_PCT` and `PSI_CPU_FULL_MAX_PCT` were `null` on the freeze date and were filled on 2026-09-11 by `verbatim-bench calibrate-psi` on the box, at `0.4` and `0.0`, as the maximum over every clean null-floor window of the window's own stall fraction, taken from `/proc/pressure/cpu`'s `total` counters with no safety factor (DR-0007). A threshold still `null` on the freeze date is filled from a calibration performed by the harness itself on the box, in a one-line commit made before the first run. A rung measured while any required threshold is `null` is invalid rather than passing.
+`AA_SPREAD_MAX_PCT` and `NULL_FLOOR_TOLERANCE_PCT` are `null` because no calibration has produced a value. `PSI_CPU_SOME_MAX_PCT` and `PSI_CPU_FULL_MAX_PCT` were `null` on the freeze date, were filled on 2026-09-11 by `verbatim-bench calibrate-psi` from the system-wide `/proc/pressure/cpu` counters (DR-0007), and are `null` again: that file is dominated by background the measurement does not control, so the gate now reads the `total` counters of the session's own leaf cgroup's `cpu.pressure`, and the values are re-calibrated on that instrument by the same command before the first run, as the maximum over every clean window of the window's own stall fraction, no safety factor. A threshold still `null` on the freeze date is filled from a calibration performed by the harness itself on the box, in a one-line commit made before the first run. A rung measured while any required threshold is `null` is invalid rather than passing.
 
 **an invalid run is re-run, never footnoted.** Two consecutive invalid rungs abort the ladder as `host unfit` and release the box.
 
@@ -149,8 +149,8 @@ A slower die lowers `C`, so `F` rises for every host-bound arm; an A6000 pass is
   "NVML_THROTTLE_EVENTS_MAX": 0,
   "PACING_PROFILE": "uniform",
   "PACING_SLIP_P99_MAX_MS": 5.0,
-  "PSI_CPU_FULL_MAX_PCT": 0.0,
-  "PSI_CPU_SOME_MAX_PCT": 0.4,
+  "PSI_CPU_FULL_MAX_PCT": null,
+  "PSI_CPU_SOME_MAX_PCT": null,
   "SCHEMA_VERSION_FOR_RUN": "vb-results/3",
   "SEEDS": [
     20260914,
@@ -161,6 +161,8 @@ A slower die lowers `C`, so `F` rises for every host-bound arm; an A6000 pass is
   "STEAL_PCT_MAX": 0.0,
   "S_REPEATS": 3,
   "UNFROZEN_THRESHOLDS": [
+    "PSI_CPU_SOME_MAX_PCT",
+    "PSI_CPU_FULL_MAX_PCT",
     "AA_SPREAD_MAX_PCT",
     "NULL_FLOOR_TOLERANCE_PCT"
   ],
