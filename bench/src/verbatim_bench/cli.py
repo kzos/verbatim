@@ -19,6 +19,7 @@ from verbatim_bench.wer import Batch1Reference, ReferenceError, load_batch1_refe
 
 if TYPE_CHECKING:
     from verbatim_bench.ladder import RungPlan
+    from verbatim_bench.results import RunResult
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -107,6 +108,20 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="the server's own process id, so its compute process is not counted foreign",
+    )
+    ladder.add_argument(
+        "--processes",
+        type=int,
+        default=1,
+        help=(
+            "spread each rung's streams across this many load processes, each running "
+            "the same event loop, and combine them into one rung. One event loop loses "
+            "its own send schedule well below the concurrency the MVP bar asks for, so a "
+            "ladder run at 1 measures the generator above a few tens of streams. The "
+            "rung is the same rung whatever this is: the same seed puts the same session "
+            "in the same slot, the window opens at one instant in every process, and the "
+            "host record is taken once for the box"
+        ),
     )
     ladder.add_argument("--gpu-index", type=int, default=0)
     ladder.add_argument(
@@ -429,8 +444,10 @@ def _ladder(args: argparse.Namespace) -> int:
         LiveSmiProbe,
         WindowRecorder,
         run_load_recorded,
+        run_sharded_load_recorded,
     )
     from verbatim_bench.ladder import Rung, run_ladder, rung_from_run
+    from verbatim_bench.multiproc import run_sharded_load
 
     try:
         seeds = tuple(int(part) for part in str(args.seeds).split(",") if part.strip())
@@ -439,6 +456,10 @@ def _ladder(args: argparse.Namespace) -> int:
         return 1
     if not seeds:
         print("verbatim-bench: --seeds must list at least one seed")
+        return 1
+    processes = int(args.processes)
+    if processes < 1:
+        print("verbatim-bench: --processes must be >= 1")
         return 1
     n0 = args.n0
     if n0 is None:
@@ -480,6 +501,11 @@ def _ladder(args: argparse.Namespace) -> int:
         else:
             probe = LiveSmiProbe()
 
+    async def _run_unrecorded(spec: LoadSpec) -> RunResult:
+        if processes == 1:
+            return await run_load(spec)
+        return (await run_sharded_load(spec, processes=processes)).result
+
     def _make_rung(plan: RungPlan) -> Rung:
         spec = ladder_load_spec(args, plan, chunk)
         host = None
@@ -490,10 +516,13 @@ def _ladder(args: argparse.Namespace) -> int:
                 server_pid=int(args.server_pid),
                 interval_s=interval_s,
             )
-            result = asyncio.run(run_load_recorded(spec, recorder))
+            if processes == 1:
+                result = asyncio.run(run_load_recorded(spec, recorder))
+            else:
+                result = asyncio.run(run_sharded_load_recorded(spec, recorder, processes=processes))
             host = recorder.finish()
         else:
-            result = asyncio.run(run_load(spec))
+            result = asyncio.run(_run_unrecorded(spec))
         return rung_from_run(
             result,
             plan=plan,
@@ -531,6 +560,10 @@ def _ladder(args: argparse.Namespace) -> int:
             "warm_up_cap_s": float(args.warm_up_cap_s),
             "ramp_s": float(args.ramp_s),
             "frame_ms": int(args.frame_ms),
+            # How many load processes drove each rung. One is one event loop, which is
+            # what every ladder before this ran; anything more is the same rung split
+            # across that many, combined over one shared window.
+            "processes": processes,
             # Which batch-1 reference the WER criterion was read against, or null when
             # no reference was supplied and no rung evaluated it. A rung's
             # `wer_vs_batch1` is the signed difference from this number, so the two

@@ -258,7 +258,7 @@ promised date — that is for triage once an entry becomes an issue.
   script on purpose, so that the denominator of a comparison this project wants to win is not written by
   this project.
 
-- `bench/src/verbatim_bench/pace.py` — **build the multi-process generator: the target is now measured
+- ~~`bench/src/verbatim_bench/pace.py` — **build the multi-process generator: the target is now measured
   and sits three and a half times above what one process can drive.** NVIDIA's own file-driven script,
   at the release we run, with our checkpoint and corpus on an A6000, reaches 139.71 times real time with
   a warm-up step. The MVP bar is eight tenths of that, so about 112 concurrent streams sustained. One
@@ -266,7 +266,15 @@ promised date — that is for triage once an entry becomes an issue.
   be shown to have cleared it.** This supersedes the earlier decision to defer the work until a ladder
   reached the pacing gate: that deferral rested on the necessity being a prediction, and it is now a
   measurement of the target rather than a forecast of the instrument. The real work is not the processes
-  but aggregating per-process samples into one rung without double-counting a window.
+  but aggregating per-process samples into one rung without double-counting a window.~~
+  **Done 2026-09-13** by [DR-0009](decisions/0009-one-rung-across-several-processes-one-window.md):
+  `verbatim-bench ladder --processes N`, `bench/src/verbatim_bench/multiproc.py`. The window opens at
+  one broadcast instant recorded verbatim in every process and `combine_shards` refuses any rung whose
+  processes disagree about it; convergence is decided in the coordinator on the rung's pooled raw
+  samples; slots are named by their rung index and dealt round-robin so the seed reproduces the same
+  assignment at any `--processes`; the host record is taken once for the box, with the client's CPU
+  summed over every load process so that gate keeps its teeth. Which `N` a canonical row runs at is
+  still a measurement to be made on the box.
 
 - `bench/src/verbatim_bench/pace.py` — **the load generator is the binding constraint on this box, not
   the server.** Measured 2026-09-11 while calibrating the pressure thresholds, nine 180 s null-floor
@@ -276,12 +284,18 @@ promised date — that is for triage once an entry becomes an issue.
   hold a 20 ms send schedule for that many streams. So a ladder on this box will go invalid for
   `pacing_slip` somewhere between 32 and 128 streams, before any server limit appears, while the server
   at six streams sat 116 ms inside a 310 ms budget.
-  **Do not build a multi-process generator yet.** Run the ladder first and read which gate binds: if a
+  ~~**Do not build a multi-process generator yet.** Run the ladder first and read which gate binds: if a
   rung fails on latency before the generator goes invalid on pacing, the server's ceiling is inside the
   instrument's range and a second process buys nothing. If rungs go invalid on pacing first, the
   instrument is the limit and the generator must be split across processes, with the aggregation of
   per-process samples into one rung as the real work. Deciding that by measurement costs one ladder run;
-  deciding it by assumption costs a rewrite that may be unnecessary.
+  deciding it by assumption costs a rewrite that may be unnecessary.~~
+  **Superseded 2026-09-13** by [DR-0009](decisions/0009-one-rung-across-several-processes-one-window.md).
+  The deferral rested on the necessity being a prediction. The file-driven ceiling then measured the
+  target at about 112 sustained streams, which is three and a half times what one process drives, so a
+  ladder on one process cannot reach the concurrency the bar is defined at whichever gate binds first.
+  The generator is split; `--processes` still defaults to 1, so the deferred question of which `N` a
+  canonical row runs at is answered by measurement rather than by this entry.
 
 - `bench/src/verbatim_bench/client.py::_run_session_inner` — **the seeded frame jitter shapes no send
   and only corrupts the slip measurement.** The send loop sleeps to `t0 + frame_index * frame_period_s`
