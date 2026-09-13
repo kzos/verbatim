@@ -303,11 +303,9 @@ def test_the_pacing_tolerance_has_exactly_one_definition(monkeypatch) -> None:
     tolerance as one executed against a full host record, because there is one place the
     constant is read.
 
-    The host record's pressure thresholds are still unfrozen, so `rung_validity` returns
-    `PSI_THRESHOLD_UNFROZEN` before it reaches anything else and the shared tolerance
-    cannot be observed through it. The patch here stands in for the day they are frozen;
-    `test_an_unfrozen_pressure_threshold_makes_the_rung_invalid` covers the short circuit
-    itself.
+    Processor pressure is recorded and gates nothing (DR-0008), so the pacing check is
+    reached whatever the pressure thresholds are; the patch below is kept only so the
+    test does not depend on their value.
     """
     assert pacing_slip_validity(constants.PACING_SLIP_P99_MAX_MS) is None
     just_over = constants.PACING_SLIP_P99_MAX_MS + 1e-9

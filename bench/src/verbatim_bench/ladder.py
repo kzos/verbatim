@@ -58,6 +58,8 @@ RUNG_PASS_CRITERIA: Final = frozenset(
 class InvalidReason(StrEnum):
     CLIENT_CPU = "client_cpu"
     STEAL = "steal"
+    # Unreachable since DR-0008: processor pressure is recorded on every rung and gates
+    # nothing. Kept so records written before that still name their reason.
     PSI = "psi"
     PSI_THRESHOLD_UNFROZEN = "psi_threshold_unfrozen"
     CGROUP_THROTTLED = "cgroup_throttled"
@@ -671,8 +673,6 @@ def rung_validity(
     it and none of the host counters this function needs. One definition, reachable two
     ways, so a rung run without a host record cannot end up with a different tolerance.
     """
-    if constants.PSI_CPU_SOME_MAX_PCT is None or constants.PSI_CPU_FULL_MAX_PCT is None:
-        return InvalidReason.PSI_THRESHOLD_UNFROZEN
     # The record's client CPU is a percentage of the effective cpuset, by name and by
     # computation, and the frozen budget is a fraction; the gate compares the one against
     # the other as a percentage and guesses no unit from a value's size. A guess did once:
@@ -683,13 +683,16 @@ def rung_validity(
         return InvalidReason.CLIENT_CPU
     if counters.steal_pct > constants.STEAL_PCT_MAX:
         return InvalidReason.STEAL
-    if (
-        counters.psi_cpu_some_avg is None
-        or counters.psi_cpu_full_avg is None
-        or counters.psi_cpu_some_avg > constants.PSI_CPU_SOME_MAX_PCT
-        or counters.psi_cpu_full_avg > constants.PSI_CPU_FULL_MAX_PCT
-    ):
-        return InvalidReason.PSI
+    # Processor pressure is RECORDED and NOT GATED, per DR-0008. Two scopes were tried
+    # and both are structurally unfit as a fixed threshold. The machine-wide file is
+    # dominated by background this measurement neither causes nor controls: it read five
+    # times the scoped figure over the same windows, and its idle floor was most of its
+    # loaded value. This session's own cgroup measures the opposite problem, our own load,
+    # which is the variable a capacity search sweeps: 0.04 idle, 0.12 at six streams, 0.23
+    # at sixteen. A fixed ceiling on that is a ceiling on concurrency wearing a validity
+    # check's clothes. Subtracting one from the other is not available either, because
+    # pressure shares are not additive across cgroups. The readings stay on every rung so
+    # a later instrument can be calibrated from them.
     if (
         counters.cgroup_nr_throttled_delta > constants.CGROUP_THROTTLED_DELTA_MAX
         or counters.cgroup_throttled_usec_delta > constants.CGROUP_THROTTLED_DELTA_MAX

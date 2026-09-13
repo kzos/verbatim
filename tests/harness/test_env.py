@@ -521,7 +521,6 @@ def test_a_leaf_without_cpu_pressure_is_reported_not_widened(
     or the system file, the record says the scope was unavailable, and the gate holds the
     rung invalid for pressure, the existing reason for a reading it does not have."""
     from test_ladder import _counters
-    from verbatim_bench import constants
     from verbatim_bench.ladder import InvalidReason, rung_validity
 
     procfs = _fake_host_tree(tmp_path)
@@ -548,7 +547,9 @@ def test_a_leaf_without_cpu_pressure_is_reported_not_widened(
     assert counters.psi_cpu_some_avg is None
     assert counters.psi_cpu_full_avg is None
     assert counters.psi_system_some_pct == pytest.approx(3.0)  # context still recorded
-    monkeypatch.setattr(constants, "PSI_CPU_SOME_MAX_PCT", 100.0)
-    monkeypatch.setattr(constants, "PSI_CPU_FULL_MAX_PCT", 100.0)
-    unavailable = _counters(psi_cpu_some_avg=None, psi_cpu_full_avg=None)
-    assert rung_validity(unavailable, fake_gpu_facts(), 1.0) is InvalidReason.PSI
+    # The unavailable scope is recorded; since DR-0008 no pressure reading gates a rung.
+    del monkeypatch
+    unavailable = _counters(psi_cpu_some_avg=None, psi_cpu_full_avg=None, psi_scope="unavailable")
+    assert unavailable.psi_scope == "unavailable"
+    assert rung_validity(unavailable, fake_gpu_facts(), 1.0) is None
+    assert InvalidReason.PSI.value == "psi"  # the reason survives for older records
