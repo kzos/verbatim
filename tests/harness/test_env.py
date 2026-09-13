@@ -20,6 +20,7 @@ from verbatim_bench.env import (
     collect,
     fake_gpu_facts,
     harness_identity,
+    leaf_cgroup,
     own_cgroup,
     parse_smi_xml,
     read_box,
@@ -467,29 +468,87 @@ def test_pressure_totals_are_read_per_line(tmp_path: Path) -> None:
     assert _window_pressure_pct(5, 3, 10.0) == 0.0  # a counter never runs backwards; clamp
 
 
-def test_host_sampler_reports_the_windows_stall_fraction_from_the_counter_delta(
+def _pressure(some_total: int, full_total: int) -> str:
+    return (
+        f"some avg10=9.00 avg60=9.00 avg300=9.00 total={some_total}\n"
+        f"full avg10=9.00 avg60=9.00 avg300=9.00 total={full_total}\n"
+    )
+
+
+LEAF = "user.slice/user-1001.slice/session-4.scope"
+
+
+def test_pressure_is_read_from_the_sessions_own_leaf_cgroup_not_its_parent(
     tmp_path: Path,
 ) -> None:
-    """The window's pressure is the stall counter's delta over the window, exact: nothing
-    that stalled before the window opened is in it, however recent."""
+    """The gate reads the leaf `/proc/self/cgroup` names. The parent slice is shared with
+    everything else in it and the system file with everything on the box; both carry
+    stalls this measurement did not cause, so they are context, never the reading.
+    `full` in a cgroup is an ordinary value: all of *our* tasks stalled, which happens."""
     procfs = _fake_host_tree(tmp_path)
     cgroupfs = tmp_path / "cgroup"
-    _write(
-        procfs / "pressure" / "cpu",
-        "some avg10=9.00 avg60=9.00 avg300=9.00 total=1000000\n"
-        "full avg10=9.00 avg60=9.00 avg300=9.00 total=500000\n",
-    )
+    _write(procfs / "self" / "cgroup", f"0::/{LEAF}\n")
+    _write(cgroupfs / LEAF / "cpu.pressure", _pressure(1_000_000, 500_000))
+    _write(cgroupfs / "user.slice" / "cpu.pressure", _pressure(7_000_000, 0))
+    _write(procfs / "pressure" / "cpu", _pressure(20_000_000, 0))
+    assert leaf_cgroup(procfs, cgroupfs) == cgroupfs / LEAF
     now = [100.0]
     sampler = HostSampler(
-        server_pid=None, client_pid=None, procfs=procfs, cgroupfs=cgroupfs, clock=lambda: now[0]
+        server_pid=None,
+        client_pid=None,
+        procfs=procfs,
+        cgroupfs=cgroupfs,
+        clock=lambda: now[0],
+        cgroup_root=cgroupfs,
     )
     sampler.start()
     now[0] = 110.0  # a ten-second window
-    _write(
-        procfs / "pressure" / "cpu",
-        "some avg10=9.00 avg60=9.00 avg300=9.00 total=1050000\n"
-        "full avg10=9.00 avg60=9.00 avg300=9.00 total=502000\n",
-    )
+    _write(cgroupfs / LEAF / "cpu.pressure", _pressure(1_050_000, 502_000))
+    _write(cgroupfs / "user.slice" / "cpu.pressure", _pressure(7_900_000, 0))
+    _write(procfs / "pressure" / "cpu", _pressure(20_300_000, 0))
     counters = sampler.stop()
-    assert counters.psi_cpu_some_avg == pytest.approx(0.5)  # 50 ms stalled of 10 s
-    assert counters.psi_cpu_full_avg == pytest.approx(0.02)
+    assert counters.psi_scope == f"cgroup:/{LEAF}"
+    assert counters.psi_cpu_some_avg == pytest.approx(0.5)  # 50 ms of our stall in 10 s
+    assert counters.psi_cpu_full_avg == pytest.approx(0.02)  # non-zero full: ordinary
+    assert counters.psi_system_some_pct == pytest.approx(3.0)  # the box, as context
+    assert counters.psi_system_full_pct == pytest.approx(0.0)
+
+
+def test_a_leaf_without_cpu_pressure_is_reported_not_widened(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No scoped reading means no reading: the sampler does not fall back to the parent
+    or the system file, the record says the scope was unavailable, and the gate holds the
+    rung invalid for pressure, the existing reason for a reading it does not have."""
+    from test_ladder import _counters
+    from verbatim_bench import constants
+    from verbatim_bench.ladder import InvalidReason, rung_validity
+
+    procfs = _fake_host_tree(tmp_path)
+    cgroupfs = tmp_path / "cgroup"
+    _write(procfs / "self" / "cgroup", f"0::/{LEAF}\n")
+    (cgroupfs / LEAF).mkdir(parents=True)
+    _write(cgroupfs / "user.slice" / "cpu.pressure", _pressure(7_000_000, 0))
+    _write(procfs / "pressure" / "cpu", _pressure(20_000_000, 0))
+    now = [100.0]
+    sampler = HostSampler(
+        server_pid=None,
+        client_pid=None,
+        procfs=procfs,
+        cgroupfs=cgroupfs,
+        clock=lambda: now[0],
+        cgroup_root=cgroupfs,
+    )
+    sampler.start()
+    now[0] = 110.0
+    _write(cgroupfs / "user.slice" / "cpu.pressure", _pressure(7_900_000, 0))
+    _write(procfs / "pressure" / "cpu", _pressure(20_300_000, 0))
+    counters = sampler.stop()
+    assert counters.psi_scope == "unavailable"
+    assert counters.psi_cpu_some_avg is None
+    assert counters.psi_cpu_full_avg is None
+    assert counters.psi_system_some_pct == pytest.approx(3.0)  # context still recorded
+    monkeypatch.setattr(constants, "PSI_CPU_SOME_MAX_PCT", 100.0)
+    monkeypatch.setattr(constants, "PSI_CPU_FULL_MAX_PCT", 100.0)
+    unavailable = _counters(psi_cpu_some_avg=None, psi_cpu_full_avg=None)
+    assert rung_validity(unavailable, fake_gpu_facts(), 1.0) is InvalidReason.PSI

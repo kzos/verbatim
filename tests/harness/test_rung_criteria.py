@@ -503,7 +503,9 @@ def test_a_reference_that_does_not_describe_the_run_is_a_usage_error(tmp_path) -
     assert not (Path(tmp_path / "out") / "ladder.json").exists()
 
 
-def test_the_client_cpu_gate_reads_a_percentage_as_a_percentage() -> None:
+def test_the_client_cpu_gate_reads_a_percentage_as_a_percentage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The record's client CPU is a percentage of the cpuset. A generator at three quarters
     of one percent is within a fifty-percent budget; one at sixty percent is not. Both
     ends are pinned so no single wrong conversion can satisfy them: a heuristic that read
@@ -511,6 +513,8 @@ def test_the_client_cpu_gate_reads_a_percentage_as_a_percentage() -> None:
     capacity search's every rung."""
     from test_ladder import _counters
 
+    monkeypatch.setattr(constants, "PSI_CPU_SOME_MAX_PCT", 100.0)
+    monkeypatch.setattr(constants, "PSI_CPU_FULL_MAX_PCT", 100.0)
     assert rung_validity(_counters(client_cpu_pct_of_cpuset=0.75), fake_gpu_facts(), 1.0) is None
     assert rung_validity(_counters(client_cpu_pct_of_cpuset=49.9), fake_gpu_facts(), 1.0) is None
     assert (

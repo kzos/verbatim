@@ -79,16 +79,24 @@ def test_no_pressure_samples_is_a_refusal_not_a_zero() -> None:
         thresholds_from([])
 
 
+LEAF = "user.slice/user-1001.slice/session-4.scope"
+
+
 def _quiet_tree(tmp_path: Path, *, steal: int = 0, load: str = "0.20 0.10 0.10 1/100 1\n"):
     procfs = _fake_host_tree(tmp_path, steal=steal, nr=2, usec=5000)
     _write(procfs / "loadavg", load)
     _write(procfs / "pressure" / "cpu", PRESSURE)
+    # The session's own leaf cgroup, whose cpu.pressure the gate reads; static totals.
+    _write(procfs / "self" / "cgroup", f"0::/{LEAF}\n")
+    _write(tmp_path / "cgroup" / LEAF / "cpu.pressure", PRESSURE)
     return procfs, tmp_path / "cgroup"
 
 
 def test_observe_quiet_passes_a_quiet_box_and_records_pressure(tmp_path: Path) -> None:
     procfs, cgroupfs = _quiet_tree(tmp_path)
-    reading = observe_quiet(duration_s=0.0, procfs=procfs, cgroupfs=cgroupfs, sleep=lambda s: None)
+    reading = observe_quiet(
+        duration_s=0.0, procfs=procfs, cgroupfs=cgroupfs, sleep=lambda s: None, cgroup_root=cgroupfs
+    )
     assert reading.refusal is None
     assert reading.psi_some == pytest.approx(0.12)
     assert reading.psi_full == pytest.approx(0.03)
@@ -105,11 +113,17 @@ def test_observe_quiet_refuses_steal_load_and_a_foreign_gpu_process(tmp_path: Pa
         _write(procfs / "stat", "cpu  200 0 200 1600 0 0 0 20 0 0\n")
         sampler_seen.append("slept")
 
-    stolen = observe_quiet(duration_s=1.0, procfs=procfs, cgroupfs=cgroupfs, sleep=sleep)
+    stolen = observe_quiet(
+        duration_s=1.0, procfs=procfs, cgroupfs=cgroupfs, sleep=sleep, cgroup_root=cgroupfs
+    )
     assert stolen.refusal is not None and "steal" in stolen.refusal
     busy_procfs, busy_cgroupfs = _quiet_tree(tmp_path / "busy", load="40.00 30.00 20.00 5/100 1\n")
     busy = observe_quiet(
-        duration_s=0.0, procfs=busy_procfs, cgroupfs=busy_cgroupfs, sleep=lambda s: None
+        duration_s=0.0,
+        procfs=busy_procfs,
+        cgroupfs=busy_cgroupfs,
+        sleep=lambda s: None,
+        cgroup_root=busy_cgroupfs,
     )
     assert busy.refusal is not None and "load average" in busy.refusal
     calm_procfs, calm_cgroupfs = _quiet_tree(tmp_path / "gpu")
@@ -118,6 +132,7 @@ def test_observe_quiet_refuses_steal_load_and_a_foreign_gpu_process(tmp_path: Pa
         duration_s=0.0,
         procfs=calm_procfs,
         cgroupfs=calm_cgroupfs,
+        cgroup_root=calm_cgroupfs,
         gpu=probe,
         server_pid=4242,
         sleep=lambda s: None,
@@ -133,6 +148,7 @@ async def test_calibration_refuses_a_busy_box_before_running_any_load(tmp_path: 
             manifest=tmp_path / "missing.jsonl",  # never read: the refusal comes first
             procfs=procfs,
             cgroupfs=cgroupfs,
+            cgroup_root=cgroupfs,
             quiet_s=0.0,
             sleep=lambda s: None,
         )
@@ -159,6 +175,7 @@ async def test_calibration_runs_the_null_floor_and_writes_provenance(tmp_path: P
         quiet_s=0.0,
         procfs=procfs,
         cgroupfs=cgroupfs,
+        cgroup_root=cgroupfs,
         sysfs=sysfs,
         repo_root=Path(__file__).resolve().parents[2],
         sleep=lambda s: None,
@@ -245,13 +262,16 @@ def test_observe_quiet_records_both_ends_of_the_pressure_decay(tmp_path: Path) -
         seen.append("slept")
         _write(procfs / "pressure" / "cpu", PRESSURE.replace("avg60=0.12", "avg60=0.01"))
 
-    reading = observe_quiet(duration_s=1.0, procfs=procfs, cgroupfs=cgroupfs, sleep=sleep)
+    reading = observe_quiet(
+        duration_s=1.0, procfs=procfs, cgroupfs=cgroupfs, sleep=sleep, cgroup_root=cgroupfs
+    )
     assert seen == ["slept"]
     assert reading.psi_some_start == pytest.approx(0.12)
     assert reading.psi_some == pytest.approx(0.01)
     doc = reading.to_json_dict()
     assert doc["avg60_some_start"] == pytest.approx(0.12)
     assert doc["psi_some_window_pct"] == pytest.approx(0.0)  # a static counter: no stall
+    assert doc["psi_scope"] == f"cgroup:/{LEAF}"
 
 
 async def test_a_calibration_against_the_server_under_test_names_it_and_the_reference(
@@ -281,6 +301,7 @@ async def test_a_calibration_against_the_server_under_test_names_it_and_the_refe
                 quiet_s=0.0,
                 procfs=procfs,
                 cgroupfs=cgroupfs,
+                cgroup_root=cgroupfs,
                 sysfs=sysfs,
                 sleep=lambda s: None,
             )

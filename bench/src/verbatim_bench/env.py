@@ -468,11 +468,15 @@ class BoxFacts:
 @dataclass(frozen=True, slots=True)
 class HostCounters:
     """One window's host counters, deltas over the window. ``psi_cpu_some_avg`` is the
-    percentage of the window during which at least one task stalled on CPU, and
-    ``psi_cpu_full_avg`` during which every task did, both from the delta of
-    ``/proc/pressure/cpu``'s monotonic ``total`` counters over the window: exact, and
-    carrying nothing from before the window opened. None where the box exposes no
-    pressure information."""
+    percentage of the window during which at least one of *our* tasks stalled on CPU,
+    and ``psi_cpu_full_avg`` during which all of them did, both from the delta of the
+    monotonic ``total`` counters in the ``cpu.pressure`` file of the session's own leaf
+    cgroup (``psi_scope`` names it): exact, carrying nothing from before the window
+    opened, and nothing the rest of the box was doing. The system-wide
+    ``/proc/pressure/cpu`` deltas ride alongside as ``psi_system_*`` for context; they
+    are dominated by background this measurement neither causes nor controls. None, and
+    ``psi_scope == "unavailable"``, where the leaf has no ``cpu.pressure``: a reading the
+    gate does not have is reported, never widened to a scope it did not ask for."""
 
     steal_pct: float
     psi_cpu_some_avg: float | None
@@ -487,6 +491,9 @@ class HostCounters:
     client_cpu_pct_of_cpuset: float
     client_processes: int
     server_cpu_s_per_stream_hour: float | None
+    psi_scope: str = "unavailable"
+    psi_system_some_pct: float | None = None
+    psi_system_full_pct: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -558,6 +565,22 @@ def own_cgroup(procfs: Path = Path("/proc"), cgroupfs: Path = Path("/sys/fs/cgro
                 candidate = candidate.parent
             break
     return cgroupfs
+
+
+def leaf_cgroup(
+    procfs: Path = Path("/proc"), cgroup_root: Path = Path("/sys/fs/cgroup")
+) -> Path | None:
+    """The process's own cgroup, the leaf ``/proc/self/cgroup`` names, or None when it
+    cannot be resolved. Distinct from `own_cgroup`, which walks up to the ancestor that
+    enforces the CPU quota: pressure is read here, at the leaf, because an ancestor is
+    shared with everything else in the slice and would carry their stalls into ours."""
+    text = _read_text_file(procfs / "self" / "cgroup") or ""
+    for line in text.splitlines():
+        parts = line.strip().split(":", 2)
+        if len(parts) == 3 and parts[0] == "0":
+            candidate = cgroup_root / parts[2].lstrip("/")
+            return candidate if candidate.is_dir() else None
+    return None
 
 
 def _read_text_file(path: Path) -> str | None:
@@ -1129,11 +1152,17 @@ def _read_pressure_avg(procfs: Path) -> tuple[float | None, float | None]:
 
 
 def _read_pressure_totals(procfs: Path) -> tuple[int | None, int | None]:
-    """The ``total`` stall counters of ``/proc/pressure/cpu``, microseconds, monotonic:
-    ``some`` (at least one task stalled) and ``full`` (every task stalled). Their delta over
-    a window divided by the window is the window's pressure exactly, with no decay and no
-    memory of what came before the window opened, which the ``avg`` fields carry."""
-    text = _read_text_file(procfs / "pressure" / "cpu")
+    """The system-wide ``/proc/pressure/cpu`` counters; see `_read_pressure_file`."""
+    return _read_pressure_file(procfs / "pressure" / "cpu")
+
+
+def _read_pressure_file(path: Path | None) -> tuple[int | None, int | None]:
+    """The ``total`` stall counters of a PSI file, microseconds, monotonic: ``some`` (at
+    least one task stalled) and ``full`` (every task stalled). Their delta over a window
+    divided by the window is the window's pressure exactly, with no decay and no memory
+    of what came before the window opened, which the ``avg`` fields carry. The same shape
+    serves ``/proc/pressure/cpu`` and a cgroup's ``cpu.pressure``."""
+    text = _read_text_file(path) if path is not None else None
     if not text:
         return None, None
     some: int | None = None
@@ -1245,10 +1274,21 @@ class HostSampler:
         procfs: Path = Path("/proc"),
         cgroupfs: Path | None = None,
         clock: Callable[[], float] = time.monotonic,
+        cgroup_root: Path = Path("/sys/fs/cgroup"),
     ) -> None:
         if cgroupfs is None:
-            cgroupfs = own_cgroup(procfs)
+            cgroupfs = own_cgroup(procfs, cgroup_root)
         self._clock = clock
+        leaf = leaf_cgroup(procfs, cgroup_root)
+        pressure = leaf / "cpu.pressure" if leaf is not None else None
+        self._pressure_path = pressure if pressure is not None and pressure.is_file() else None
+        self._psi_scope = (
+            "cgroup:/" + str(leaf.relative_to(cgroup_root)).strip(".")
+            if self._pressure_path is not None and leaf is not None
+            else "unavailable"
+        )
+        self._start_sys_some: int | None = None
+        self._start_sys_full: int | None = None
         self._server_pid = server_pid
         self._client_pid = client_pid if client_pid is not None else os.getpid()
         self._procfs = procfs
@@ -1283,7 +1323,8 @@ class HostSampler:
     def start(self) -> None:
         self._start_wall = self._clock()
         self._start_total, self._start_steal = _read_proc_stat_cpu(self._procfs)
-        self._start_some, self._start_full = _read_pressure_totals(self._procfs)
+        self._start_some, self._start_full = _read_pressure_file(self._pressure_path)
+        self._start_sys_some, self._start_sys_full = _read_pressure_totals(self._procfs)
         self._start_nr, self._start_usec = _read_cgroup_throttled(self._cgroupfs)
         self._start_load = _read_loadavg(self._procfs)
         if self._server_pid is not None:
@@ -1314,9 +1355,12 @@ class HostSampler:
         total_delta = max(end_total - self._start_total, 0)
         steal_delta = max(end_steal - self._start_steal, 0)
         steal_pct = (steal_delta / total_delta * 100.0) if total_delta else 0.0
-        end_some, end_full = _read_pressure_totals(self._procfs)
+        end_some, end_full = _read_pressure_file(self._pressure_path)
         psi_some = _window_pressure_pct(self._start_some, end_some, wall)
         psi_full = _window_pressure_pct(self._start_full, end_full, wall)
+        end_sys_some, end_sys_full = _read_pressure_totals(self._procfs)
+        psi_sys_some = _window_pressure_pct(self._start_sys_some, end_sys_some, wall)
+        psi_sys_full = _window_pressure_pct(self._start_sys_full, end_sys_full, wall)
         cpuset_text = _read_text_file(self._cgroupfs / "cpuset.cpus.effective")
         cpuset_size = _cpuset_size(cpuset_text)
         try:
@@ -1369,6 +1413,9 @@ class HostSampler:
             client_cpu_pct_of_cpuset=client_pct,
             client_processes=client_processes,
             server_cpu_s_per_stream_hour=server_cpu_s,
+            psi_scope=self._psi_scope,
+            psi_system_some_pct=psi_sys_some,
+            psi_system_full_pct=psi_sys_full,
         )
 
 
