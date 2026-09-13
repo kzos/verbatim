@@ -71,7 +71,7 @@ The validity thresholds are `CLIENT_CPU_MAX_FRACTION_OF_CPUSET <= 0.5`, `PACING_
 
 ### Not Yet Frozen
 
-`AA_SPREAD_MAX_PCT` and `NULL_FLOOR_TOLERANCE_PCT` are `null` because no calibration has produced a value. `PSI_CPU_SOME_MAX_PCT` and `PSI_CPU_FULL_MAX_PCT` were `null` on the freeze date, were filled on 2026-09-11 by `verbatim-bench calibrate-psi` from the system-wide `/proc/pressure/cpu` counters (DR-0007), and are `null` again: that file is dominated by background the measurement does not control, so the gate now reads the `total` counters of the session's own leaf cgroup's `cpu.pressure`, and the values are re-calibrated on that instrument by the same command before the first run, as the maximum over every clean window of the window's own stall fraction, no safety factor. A threshold still `null` on the freeze date is filled from a calibration performed by the harness itself on the box, in a one-line commit made before the first run. A rung measured while any required threshold is `null` is invalid rather than passing.
+`AA_SPREAD_MAX_PCT` and `NULL_FLOOR_TOLERANCE_PCT` are `null` because no calibration has produced a value. `PSI_CPU_SOME_MAX_PCT` and `PSI_CPU_FULL_MAX_PCT` are `0.13` and `0.12`. Both are filled by `verbatim-bench calibrate-psi` on the box, against the server under test at the reference concurrency, from the `total` stall counters of this session's own leaf cgroup's `cpu.pressure`, as the maximum over every clean window of the window's own stall fraction, with no safety factor. The machine-wide counters ride beside the scoped ones in every host record as the background the scoped reading removes. The route from the freeze date to these values, including the two instruments that were tried and withdrawn, is in DR-0007. A threshold still `null` on the freeze date is filled from a calibration performed by the harness itself on the box, in a one-line commit made before the first run. A rung measured while any required threshold is `null` is invalid rather than passing.
 
 **an invalid run is re-run, never footnoted.** Two consecutive invalid rungs abort the ladder as `host unfit` and release the box.
 
@@ -149,8 +149,8 @@ A slower die lowers `C`, so `F` rises for every host-bound arm; an A6000 pass is
   "NVML_THROTTLE_EVENTS_MAX": 0,
   "PACING_PROFILE": "uniform",
   "PACING_SLIP_P99_MAX_MS": 5.0,
-  "PSI_CPU_FULL_MAX_PCT": null,
-  "PSI_CPU_SOME_MAX_PCT": null,
+  "PSI_CPU_FULL_MAX_PCT": 0.12,
+  "PSI_CPU_SOME_MAX_PCT": 0.13,
   "SCHEMA_VERSION_FOR_RUN": "vb-results/3",
   "SEEDS": [
     20260914,
@@ -161,8 +161,6 @@ A slower die lowers `C`, so `F` rises for every host-bound arm; an A6000 pass is
   "STEAL_PCT_MAX": 0.0,
   "S_REPEATS": 3,
   "UNFROZEN_THRESHOLDS": [
-    "PSI_CPU_SOME_MAX_PCT",
-    "PSI_CPU_FULL_MAX_PCT",
     "AA_SPREAD_MAX_PCT",
     "NULL_FLOOR_TOLERANCE_PCT"
   ],

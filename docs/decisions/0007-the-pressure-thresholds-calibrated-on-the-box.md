@@ -133,3 +133,44 @@ available only because the rule was wrong about why it was needed.
   and the decay was still in the estimator; runs 3 and 4 were stopped before landing when the estimator
   itself was replaced. The sequence is the record: a threshold that changed by a factor of forty across
   attempts is worth nothing until the instrument producing it is right.
+
+
+## Amendment, 2026-09-13: the instrument was wrong, and the thresholds are 0.13 and 0.12
+
+Two instruments were tried and withdrawn before this one.
+
+**The machine-wide file could not work.** Every reading taken with `/proc/pressure/cpu` fell between
+0.22 and 0.42 percent while the idle box alone read 0.325, so load moved the figure less than the
+background did, and not monotonically. Three calibrations produced 0.4, then 0.38, against a run needing
+0.42. A single frozen level in that band admits or rejects by which window it was taken in.
+
+**The gate now reads the session's own leaf cgroup**, resolved from `/proc/self/cgroup`, not the
+ancestor carrying the processor quota, which is shared with the whole user slice and would put the
+background straight back. Same rule otherwise: `total` counter deltas across the window, `some` and
+`full` each from its own counter, maximum over clean windows, no factor.
+
+Calibrated 2026-09-13 against the server under test at six streams, three windows:
+
+| | window 1 | window 2 | window 3 | threshold |
+|---|---|---|---|---|
+| scoped `some` | 0.1217 | 0.1193 | 0.1269 | **0.13** |
+| scoped `full` | 0.1127 | 0.1094 | 0.1158 | **0.12** |
+| machine-wide `some`, same windows | 0.679 | 0.652 | 0.630 | not used |
+
+The last row is the point. **The machine-wide file reads about five times the scoped one, and that
+difference is background this measurement neither causes nor controls.** The idle observation reads
+0.040 scoped against 0.572 machine-wide, which is the same statement with the load removed.
+
+`full` is no longer zero, at 0.12. A cgroup stalls in full whenever all of *its own* tasks are stalled,
+which is common, where the whole machine stalling is not. A zero threshold was never a property of the
+system; it was an artefact of asking the wrong scope.
+
+### What this cost, and what it bought
+
+Four calibration runs and two instrument changes, across two days, for two numbers. It bought a gate
+that measures the measurement instead of the machine, and it retired a zero threshold that would have
+been brittle for a reason nobody could have diagnosed from the number itself.
+
+The freeze guard caught the write-up on the way in: the first version of section 7 carried the history
+of all three attempts, and the rule against measured numbers in the frozen document rejected it. That
+was correct. **The document states the rule and the current values; the archaeology belongs here.**
