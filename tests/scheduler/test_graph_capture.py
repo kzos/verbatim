@@ -27,7 +27,9 @@ from verbatim.pipelines.fake import FakePipelineAdapter
 from verbatim.scheduler.boundary import PadPool
 from verbatim.scheduler.capture import (
     GRAPH_WARMUP_STEPS,
+    UPSTREAM_WARMUP_STEPS,
     CaptureController,
+    CaptureNotRetained,
     CapturePlan,
     UncapturedShape,
 )
@@ -106,11 +108,11 @@ def test_warmup_captures_one_graph_per_bucket_before_the_first_tick() -> None:
         GraphKey(chunk_ms=160, batch_size=8, keep_all_outputs=False),
     )
     assert pipeline.captures == list(loop.captured_graphs)
-    # Upstream's own warmup_steps is 3, so each shape is stepped three times and the
-    # two after the capture are replays of it. Nothing beyond the two buckets is
-    # stepped: warm-up is capture, not traffic.
+    # Upstream captures on the step whose count exceeds its own warmup_steps, so the
+    # capture is the LAST of the warm-up steps at a shape and none of them is a replay.
+    # Nothing beyond the two buckets is stepped: warm-up is capture, not traffic.
     assert pipeline.steps == 2 * GRAPH_WARMUP_STEPS
-    assert sorted(key.batch_size for key in pipeline.replays) == [4, 4, 8, 8]
+    assert pipeline.replays == []
 
 
 def test_warmup_captures_pad_rows_only_so_no_session_audio_is_involved() -> None:
@@ -122,14 +124,63 @@ def test_warmup_captures_pad_rows_only_so_no_session_audio_is_involved() -> None
 
 
 def test_each_shape_is_warmed_often_enough_for_upstream_to_capture_it() -> None:
-    """Upstream's ``CudaGraphsStreamingEncoderStep`` takes ``warmup_steps: int = 3``
-    (docs/ISSUES.md, issue 3), so a single step at a shape is not on its own enough to
-    be sure that shape ends up captured. Every bucket gets the same number of them."""
-    assert GRAPH_WARMUP_STEPS >= 3
+    """Upstream captures a shape on the call whose count at that shape *exceeds*
+    ``warmup_steps``, so warming exactly ``warmup_steps`` times captures nothing.
+
+    This is the test that was not here. It used to assert ``>= 3`` against upstream's
+    default of 3, which is exactly the off-by-one that shipped: on the B300 NeMo held
+    zero graphs after a three-step warm-up, and one after the next step. Every bucket
+    gets the same number of steps."""
+    assert GRAPH_WARMUP_STEPS > UPSTREAM_WARMUP_STEPS
     loop, pipeline = _loop((4, 8), elastic=True)
     del loop
     per_shape = Counter(size for size, _keep, _graph in pipeline.calls_seen)
     assert per_shape == {4: GRAPH_WARMUP_STEPS, 8: GRAPH_WARMUP_STEPS}
+
+
+def test_warmup_that_leaves_the_runtime_holding_nothing_is_refused() -> None:
+    """The guard that was missing. Upstream falls back to eager in silence -- on a
+    capture failure and for any step its own rules disqualify -- so a warm-up that
+    records a capture it did not make is how a server comes up announcing the graph
+    path and runs every tick eager.
+
+    The fake is given upstream's threshold one higher than the controller's warm-up,
+    which is precisely the shape of the shipped defect, and the controller must refuse
+    rather than record the key."""
+    pipeline = FakePipelineAdapter(
+        CHUNK,
+        buckets=(8,),
+        graphs=GraphCapability.graphed(),
+        graph_warmup_steps=GRAPH_WARMUP_STEPS,
+    )
+    controller = CaptureController(_config((8,)), pipeline)
+    with pytest.raises(CaptureNotRetained, match="holding 0 graphs"):
+        controller.warmup(PadPool(16, CHUNK))
+    assert controller.captured_keys == frozenset()
+
+
+def test_a_warmup_that_did_capture_is_accepted() -> None:
+    """The positive control: without it the refusal above would pass on a controller
+    that refused every warm-up."""
+    pipeline = _pipeline((8,))
+    controller = CaptureController(_config((8,)), pipeline)
+    captured = controller.warmup(PadPool(16, CHUNK))
+    assert captured == (controller.plan.steady_key(8),)
+    assert pipeline.retained_graphs() == 1
+
+
+def test_an_adapter_that_cannot_count_graphs_is_taken_at_its_word() -> None:
+    """``retained_graphs()`` returning None means "no answer", which is not zero. A
+    third-party adapter that cannot see its runtime's internals must still be able to
+    warm up."""
+
+    class _Speechless(FakePipelineAdapter):
+        def retained_graphs(self) -> int | None:
+            return None
+
+    pipeline = _Speechless(CHUNK, buckets=(8,), graphs=GraphCapability.graphed())
+    controller = CaptureController(_config((8,)), pipeline)
+    assert controller.warmup(PadPool(16, CHUNK)) == (controller.plan.steady_key(8),)
 
 
 def test_a_warmup_of_no_steps_is_refused() -> None:
@@ -159,10 +210,11 @@ def test_every_steady_step_replays_the_captured_graph_for_its_shape() -> None:
     assert all(graph for _size, _keep, graph in steady)
     assert all(size == 8 for size, _keep, _graph in steady)
     key = GraphKey(chunk_ms=160, batch_size=8, keep_all_outputs=False)
-    # Captured exactly once, then replayed by every warm-up step after the first and
-    # by every tick: the shape never changes, so the key never does either.
+    # Captured exactly once, on the last warm-up step, and replayed by every tick after
+    # it: the shape never changes, so the key never does either. No live tick pays for
+    # a capture, which is the whole point of warming up.
     assert pipeline.captures == [key]
-    assert pipeline.replays == [key] * (GRAPH_WARMUP_STEPS - 1 + 3)
+    assert pipeline.replays == [key] * 3
     assert all(stat.steady_graphed for stat in loop.stats)
 
 

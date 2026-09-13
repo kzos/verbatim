@@ -483,3 +483,24 @@ promised date — that is for triage once an entry becomes an issue.
   AST-walk test the docs already promise; as a side effect it also stops the project's own
   `grep -rn "import nemo\|import torch" src/` sanity check from permanently flagging the docstring line
   that describes the rule.
+
+## The graph path, after DR-0011
+
+- `src/verbatim/scheduler/capture.py` — warm-up now catches a capture that did not happen, by reading
+  the count the runtime holds. It does not catch a capture that happened and was later *evicted*:
+  upstream keeps at most `max_graphs` and drops nothing visibly, so a shape that stops being graphed
+  mid-run stops silently. A per-tick re-read of the count is cheap enough to consider, but it has to
+  be shown not to cost the tick before it goes in.
+
+- `src/verbatim/scheduler/capture.py` — upstream's `force_cuda_graphs_mode(...)` sets
+  `cuda_graphs_allow_fallback = False`, which turns a silent eager fallback into an exception at the
+  source rather than a count that failed to move. It is documented as testing-only and disables
+  fallback for the whole process, including shapes Verbatim runs eager on purpose, so it was not taken
+  in DR-0011. It is the right switch for a *measurement* run specifically, where a row that quietly
+  went eager is worse than a run that stops. Decide it as a serve flag, not as a default.
+
+- `src/verbatim/scheduler/capture.py` and `probes/graph_capture_truth.py` — `CapturePlan` assumes a
+  session's first frame shares the steady key. Upstream's key includes `drop_extra_pre_encoded`, and a
+  first frame may set a different one, in which case the first frame costs a second key rather than
+  sharing one and the graph budget is understated by one key per chunk mode. Read `_key_counts` after a
+  real ladder rung to settle it: more than one steady key means the assumption is wrong.

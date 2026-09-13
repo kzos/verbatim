@@ -27,6 +27,7 @@ from verbatim.config import ChunkMode
 from verbatim.core.errors import InvalidArgument
 from verbatim.core.types import PcmFrame, StepResult
 from verbatim.pipelines.base import (
+    UPSTREAM_WARMUP_STEPS,
     GraphCapability,
     GraphKey,
     GraphPathUnavailable,
@@ -150,10 +151,15 @@ class FakePipelineAdapter(PipelineAdapter):
     It fakes capture and replay at the same seam the real adapter uses. ``graphs``
     sets what ``graph_capability()`` reports, so the CPU suite can drive all three
     states -- graphed, eager by choice, and asked-for-but-absent -- on a machine that
-    has no graph path at all. The first ``graph=True`` call at a shape is recorded as
-    a capture and every later one at that shape as a replay, which is NeMo's own
-    lazy-on-first-sight behaviour; a ``graph=True`` call with no available graph path
-    raises instead of running, because a silent downgrade is the bug.
+    has no graph path at all. A ``graph=True`` call with no available graph path raises
+    instead of running, because a silent downgrade is the bug.
+
+    Capture follows upstream's rule and not a convenient one: a shape is captured on the
+    call whose count at that shape *exceeds* ``graph_warmup_steps``, and replayed after
+    that. It used to capture on first sight, which is what let a warm-up one step short
+    of upstream's threshold pass the whole CPU suite while capturing nothing on the
+    B300 (docs/decisions/0011). A fake that is easier to satisfy than the thing it
+    stands for is not a test double.
 
         The NeMo adapter is ``verbatim.pipelines.cache_aware_rnnt``; this fake exists so
     the scheduler is testable without a GPU, and must never be mistaken for it.
@@ -171,6 +177,7 @@ class FakePipelineAdapter(PipelineAdapter):
         partial_every: int = 1,
         batch_leak: Sequence[str] = (),
         graphs: GraphCapability | None = None,
+        graph_warmup_steps: int = UPSTREAM_WARMUP_STEPS,
     ) -> None:
         leak = frozenset(batch_leak)
         unknown = leak - BATCH_LEAKS
@@ -195,6 +202,10 @@ class FakePipelineAdapter(PipelineAdapter):
                 "the CPU fake runs no graphs unless a test hands it a GraphCapability"
             )
         )
+        if graph_warmup_steps < 1:
+            raise InvalidArgument(f"graph_warmup_steps must be >= 1, got {graph_warmup_steps!r}")
+        self._graph_warmup_steps = graph_warmup_steps
+        self._key_counts: dict[GraphKey, int] = {}
         self._texts: dict[int, list[str]] = {}
         self._stubs: dict[int, ScriptedTranscript] = {}
         self._last_partial: dict[int, str] = {}
@@ -214,6 +225,11 @@ class FakePipelineAdapter(PipelineAdapter):
 
     def graph_capability(self) -> GraphCapability:
         return self._graphs
+
+    def retained_graphs(self) -> int:
+        """Distinct shapes captured so far -- the fake's stand-in for the count NeMo
+        keeps in its private ``_graphs`` dict."""
+        return len(set(self._captures))
 
     @property
     def captures(self) -> list[GraphKey]:
@@ -314,7 +330,14 @@ class FakePipelineAdapter(PipelineAdapter):
                 batch_size=len(frames),
                 keep_all_outputs=keep_all_outputs,
             )
-            (self._replays if key in self._captures else self._captures).append(key)
+            if key in self._captures:
+                self._replays.append(key)
+            else:
+                # Upstream's rule, verbatim: the count has to exceed the warm-up steps,
+                # so a warm-up of exactly that many leaves nothing captured.
+                self._key_counts[key] = self._key_counts.get(key, 0) + 1
+                if self._key_counts[key] > self._graph_warmup_steps:
+                    self._captures.append(key)
         if self._scripted:
             return [self._scripted_row(frame) for frame in frames]
         # The batch composition a row's output must not depend on: how many real streams

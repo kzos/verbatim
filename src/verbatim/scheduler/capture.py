@@ -53,6 +53,7 @@ from typing import Final
 
 from verbatim.config import EngineConfig
 from verbatim.pipelines.base import (
+    UPSTREAM_WARMUP_STEPS,
     GraphCapability,
     GraphKey,
     GraphPathUnavailable,
@@ -61,16 +62,38 @@ from verbatim.pipelines.base import (
 from verbatim.scheduler.boundary import PadPool
 from verbatim.scheduler.graph_budget import ConfigError
 
-__all__ = ["GRAPH_WARMUP_STEPS", "CaptureController", "CapturePlan", "UncapturedShape"]
+__all__ = [
+    "GRAPH_WARMUP_STEPS",
+    "UPSTREAM_WARMUP_STEPS",
+    "CaptureController",
+    "CaptureNotRetained",
+    "CapturePlan",
+    "UncapturedShape",
+]
 
-#: Steps taken at each bucket shape during warm-up. Upstream's
-#: ``CudaGraphsStreamingEncoderStep.__init__`` takes ``warmup_steps: int = 3``
-#: (``docs/ISSUES.md``, issue 3), so one step at a shape is not on its own enough to
-#: be sure that shape ends up captured. Warming three times is cheap and happens once,
-#: before the boundary grid opens; getting it wrong means the capture lands on a live
-#: tick instead, against that tick's deadline, which is the thing warm-up exists to
-#: avoid. It is a count of steps, not a measurement of anything.
-GRAPH_WARMUP_STEPS: Final = 3
+#: Steps taken at each bucket shape during warm-up: one more than upstream's count,
+#: because upstream captures a key only when its call count *exceeds* ``warmup_steps``
+#: (``if self._key_counts[key] > self.warmup_steps``). Three steps leave the count at
+#: three, three is not greater than three, and nothing is captured.
+#:
+#: This was three until it was measured. On the B300 on 2026-09-13, after a warm-up of
+#: three steps at the 160 ms bucket-32 shape, NeMo held **zero** graphs and its own
+#: call count for the shape read three; the very next step took the count to four and
+#: the graph count to one. The capture had been landing on the first live tick, against
+#: that tick's deadline, which is the thing warm-up exists to avoid -- and warm-up had
+#: been recording it as done. See ``docs/decisions/0011``.
+GRAPH_WARMUP_STEPS: Final = UPSTREAM_WARMUP_STEPS + 1
+
+
+class CaptureNotRetained(RuntimeError):
+    """Warm-up stepped a shape and the runtime is holding no more graphs than before.
+
+    Upstream captures on a best-effort basis and falls back to eager in silence -- on a
+    capture failure, and for any step its own ``_can_use_graphs`` disqualifies. Neither
+    is visible from the outside, so a server would come up announcing the graph path,
+    run every tick eager, and publish rows saying graphed. Raised at construction, where
+    it costs a start-up failure with a reason, rather than a whole measurement campaign.
+    """
 
 
 class UncapturedShape(RuntimeError):
@@ -206,6 +229,11 @@ class CaptureController:
         audio is involved and no result of it is ever emitted. Returns the distinct keys
         captured, one per bucket, in ascending bucket order. In eager mode it captures
         nothing and says so with an empty tuple: there is no partial warm-up here.
+
+        The runtime's own retained-graph count is read before and after each shape, and
+        a count that did not rise is ``CaptureNotRetained`` rather than a key recorded
+        as captured. An adapter that cannot report a count (``None``) is taken at its
+        word and not read as zero.
         """
         if self._warmed:
             raise ConfigError("warmup runs once; the captured graphs are retained after it")
@@ -214,10 +242,21 @@ class CaptureController:
             return ()
         captured: list[GraphKey] = []
         for key in self._plan.keys:
+            before = self._pipeline.retained_graphs()
             for _ in range(self._warmup_steps):
                 pads.reset()
                 frames = pads.take(key.batch_size)
                 self._pipeline.transcribe_step(frames, keep_all_outputs=False, graph=True)
+            after = self._pipeline.retained_graphs()
+            if before is not None and after is not None and after <= before:
+                raise CaptureNotRetained(
+                    f"warm-up stepped {key} {self._warmup_steps} times and the runtime is "
+                    f"holding {after} graphs, the same as before ({before}). Upstream "
+                    "captures a shape only once its call count exceeds its own "
+                    f"warmup_steps (upstream default {UPSTREAM_WARMUP_STEPS}), and falls "
+                    "back to eager in silence on any capture it cannot make. Refusing "
+                    "rather than serving a graph path that is not there"
+                )
             self._captured.add(key)
             captured.append(key)
         pads.reset()

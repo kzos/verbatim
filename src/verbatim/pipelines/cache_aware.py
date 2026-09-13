@@ -124,6 +124,12 @@ class NeMoBoundary:
     RNNT wrapper for either pipeline: it answers which NeMo track is installed, and
     where PR #15863 puts the switch for the CTC wrapper cannot be read from an
     installed wheel here.
+
+    ``retained_graphs`` reads how many graphs NeMo is holding, so warm-up can check
+    that a capture happened rather than assume it. It reads a private attribute of
+    upstream's ``CudaGraphsStreamingEncoderStep`` because upstream exposes no public
+    count, and it is bound to None when the attribute is not where this expects --
+    a boundary that cannot tell says so, and is not read as zero.
     """
 
     pipeline: CacheAwarePipelineLike
@@ -132,6 +138,7 @@ class NeMoBoundary:
     to_samples: Callable[[np.ndarray], Any]
     release_stream: Callable[[int], None] | None = None
     graph_step_available: bool = False
+    retained_graphs: Callable[[], int] | None = None
 
     @classmethod
     def from_pipeline(
@@ -169,6 +176,7 @@ class NeMoBoundary:
             from verbatim.pipelines.nemo_runtime import graph_step_present
 
             graph_step_available = graph_step_present()
+        retained_graphs = _retained_graphs_reader(pipeline)
         return cls(
             pipeline=pipeline,
             make_frame=Frame,
@@ -176,7 +184,49 @@ class NeMoBoundary:
             to_samples=to_samples,
             release_stream=release_stream,
             graph_step_available=graph_step_available,
+            retained_graphs=retained_graphs,
         )
+
+
+#: Where ``StreamingEncoder.set_streaming_cuda_graphs`` attaches the graphed step, read
+#: from NeMo's own source: ``streaming.py`` sets ``_stream_step_cuda_graphs`` on the
+#: encoder, and the cache-aware inference wrapper reaches the encoder through
+#: ``asr_model.encoder``. Both nestings are tried because the wrapper's own attribute is
+#: itself called ``asr_model`` and which one a pipeline hands back has changed upstream
+#: before.
+_GRAPH_STEP_PATHS = (
+    ("asr_model", "asr_model", "encoder", "_stream_step_cuda_graphs"),
+    ("asr_model", "encoder", "_stream_step_cuda_graphs"),
+    ("encoder", "_stream_step_cuda_graphs"),
+)
+
+
+def _retained_graphs_reader(pipeline: Any) -> Callable[[], int] | None:
+    """A reader for the number of CUDA graphs NeMo is holding, or None if it is not
+    where this expects.
+
+    Upstream keeps them in a private ``_graphs`` dict and exposes no count. Reading a
+    private attribute is the cost of being able to check a capture happened; the
+    alternative measured worse -- a warm-up that recorded a capture NeMo had not made
+    (docs/decisions/0011).
+    """
+    for path in _GRAPH_STEP_PATHS:
+        step: Any = pipeline
+        for part in path:
+            step = getattr(step, part, None)
+            if step is None:
+                break
+        if step is None:
+            continue
+        graphs = getattr(step, "_graphs", None)
+        if graphs is None:
+            continue
+
+        def reader(step: Any = step) -> int:
+            return len(step._graphs)
+
+        return reader
+    return None
 
 
 def _words_of(segments: Sequence[Any] | None) -> tuple[Word, ...]:
@@ -287,6 +337,12 @@ class CacheAwareAdapter(PipelineAdapter):
 
     def supported_buckets(self) -> tuple[int, ...]:
         return self._buckets
+
+    def retained_graphs(self) -> int | None:
+        """How many CUDA graphs NeMo is holding, or None if the boundary cannot tell."""
+        if self._boundary.retained_graphs is None:
+            return None
+        return int(self._boundary.retained_graphs())
 
     def graph_capability(self) -> GraphCapability:
         """Two facts, kept apart: what the pipeline was built for, and what the

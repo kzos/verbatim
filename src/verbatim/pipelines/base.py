@@ -20,6 +20,7 @@ from __future__ import annotations
 import abc
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Final
 
 from verbatim.config import ChunkMode
 from verbatim.core.types import PcmFrame, StepResult
@@ -107,6 +108,13 @@ class GraphCapability:
         return cls(requested=True, available=False, reason=reason)
 
 
+#: Upstream's own warm-up count: ``CudaGraphsStreamingEncoderStep.__init__`` takes
+#: ``warmup_steps: int = 3``, and captures a shape on the call whose count at that shape
+#: *exceeds* it. It lives here, with the rest of what Verbatim knows about the runtime,
+#: rather than in the scheduler, which only consumes it.
+UPSTREAM_WARMUP_STEPS: Final = 3
+
+
 class PipelineAdapter(abc.ABC):
     """Verbatim's stable surface over the model runtime. One per chunk mode.
 
@@ -152,6 +160,23 @@ class PipelineAdapter(abc.ABC):
         return GraphCapability.eager(
             f"{type(self).__name__} implements no CUDA-graph path and runs the encoder step eager"
         )
+
+    def retained_graphs(self) -> int | None:
+        """How many CUDA graphs the runtime is holding right now, or None if this
+        adapter cannot tell.
+
+        Warm-up used to step each shape N times and then record it as captured. That
+        record was intent, not fact: on the B300 (2026-09-13) NeMo held **zero** graphs
+        after it, because ``CudaGraphsStreamingEncoderStep`` captures a key only once
+        its call count *exceeds* ``warmup_steps``, and it falls back to eager in
+        silence whenever a capture fails. A count that can be read after each shape is
+        what turns "the shape is captured" from an assertion into an observation, so a
+        graphed row cannot be published for a run that never graphed.
+
+        None means "no answer available", which is different from zero and is
+        never treated as a failed capture.
+        """
+        return None
 
     @abc.abstractmethod
     def transcribe_step(
