@@ -1,0 +1,113 @@
+{
+  "probe": "graph_capture_truth (CTC arm)",
+  "question": "Does NeMo's cache-aware CTC branch attach the graphed encoder step at all? serve takes the graph flag from a probe of the RNNT wrapper for both pipelines, because where PR #15863 puts the CTC switch cannot be read from an installed wheel. If CTC attaches nothing, a run would announce the graph path and step every tick eager.",
+  "machine": "NVIDIA B300 SXM6 AC",
+  "nemo": "3.1.0+abb8254da (carries PR #15863)",
+  "verbatim_commit": "6b03da1",
+  "date": "2026-09-13",
+  "answer": "yes: the CTC branch attaches the graphed step, and it captures",
+  "graph_step_found_at": "asr_model.asr_model.encoder._stream_step_cuda_graphs",
+  "warmup_steps": 4,
+  "graphs_after_build": 0,
+  "graphs_after_warmup": 1,
+  "call_counts_after_warmup": {
+    "['(32, 80, 25)', 'torch.bfloat16', '0', 'False', '2', '(70, 1)', '70', '2']": 4
+  },
+  "reads": [
+    "The crossed case the capability now defends against does not arise on this build.",
+    "The guard is correct and does not fire here, which is what a good guard looks like.",
+    "CTC's captured key is the same shape tuple as RNNT's at the same bucket and chunk."
+  ],
+  "raw": {
+    "model": "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi",
+    "chunk_ms": 160,
+    "bucket": 32,
+    "compute_dtype": "bfloat16",
+    "pipeline": "cache_aware_ctc",
+    "graph_step_found_at": "asr_model.asr_model.encoder._stream_step_cuda_graphs",
+    "verbatim_capability": "GraphCapability(requested=True, available=True, reason=None)",
+    "after_build": {
+      "mode": "full_graph",
+      "warmup_steps": 3,
+      "max_graphs": 8,
+      "allow_fallback": true,
+      "graphs": 0,
+      "graph_keys": [],
+      "key_counts": {}
+    },
+    "verbatim_warmup_steps": 4,
+    "verbatim_claims_captured": [
+      "160ms x 32 (steady)"
+    ],
+    "after_verbatim_warmup": {
+      "mode": "full_graph",
+      "warmup_steps": 3,
+      "max_graphs": 8,
+      "allow_fallback": true,
+      "graphs": 1,
+      "graph_keys": [
+        [
+          "(32, 80, 25)",
+          "torch.bfloat16",
+          "0",
+          "False",
+          "2",
+          "(70, 1)",
+          "70",
+          "2"
+        ]
+      ],
+      "key_counts": {
+        "['(32, 80, 25)', 'torch.bfloat16', '0', 'False', '2', '(70, 1)', '70', '2']": 4
+      }
+    },
+    "one_step_at_a_time": [
+      {
+        "extra_step": 1,
+        "graphs": 1
+      },
+      {
+        "extra_step": 2,
+        "graphs": 1
+      },
+      {
+        "extra_step": 3,
+        "graphs": 1
+      },
+      {
+        "extra_step": 4,
+        "graphs": 1
+      },
+      {
+        "extra_step": 5,
+        "graphs": 1
+      },
+      {
+        "extra_step": 6,
+        "graphs": 1
+      }
+    ],
+    "after_extra_steps": {
+      "mode": "full_graph",
+      "warmup_steps": 3,
+      "max_graphs": 8,
+      "allow_fallback": true,
+      "graphs": 1,
+      "graph_keys": [
+        [
+          "(32, 80, 25)",
+          "torch.bfloat16",
+          "0",
+          "False",
+          "2",
+          "(70, 1)",
+          "70",
+          "2"
+        ]
+      ],
+      "key_counts": {
+        "['(32, 80, 25)', 'torch.bfloat16', '0', 'False', '2', '(70, 1)', '70', '2']": 4
+      }
+    }
+  }
+}

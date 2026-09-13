@@ -32,7 +32,6 @@ from verbatim.pipelines.nemo_runtime import (
 from verbatim.scheduler.boundary import PadPool
 from verbatim.scheduler.capture import CaptureController
 
-
 #: Where ``StreamingEncoder.set_streaming_cuda_graphs`` puts it, read from NeMo's own
 #: source on the box: ``streaming.py`` sets ``self._stream_step_cuda_graphs`` on the
 #: encoder, and the inference wrapper reaches it as ``asr_model.encoder``.
@@ -103,6 +102,13 @@ def main() -> int:
     ap.add_argument("--bucket", type=int, default=32)
     ap.add_argument("--att-context-left", type=int, default=70)
     ap.add_argument("--compute-dtype", default="bfloat16")
+    ap.add_argument(
+        "--pipeline",
+        default="cache_aware_rnnt",
+        choices=("cache_aware_rnnt", "cache_aware_ctc"),
+        help="which cache-aware branch to build and probe; the CTC arm is the one "
+        "whose graph switch cannot be read from an installed wheel",
+    )
     ap.add_argument("--device-id", type=int, default=0)
     ap.add_argument("--extra-steps", type=int, default=6)
     ap.add_argument("--out", default="-")
@@ -120,10 +126,11 @@ def main() -> int:
         use_cuda_graphs=True,
         compute_dtype=args.compute_dtype,
         device_id=args.device_id,
+        decoding="ctc" if args.pipeline == "cache_aware_ctc" else "rnnt",
     )
     nemo_pipeline = build_pipeline(spec)
     adapter = registry.build(
-        "cache_aware_rnnt",
+        args.pipeline,
         config,
         boundary=NeMoBoundary.from_pipeline(nemo_pipeline),
         use_cuda_graphs=True,
@@ -135,6 +142,7 @@ def main() -> int:
         "chunk_ms": args.chunk,
         "bucket": args.bucket,
         "compute_dtype": args.compute_dtype,
+        "pipeline": args.pipeline,
         "graph_step_found_at": path,
         "verbatim_capability": str(adapter.graph_capability()),
         "after_build": snapshot(step),

@@ -1,0 +1,65 @@
+{
+  "record": "vb-invariance/1",
+  "endpoint": "ws://127.0.0.1:8765/v1/stream",
+  "chunk_ms": 160,
+  "corpus": {
+    "kind": "manifest",
+    "path": "/opt/verbatim/corpus/librispeech-test-other-256/librispeech-test-other-256.jsonl",
+    "id": "sha256:6a142a960379d48ed31d5ec8c3bc07dbdfcd34ef2b6db041a888b07bdc0003be",
+    "utterances": 256
+  },
+  "levels": [
+    {
+      "slot": "1",
+      "concurrency": 1,
+      "streams": 256,
+      "errors": 0,
+      "first_error": null,
+      "digest": "f68cbccfa089b4abd98cb01b01a51c555529e67fa3b6ce777476179204e26248",
+      "wall_clock_s": 1745.4294276849832,
+      "pacing_slip_p99_ms": 2.102312631905079
+    },
+    {
+      "slot": "32a",
+      "concurrency": 32,
+      "streams": 256,
+      "errors": 0,
+      "first_error": null,
+      "digest": "f68cbccfa089b4abd98cb01b01a51c555529e67fa3b6ce777476179204e26248",
+      "wall_clock_s": 65.10422378988005,
+      "pacing_slip_p99_ms": 1.2232998851686716
+    },
+    {
+      "slot": "32b",
+      "concurrency": 32,
+      "streams": 256,
+      "errors": 0,
+      "first_error": null,
+      "digest": "f68cbccfa089b4abd98cb01b01a51c555529e67fa3b6ce777476179204e26248",
+      "wall_clock_s": 65.42547744698822,
+      "pacing_slip_p99_ms": 1.2211401481181383
+    },
+    {
+      "slot": "max",
+      "concurrency": 38,
+      "streams": 256,
+      "errors": 0,
+      "first_error": null,
+      "digest": "f68cbccfa089b4abd98cb01b01a51c555529e67fa3b6ce777476179204e26248",
+      "wall_clock_s": 57.91054057586007,
+      "pacing_slip_p99_ms": 1.2399780098348856
+    }
+  ],
+  "invariance": {
+    "hash_1": "f68cbccfa089b4abd98cb01b01a51c555529e67fa3b6ce777476179204e26248",
+    "hash_32a": "f68cbccfa089b4abd98cb01b01a51c555529e67fa3b6ce777476179204e26248",
+    "hash_32b": "f68cbccfa089b4abd98cb01b01a51c555529e67fa3b6ce777476179204e26248",
+    "hash_max": "f68cbccfa089b4abd98cb01b01a51c555529e67fa3b6ce777476179204e26248",
+    "equal": true
+  },
+  "timings_present": true,
+  "divergences": [],
+  "verdict": "invariant",
+  "exit_code": 0,
+  "wall_clock_s": 1933.9338524178602
+}
