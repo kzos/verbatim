@@ -39,6 +39,7 @@ __all__ = [
     "RuntimeReport",
     "att_context_size",
     "build_pipeline",
+    "graph_step_present",
     "inspect_runtime",
     "pipeline_config",
 ]
@@ -271,6 +272,23 @@ class RuntimeReport:
         ]
 
 
+def graph_step_present(import_module: Importer = importlib.import_module) -> bool:
+    """Whether the installed NeMo carries **both** halves of PR #15863.
+
+    The module with ``CudaGraphsStreamingEncoderStep`` and the wrapper method the
+    builder calls with ``asr.use_cuda_graphs``: one without the other is not the
+    graph path. Read directly rather than inferred from a version number, because
+    ``docs/decisions/0002`` records two released versions where the number said
+    nothing useful. ``doctor`` reports it and ``NeMoBoundary`` binds it.
+    """
+    try:
+        module = import_module(GRAPH_STEP_MODULE)
+        wrapper = getattr(import_module(WRAPPER_MODULE), WRAPPER_CLASS)
+    except Exception:
+        return False
+    return hasattr(module, GRAPH_STEP_CLASS) and hasattr(wrapper, GRAPH_SWITCH)
+
+
 def inspect_runtime(import_module: Importer = importlib.import_module) -> RuntimeReport:
     """Probe the installed runtime. ``import_module`` is injectable so the report can be
     tested on a machine with no NeMo, and against the shape of the PR's own tree."""
@@ -302,12 +320,7 @@ def inspect_runtime(import_module: Importer = importlib.import_module) -> Runtim
         except Exception as exc:
             notes.append(f"nemo.collections.asr.inference: {type(exc).__name__}: {exc}")
     if inference_package:
-        try:
-            module = import_module(GRAPH_STEP_MODULE)
-            wrapper = getattr(import_module(WRAPPER_MODULE), WRAPPER_CLASS)
-            graph_step = hasattr(module, GRAPH_STEP_CLASS) and hasattr(wrapper, GRAPH_SWITCH)
-        except Exception:
-            graph_step = False
+        graph_step = graph_step_present(import_module)
         if not graph_step:
             notes.append(
                 "the installed NeMo predates PR #15863: pass --eager to run the encoder "

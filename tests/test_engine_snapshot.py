@@ -87,10 +87,10 @@ class _SlowAndCostly(FakePipelineAdapter):
         return self.declared_ms
 
     def transcribe_step(
-        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool, graph: bool = False
     ) -> list[StepResult]:
         time.sleep(self.seconds)
-        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs, graph=graph)
 
 
 async def test_a_tick_past_its_boundary_is_late_and_a_costly_one_is_over_budget() -> None:

@@ -172,11 +172,11 @@ class _HeldFirstStep(FakePipelineAdapter):
         self.release = threading.Event()
         self.calls = 0
 
-    def transcribe_step(self, frames, *, keep_all_outputs):  # type: ignore[no-untyped-def]
+    def transcribe_step(self, frames, *, keep_all_outputs, graph=False):  # type: ignore[no-untyped-def]
         self.calls += 1
         if self.calls == 1:
             self.release.wait(timeout=10.0)
-        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs, graph=graph)
 
 
 async def test_readyz_waits_for_the_first_tick() -> None:

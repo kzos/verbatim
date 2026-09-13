@@ -78,15 +78,20 @@ def test_decode_pcm16_carries_an_odd_byte_between_payloads() -> None:
 
 
 class _StampingPipeline(PipelineAdapter):
-    def __init__(self) -> None:
+    def __init__(self, buckets: tuple[int, ...] = (1,)) -> None:
         self._open: set[int] = set()
+        self._buckets = buckets
 
     @property
     def chunk(self) -> ChunkMode:
         return CHUNK
 
     def supported_buckets(self) -> tuple[int, ...]:
-        return (1,)
+        """What this double claims to have been built for. It has to be the truth: the
+        capture controller refuses a scheduler bucket the adapter never declared, and a
+        double that always said ``(1,)`` while the config said ``(2,)`` was declaring a
+        shape it would then be asked to step."""
+        return self._buckets
 
     def open_stream(self, stream_id: int, options: SessionOptions | None) -> None:
         self._open.add(stream_id)
@@ -95,23 +100,23 @@ class _StampingPipeline(PipelineAdapter):
         self._open.discard(stream_id)
 
     def transcribe_step(
-        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool, graph: bool = False
     ) -> list[StepResult]:
         return _rows(frames, eager=keep_all_outputs)
 
 
 class _FailingPipeline(_StampingPipeline):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, buckets: tuple[int, ...] = (1,)) -> None:
+        super().__init__(buckets)
         self.calls = 0
 
     def transcribe_step(
-        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool, graph: bool = False
     ) -> list[StepResult]:
         self.calls += 1
         if self.calls == 2:
             raise RuntimeError("step failed")
-        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs, graph=graph)
 
 
 class _OpenFailingPipeline(_StampingPipeline):
@@ -281,7 +286,7 @@ async def test_a_step_exception_reaches_every_live_session_as_internal() -> None
     its first tick, so the step that fails has two live sessions to reach; fed after
     the thread was running, the failing tick could land between the two feeds, and did
     once in a soak under load."""
-    pipeline = _FailingPipeline()
+    pipeline = _FailingPipeline(buckets=(2,))
     clock = _HeldClock()
     config = EngineConfig(chunk=CHUNK, buckets=(2,), edge_batch=1)
     engine = Engine(config, pipeline, clock=clock)
@@ -321,13 +326,13 @@ async def test_pipeline_step_does_not_run_under_the_engine_lock() -> None:
 
     class ProbePipeline(_StampingPipeline):
         def transcribe_step(
-            self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+            self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool, graph: bool = False
         ) -> list[StepResult]:
             acquired = engine._lock.acquire(blocking=False)
             observed.append(acquired)
             if acquired:
                 engine._lock.release()
-            return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+            return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs, graph=graph)
 
     config = EngineConfig(chunk=CHUNK, buckets=(1,), edge_batch=1)
     engine = Engine(config, ProbePipeline(), clock=ScaledMonotonicClock(100.0))
@@ -341,7 +346,7 @@ async def test_pipeline_step_does_not_run_under_the_engine_lock() -> None:
 
 @pytest.mark.asyncio
 async def test_an_open_stream_failure_is_isolated_to_the_failing_session() -> None:
-    pipeline = _OpenFailingPipeline()
+    pipeline = _OpenFailingPipeline(buckets=(2,))
     config = EngineConfig(chunk=CHUNK, buckets=(2,), edge_batch=1)
     engine = Engine(config, pipeline, clock=ScaledMonotonicClock(100.0))
     sessions = [engine.open_session(OPTIONS) for _ in range(2)]
@@ -432,7 +437,7 @@ async def test_finished_sessions_are_dropped_from_the_engine() -> None:
 
 @pytest.mark.asyncio
 async def test_a_failed_session_is_dropped_from_the_engine_too() -> None:
-    pipeline = _OpenFailingPipeline()
+    pipeline = _OpenFailingPipeline(buckets=(2,))
     config = EngineConfig(chunk=CHUNK, buckets=(2,), edge_batch=1)
     engine = Engine(config, pipeline, clock=ScaledMonotonicClock(100.0))
     sessions = [engine.open_session(OPTIONS) for _ in range(2)]
@@ -554,10 +559,10 @@ class _SlowStep(FakePipelineAdapter):
         self.seconds = seconds
 
     def transcribe_step(
-        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool, graph: bool = False
     ) -> list[StepResult]:
         time.sleep(self.seconds)
-        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs, graph=graph)
 
 
 @pytest.mark.asyncio
@@ -774,12 +779,12 @@ class _HeldLastStep(FakePipelineAdapter):
         self.release = threading.Event()
 
     def transcribe_step(
-        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool, graph: bool = False
     ) -> list[StepResult]:
         if any(frame.is_last for frame in frames):
             self.entered.set()
             self.release.wait(timeout=10.0)
-        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs, graph=graph)
 
 
 async def test_a_final_produced_by_the_last_tick_arrives_as_a_final_not_as_unavailable() -> None:

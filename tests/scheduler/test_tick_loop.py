@@ -233,13 +233,13 @@ class _RecordingPipeline(FakePipelineAdapter):
         super().close_stream(stream_id)
 
     def transcribe_step(
-        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool, graph: bool = False
     ) -> list[StepResult]:
         self.calls += 1
         if self.calls == self._fail_on_call:
             raise RuntimeError("step failed")
         self.stepped.extend(f.stream_id for f in frames if f.stream_id >= 0)
-        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs, graph=graph)
 
 
 def _recording_loop(**pipeline_kwargs: object) -> tuple[TickLoop, _RecordingPipeline, EngineConfig]:
@@ -318,9 +318,9 @@ def test_tick_costs_are_read_after_the_step() -> None:
     """An adapter that measures its own step reports this tick's cost, not the last one's."""
 
     class MeasuringPipeline(FakePipelineAdapter):
-        def transcribe_step(self, frames, *, keep_all_outputs):
+        def transcribe_step(self, frames, *, keep_all_outputs, graph=False):
             self._step_ms = 42.0
-            return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+            return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs, graph=graph)
 
     config = EngineConfig(chunk=CHUNK, buckets=(8,), calibrated_ceiling=8)
     pipeline = MeasuringPipeline(CHUNK, buckets=(8,), step_ms=1.0)
@@ -444,7 +444,7 @@ def test_results_are_published_before_the_sleep_to_the_next_boundary() -> None:
 
 class _FailingStep(FakePipelineAdapter):
     def transcribe_step(
-        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool, graph: bool = False
     ) -> list[StepResult]:
         raise RuntimeError("step failed")
 

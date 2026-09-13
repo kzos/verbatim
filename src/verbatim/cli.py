@@ -314,7 +314,12 @@ def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapt
         raise _Refused(EXIT_CONFIG, str(exc)) from exc
     try:
         adapter = registry.build_for(
-            config, boundary=boundary, language_code=settings.language_code
+            config,
+            boundary=boundary,
+            language_code=settings.language_code,
+            # The same decision NeMo's pipeline was built with, carried to the adapter
+            # so the scheduler's capture controller reads one answer and not two.
+            use_cuda_graphs=use_graphs,
         )
     except (ConfigError, VerbatimError) as exc:
         raise _Refused(
