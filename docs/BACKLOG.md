@@ -504,3 +504,14 @@ promised date — that is for triage once an entry becomes an issue.
   `CaptureController.mode`, so the label a row carries and the capture it describes travel by
   different routes. Warm-up now refuses to start when nothing was captured, which closes the way this
   could have been wrong in practice, but the label should read the controller.
+
+## Latency, after DR-0012
+
+- `src/verbatim/scheduler/tick.py` and `scheduler/buckets.py` — sub-tick staggering is the only
+  lever on the phase offset that does not discard audio or break the fixed shape: run the grid `k`
+  times per chunk period, assign each session to one sub-tick, and the longest wait becomes
+  `period / k` while the rows stepped per second stay the same. The cost is a batch of `N / k`
+  instead of `N`, and smaller fixed-shape batches are measurably worse on this hardware — upstream's
+  own file-driven ceiling is 149.48 RTFx at batch 128 against 92.46 at batch 32
+  (`rows/exploratory/nemo-ceiling-b300-bf16-2026-09-13.json`). At `k = 2` the measured 150 ms spread
+  would fall to about 75 ms. Both halves of the trade are numbers; the decision is the author's.
