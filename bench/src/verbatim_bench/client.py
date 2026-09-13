@@ -140,6 +140,32 @@ def join_final_texts(events: Sequence[Mapping[str, Any]]) -> str:
     return " ".join(parts)
 
 
+def _is_ms(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def join_final_words(events: Sequence[Mapping[str, Any]]) -> list[tuple[str, int, int]]:
+    """Every word of every final frame, in arrival order, exactly as emitted.
+
+    The wire carries ``{"w": word, "s": start_ms, "e": end_ms}`` with integer
+    milliseconds. An entry that is not that shape is left out rather than coerced: a
+    server that emitted a float would show up as a missing word, never as a rounded one,
+    because the invariance digest exists to detect a difference a normaliser would hide.
+    """
+    words: list[tuple[str, int, int]] = []
+    for event in events:
+        raw = event.get("words")
+        if not isinstance(raw, list):
+            continue
+        for entry in raw:
+            if not isinstance(entry, Mapping):
+                continue
+            word, start_ms, end_ms = entry.get("w"), entry.get("s"), entry.get("e")
+            if isinstance(word, str) and _is_ms(start_ms) and _is_ms(end_ms):
+                words.append((word, start_ms, end_ms))
+    return words
+
+
 @dataclass(frozen=True, slots=True)
 class ChunkMode:
     ms: int
@@ -192,6 +218,10 @@ class SessionResult:
     reference_text: str = ""
     error: str | None = None
     frame_ms: int | None = None
+    # Every word of every final, in arrival order, as `(word, start_ms, end_ms)` exactly
+    # as the wire carried them: integer milliseconds, no normalisation. Empty unless the
+    # session asked for words.
+    words: list[tuple[str, int, int]] = field(default_factory=list)
 
 
 def _split_chunks(pcm: bytes, frame_bytes: int) -> list[bytes]:
@@ -439,6 +469,7 @@ async def _run_session_inner(
     result.partials_received = len(partial_events)
     result.finals_received = len(final_events)
     result.final_text = join_final_texts([event for _, event in final_events])
+    result.words = join_final_words([event for _, event in final_events])
     t_first_audio = send_times[0] if send_times else result.started_at_s
     first_non_empty = next(
         (t for t, e in partial_events if isinstance(e.get("text"), str) and e["text"] != ""),

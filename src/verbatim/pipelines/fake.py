@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable, Sequence
-from typing import ClassVar
+from typing import ClassVar, Final
 
 import numpy as np
 
@@ -29,7 +29,13 @@ from verbatim.core.types import PcmFrame, StepResult
 from verbatim.pipelines.base import PipelineAdapter
 from verbatim.protocols.base import Hypothesis, SessionOptions, Word
 
-__all__ = ["FakePipelineAdapter", "ScriptSource", "ScriptedTranscript"]
+__all__ = ["BATCH_LEAKS", "FakePipelineAdapter", "ScriptSource", "ScriptedTranscript"]
+
+#: The two channels the invariance gate compares, each of which the fake can be made to
+#: leak batch composition into. A test-harness input for the gate's own tests: a gate
+#: that has only ever seen an invariant fake cannot be shown to fail, and a gate that
+#: cannot fail proves nothing. Nothing in the package sets this.
+BATCH_LEAKS: Final = frozenset({"text", "timing"})
 
 #: How a scripted adapter picks a transcript for a stream. A test-harness input.
 ScriptSource = Callable[[SessionOptions], Sequence[str] | None]
@@ -124,7 +130,14 @@ class FakePipelineAdapter(PipelineAdapter):
     Its output for a row is a pure function of that row's own samples and that stream's
     own history -- exactly the property the real runtime must have and the invariance
     gate measures. Here it holds by construction, which is what lets the scheduler's
-    bookkeeping be tested for it on CPU.
+    bookkeeping be tested for it on CPU. Hash mode also stamps chunk-indexed word timings
+    on the final, so the gate's timing channel has something to compare.
+
+    ``batch_leak`` breaks the property on purpose, one channel at a time, so the gate can
+    be shown to go red: ``"text"`` mixes the number of real streams in the batch into
+    every token, ``"timing"`` adds the number of companions, in milliseconds, to every
+    word's end time while the text stays the same. It exists for the gate's tests and
+    nothing else sets it.
 
     It also records every batch shape it was called with, so a test can assert the steady
     batch never changed shape without instrumenting the scheduler.
@@ -143,7 +156,15 @@ class FakePipelineAdapter(PipelineAdapter):
         scripted: bool = False,
         script_for: ScriptSource | None = None,
         partial_every: int = 1,
+        batch_leak: Sequence[str] = (),
     ) -> None:
+        leak = frozenset(batch_leak)
+        unknown = leak - BATCH_LEAKS
+        if unknown:
+            raise InvalidArgument(
+                f"invalid batch_leak {sorted(unknown)!r}: must be a subset of {sorted(BATCH_LEAKS)}"
+            )
+        self._batch_leak = leak
         self._chunk = chunk
         self._buckets = tuple(buckets)
         # What a tick "costs": an input to the scheduler's budget arithmetic,
@@ -215,17 +236,18 @@ class FakePipelineAdapter(PipelineAdapter):
         self._texts.pop(stream_id, None)
 
     @staticmethod
-    def _token(frame: PcmFrame) -> str:
+    def _token(frame: PcmFrame, *, salt: bytes = b"") -> str:
         """One deterministic word per row: a stable hash of the row's own sample bytes.
 
         Independent of the batch it was computed in and of the row's position in it.
         A frame with no valid samples carries no audio and contributes no token, so a
-        padded tail never changes the running text.
+        padded tail never changes the running text. `salt` is empty except under the
+        text leak, where it carries the batch composition the token must not depend on.
         """
         if frame.valid_samples <= 0:
             return ""
         digest = hashlib.sha256(
-            np.ascontiguousarray(frame.samples, dtype=np.float32).tobytes()
+            np.ascontiguousarray(frame.samples, dtype=np.float32).tobytes() + salt
         ).hexdigest()[:8]
         return f"w{digest}"
 
@@ -238,13 +260,27 @@ class FakePipelineAdapter(PipelineAdapter):
         self._shapes.append((len(frames), keep_all_outputs))
         if self._scripted:
             return [self._scripted_row(frame) for frame in frames]
+        # The batch composition a row's output must not depend on: how many real streams
+        # share the batch. Pad rows carry samples too, so they are told apart by their
+        # negative stream id, not by their valid count. Only a leak reads this.
+        real_rows = sum(1 for frame in frames if frame.stream_id >= 0)
+        salt = real_rows.to_bytes(2, "little") if "text" in self._batch_leak else b""
+        timing_shift_ms = real_rows - 1 if "timing" in self._batch_leak else 0
+        chunk_ms = self._chunk.ms
         results: list[StepResult] = []
         for frame in frames:
             history = self._texts.setdefault(frame.stream_id, [])
-            token = self._token(frame)
+            token = self._token(frame, salt=salt)
             if token:
                 history.append(token)
             partial = " ".join(history)
+            words: tuple[Word, ...] = ()
+            if frame.is_last:
+                # Chunk-indexed, exact integers: token j spans chunk j.
+                words = tuple(
+                    Word(word=w, start_ms=j * chunk_ms, end_ms=(j + 1) * chunk_ms + timing_shift_ms)
+                    for j, w in enumerate(history)
+                )
             results.append(
                 StepResult(
                     stream_id=frame.stream_id,
@@ -256,6 +292,7 @@ class FakePipelineAdapter(PipelineAdapter):
                     # could not tell real bytes from invented padding.
                     audio_processed_s=0.0,
                     eager=keep_all_outputs,
+                    words=words,
                 )
             )
         return results

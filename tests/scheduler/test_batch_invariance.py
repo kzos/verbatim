@@ -12,6 +12,7 @@ from __future__ import annotations
 import random
 
 import numpy as np
+import pytest
 
 from verbatim.config import ChunkMode, EngineConfig
 from verbatim.core.registry import SessionRegistry
@@ -212,3 +213,60 @@ def test_property_over_seeded_configurations() -> None:
         _join(solo_loop, 1, audios[tracked_idx])
         solo = _without_tick(_for_stream(solo_loop.run_for(horizon), 1))
         assert full_tracked == solo, f"batch dependence at seed={seed}"
+
+
+# --- the fake can be made non-invariant, one channel at a time, for the gate's tests ---
+
+
+def _final_words(results: list[StepResult], stream_id: int) -> tuple:
+    return next(r.words for r in _for_stream(results, stream_id) if r.final_text is not None)
+
+
+def _alone_and_busy(batch_leak: tuple[str, ...]) -> tuple[list[StepResult], list[StepResult]]:
+    tracked = _seeded_audio(7, 4)
+    outputs = []
+    for companions in (0, 7):
+        config = EngineConfig(chunk=CHUNK, buckets=(8,), calibrated_ceiling=8, drain_margin=8)
+        pipeline = FakePipelineAdapter(CHUNK, buckets=(8,), batch_leak=batch_leak)
+        loop = TickLoop(config, pipeline, SessionRegistry(), clock=SimulatedClock())
+        _join(loop, 1, tracked)
+        for sid in range(2, 2 + companions):
+            _join(loop, sid, _seeded_audio(100 + sid, 4))
+        outputs.append(_for_stream(loop.run_for(6), 1))
+    return outputs[0], outputs[1]
+
+
+def test_hash_mode_finals_carry_chunk_indexed_word_timings() -> None:
+    alone, _ = _alone_and_busy(())
+    final = next(r for r in alone if r.final_text is not None)
+    assert final.final_text
+    assert [w.word for w in final.words] == final.final_text.split()
+    assert [(w.start_ms, w.end_ms) for w in final.words] == [
+        (j * CHUNK.ms, (j + 1) * CHUNK.ms) for j in range(len(final.words))
+    ]
+
+
+def test_without_a_leak_the_fake_is_invariant_in_both_channels() -> None:
+    alone, busy = _alone_and_busy(())
+    assert _without_tick(alone) == _without_tick(busy)
+    assert _final_words(alone, 1) == _final_words(busy, 1)
+
+
+def test_a_text_leak_makes_the_transcript_depend_on_batch_composition() -> None:
+    alone, busy = _alone_and_busy(("text",))
+    assert _without_tick(alone) != _without_tick(busy)
+
+
+def test_a_timing_leak_moves_only_the_word_timings() -> None:
+    alone, busy = _alone_and_busy(("timing",))
+    assert _without_tick(alone) == _without_tick(busy)
+    alone_words, busy_words = _final_words(alone, 1), _final_words(busy, 1)
+    assert [w.word for w in alone_words] == [w.word for w in busy_words]
+    assert [w.end_ms for w in alone_words] != [w.end_ms for w in busy_words]
+
+
+def test_an_unknown_leak_is_refused() -> None:
+    from verbatim.core.errors import InvalidArgument
+
+    with pytest.raises(InvalidArgument, match="batch_leak"):
+        FakePipelineAdapter(CHUNK, buckets=(8,), batch_leak=("position",))
