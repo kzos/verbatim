@@ -19,6 +19,7 @@ from verbatim.pipelines.nemo_runtime import (
     PipelineBuildError,
     att_context_size,
     build_pipeline,
+    graph_step_present,
     inspect_runtime,
     pipeline_config,
 )
@@ -286,3 +287,11 @@ def test_a_successful_build_hands_nemo_the_config_and_returns_its_pipeline() -> 
     assert build_pipeline(_spec(use_cuda_graphs=True), _importer(modules)) is pipeline
     assert seen[0]["asr"]["use_cuda_graphs"] is True
     assert seen[0]["streaming"]["att_context_size"] == [56, 1]
+
+
+def test_graph_step_present_is_the_probe_the_boundary_binds() -> None:
+    """``NeMoBoundary`` asks this directly rather than building a whole RuntimeReport,
+    so it is tested directly too: both halves of PR #15863, or false."""
+    assert graph_step_present(_importer(_pr_track())) is True
+    assert graph_step_present(_importer(_released_track())) is False
+    assert graph_step_present(_importer({})) is False

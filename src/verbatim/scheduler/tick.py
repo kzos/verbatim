@@ -13,6 +13,16 @@ Final (``is_last``) frames are never mixed into the steady call: NeMo's pipeline
 splits them into a ``keep_all_outputs=True`` sub-batch, which would shrink the
 steady sub-batch and change its graph key.
 
+The CUDA graphs are captured once, at construction, before the boundary grid
+starts: ``CaptureController.warmup`` steps an all-pad batch at each bucket shape,
+``GRAPH_WARMUP_STEPS`` times, so the first live tick replays a graph instead of
+capturing one against its own deadline. Every steady step after that is checked
+against the keys actually captured, and every edge step is off the graph path by
+construction -- NeMo's ``_can_use_graphs()`` would refuse a final sub-batch anyway.
+When the runtime has no graph path the controller refuses at construction with the
+reason named, rather than letting the loop run eager unasked; ``scheduler/capture.py``
+holds the whole of that decision.
+
 The loop runs any ``PipelineAdapter``: the NeMo adapter in
 ``verbatim.pipelines.cache_aware_rnnt`` in a server, and in the scheduler suite the
 deterministic CPU fake with an injectable clock, synchronously on the caller's
@@ -35,9 +45,10 @@ from verbatim.core.errors import DeadlineExceeded, ErrorCode, VerbatimError
 from verbatim.core.registry import SessionRegistry
 from verbatim.core.session import Session, SessionState
 from verbatim.core.types import PcmFrame, StepResult, TickStats
-from verbatim.pipelines.base import PipelineAdapter
+from verbatim.pipelines.base import GraphKey, PipelineAdapter
 from verbatim.scheduler.admission import AdmissionController, AdmissionDecision
 from verbatim.scheduler.buckets import BucketPlan, BucketScheduler
+from verbatim.scheduler.capture import CaptureController
 from verbatim.scheduler.clock import Clock, MonotonicClock
 from verbatim.scheduler.slots import SlotTable
 
@@ -78,6 +89,10 @@ class TickLoop:
         self._slots = SlotTable(config.num_slots)
         self._scheduler = BucketScheduler(config)
         self._admission = AdmissionController(config, self._slots)
+        # Built before anything else touches the pipeline: an absent graph path is a
+        # refusal here, not a quiet eager run, and the capture itself has to happen
+        # before the boundary grid starts.
+        self._capture = CaptureController(config, pipeline)
         # Warm-up: pad rows hold slots for the life of the process and are never shed.
         self._pad_count = config.effective_pad
         self._slots.reserve(self._pad_count)
@@ -95,6 +110,11 @@ class TickLoop:
             if config.idle_timeout_s is None
             else max(1, math.ceil(config.idle_timeout_s / config.chunk.period_s))
         )
+        # Capture every bucket's graph before the grid starts. A shape first seen on a
+        # live tick would be captured inside that tick, against the tick's own
+        # deadline; and the clock is read after the capture so the grid does not open
+        # already behind by the cost of it.
+        self._captured = self._capture.warmup(self._scheduler.pads)
         self._start = self._clock.now()
         self._tick_id = 0
         self._stats: deque[TickStats] = deque(maxlen=STATS_RETAINED)
@@ -132,6 +152,16 @@ class TickLoop:
     @property
     def scheduler(self) -> BucketScheduler:
         return self._scheduler
+
+    @property
+    def capture(self) -> CaptureController:
+        """The capture decision: the mode, the plan, and the keys actually captured."""
+        return self._capture
+
+    @property
+    def captured_graphs(self) -> tuple[GraphKey, ...]:
+        """The keys warm-up captured, in capture order. Empty in eager mode."""
+        return self._captured
 
     @property
     def registry(self) -> SessionRegistry:
@@ -207,7 +237,13 @@ class TickLoop:
                 )
 
     def _record(
-        self, tick_id: int, plan: BucketPlan, starved: int, step_ms: float, edge_ms: float
+        self,
+        tick_id: int,
+        plan: BucketPlan,
+        starved: int,
+        step_ms: float,
+        edge_ms: float,
+        steady_graphed: bool = False,
     ) -> None:
         """The stamping-and-bookkeeping tail shared by the success and failure paths."""
         stats = TickStats(
@@ -220,6 +256,7 @@ class TickLoop:
             starved=starved,
             step_ms=step_ms,
             edge_ms=edge_ms,
+            steady_graphed=steady_graphed,
             lateness_ms=max(
                 0.0,
                 (self._clock.now() - (self._start + tick_id * self._config.chunk.period_s))
@@ -271,6 +308,9 @@ class TickLoop:
         plan: BucketPlan | None = None
         step_ms = 0.0
         edge_ms = 0.0
+        # Set only once the steady step has come back, so a tick that failed on the
+        # graph path is never recorded as having run on it.
+        steady_graphed = False
         try:
             if lock is not None:
                 lock.acquire()
@@ -350,10 +390,21 @@ class TickLoop:
             # across a whole pipeline batch would deadlock the first tick, and even if
             # it did not it would make every `feed()` on the asyncio loop wait for a
             # whole step.
-            steady_rows = self._pipeline.transcribe_step(plan.steady, keep_all_outputs=False)
+            # The steady batch replays the graph captured for its exact shape; a shape
+            # nobody captured is refused here rather than run. The edge batches never
+            # take the graph path: that is the peel, and `edge_graph()` is what says so.
+            steady_graph = self._capture.steady_graph(len(plan.steady))
+            steady_rows = self._pipeline.transcribe_step(
+                plan.steady, keep_all_outputs=False, graph=steady_graph
+            )
+            steady_graphed = steady_graph
             edge_rows: list[list[StepResult]] = []
             for batch in plan.edge_batches:
-                edge_rows.append(self._pipeline.transcribe_step(batch, keep_all_outputs=True))
+                edge_rows.append(
+                    self._pipeline.transcribe_step(
+                        batch, keep_all_outputs=True, graph=self._capture.edge_graph()
+                    )
+                )
 
             # Costs are read after the steps, so an adapter that measures its own
             # wall time reports this tick's, not the previous tick's.
@@ -435,7 +486,7 @@ class TickLoop:
                     self._close_session(session)
                     self._pipeline.close_stream(session.session_id)
 
-                self._record(tick_id, plan, starved, step_ms, edge_ms)
+                self._record(tick_id, plan, starved, step_ms, edge_ms, steady_graphed)
             finally:
                 if lock is not None:
                     lock.release()
@@ -446,7 +497,7 @@ class TickLoop:
                 self.fail_live(exc)
                 if plan is None:
                     plan = self._scheduler.plan([], [])
-                self._record(tick_id, plan, starved, step_ms, edge_ms)
+                self._record(tick_id, plan, starved, step_ms, edge_ms, steady_graphed)
             finally:
                 if lock is not None:
                     lock.release()

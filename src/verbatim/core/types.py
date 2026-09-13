@@ -80,3 +80,7 @@ class TickStats:
     step_ms: float
     edge_ms: float
     lateness_ms: float = 0.0  # end of the tick minus its scheduled boundary
+    #: True only when this tick's steady step ran, and ran on a captured CUDA graph.
+    #: False on an eager server, and false for a tick whose steady step raised, so a
+    #: tick can never be recorded as graphed without having been graphed.
+    steady_graphed: bool = False

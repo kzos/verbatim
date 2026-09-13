@@ -97,6 +97,7 @@ def _cache_aware_factory(
         pipeline: Any = None,
         boundary: NeMoBoundary | None = None,
         language_code: str | None = None,
+        use_cuda_graphs: bool = False,
     ) -> PipelineAdapter:
         if boundary is None:
             if pipeline is None:
@@ -112,6 +113,11 @@ def _cache_aware_factory(
             required_slots=config.num_slots,
             stop_history_eou_ms=config.stop_history_eou_ms,
             language_code=language_code,
+            # The same flag NeMo's pipeline was built with. The adapter reports the
+            # graph path as *requested* only when NeMo was actually asked for it, so
+            # eager by ``--eager`` and eager by a missing runtime stay two different
+            # answers.
+            use_cuda_graphs=use_cuda_graphs,
         )
 
     return factory

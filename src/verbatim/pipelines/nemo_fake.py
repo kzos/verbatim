@@ -274,12 +274,21 @@ class FakeCacheAwareCTCPipeline(FakeCacheAwarePipeline):
         self.greedy_ctc_decoder = object()
 
 
-def boundary_for(pipeline: FakeCacheAwarePipeline) -> NeMoBoundary:
-    """The adapter's boundary bound to the fake: numpy samples pass through untouched."""
+def boundary_for(
+    pipeline: FakeCacheAwarePipeline, *, graph_step_available: bool = False
+) -> NeMoBoundary:
+    """The adapter's boundary bound to the fake: numpy samples pass through untouched.
+
+    ``graph_step_available`` stands in for the runtime probe. False is what every
+    released NeMo wheel and this machine report; true is the source-built track of
+    NeMo PR #15863, which the CPU suite has to be able to express precisely because
+    it is the arm that cannot be run here.
+    """
     return NeMoBoundary(
         pipeline=pipeline,
         make_frame=FakeFrame,
         make_options=FakeRequestOptions,
         to_samples=lambda samples: np.asarray(samples, dtype=np.float32),
         release_stream=pipeline.release_stream,
+        graph_step_available=graph_step_available,
     )

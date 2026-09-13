@@ -25,6 +25,7 @@ from verbatim.core.registry import SessionRegistry
 from verbatim.core.session import Session
 from verbatim.core.types import PcmFrame
 from verbatim.pipelines import registry
+from verbatim.pipelines.base import GraphCapability, GraphPathUnavailable
 from verbatim.pipelines.cache_aware_ctc import CacheAwareCTCAdapter
 from verbatim.pipelines.cache_aware_rnnt import CacheAwareRNNTAdapter
 from verbatim.pipelines.nemo_fake import (
@@ -218,8 +219,10 @@ def test_open_stream_refuses_pad_ids_and_double_opens() -> None:
 def test_first_frame_is_flagged_first_and_carries_the_options_once() -> None:
     adapter, pipeline = _adapter()
     adapter.open_stream(1, SessionOptions(stop_history_eou_ms=320))
-    adapter.transcribe_step([_frame(1, _speech(1), is_first=True)], keep_all_outputs=False)
-    adapter.transcribe_step([_frame(1, _speech(2))], keep_all_outputs=False)
+    adapter.transcribe_step(
+        [_frame(1, _speech(1), is_first=True)], keep_all_outputs=False, graph=False
+    )
+    adapter.transcribe_step([_frame(1, _speech(2))], keep_all_outputs=False, graph=False)
     first, second = pipeline.seen
     assert (first.is_first, first.is_last, first.length) == (True, False, N)
     assert first.options is not None and first.options.stop_history_eou == 320
@@ -232,7 +235,7 @@ def test_a_drain_frame_reaches_nemo_with_its_valid_length_and_is_last() -> None:
     tail = np.zeros(N, dtype=np.float32)
     tail[:100] = 0.25
     frame = PcmFrame(stream_id=1, samples=tail, is_first=True, is_last=True, valid_samples=100)
-    adapter.transcribe_step([frame], keep_all_outputs=True)
+    adapter.transcribe_step([frame], keep_all_outputs=True, graph=False)
     (seen,) = pipeline.seen
     assert seen.is_last is True
     assert seen.length == 100
@@ -247,9 +250,13 @@ def test_steady_pad_rows_are_opened_once_and_edge_pad_rows_are_one_shot() -> Non
     adapter, pipeline = _adapter()
     adapter.open_stream(1, None)
     adapter.transcribe_step(
-        [_frame(1, _speech(3), is_first=True), _pad(-1), _pad(-2)], keep_all_outputs=False
+        [_frame(1, _speech(3), is_first=True), _pad(-1), _pad(-2)],
+        keep_all_outputs=False,
+        graph=False,
     )
-    adapter.transcribe_step([_frame(1, _speech(4)), _pad(-1), _pad(-2)], keep_all_outputs=False)
+    adapter.transcribe_step(
+        [_frame(1, _speech(4)), _pad(-1), _pad(-2)], keep_all_outputs=False, graph=False
+    )
     pads = [f for f in pipeline.seen if f.stream_id < 0]
     assert [(f.stream_id, f.is_first, f.is_last) for f in pads] == [
         (-1, True, False),
@@ -260,7 +267,7 @@ def test_steady_pad_rows_are_opened_once_and_edge_pad_rows_are_one_shot() -> Non
     assert pipeline.live_slots == 3
 
     last = PcmFrame(stream_id=1, samples=_speech(5), is_first=False, is_last=True, valid_samples=N)
-    adapter.transcribe_step([last, _pad(-3)], keep_all_outputs=True)
+    adapter.transcribe_step([last, _pad(-3)], keep_all_outputs=True, graph=False)
     edge_pad = next(f for f in pipeline.seen if f.stream_id == -3)
     assert (edge_pad.is_first, edge_pad.is_last) == (True, True)
     assert pipeline.get_state(-3) is None  # created and deleted inside one step
@@ -274,7 +281,9 @@ def test_a_stream_that_was_never_opened_is_refused_before_nemo_sees_it() -> None
     smaller. It never gets that far."""
     adapter, pipeline = _adapter()
     with pytest.raises(InvalidArgument, match="without open_stream"):
-        adapter.transcribe_step([_frame(7, _speech(6), is_first=True)], keep_all_outputs=False)
+        adapter.transcribe_step(
+            [_frame(7, _speech(6), is_first=True)], keep_all_outputs=False, graph=False
+        )
     assert pipeline.seen == []
     assert pipeline.step_calls == 0
     assert pipeline.missing_state_attribute == "label_buffer"
@@ -296,6 +305,7 @@ def test_outputs_must_come_back_in_row_order() -> None:
         adapter.transcribe_step(
             [_frame(1, _speech(8), is_first=True), _frame(2, _speech(9), is_first=True)],
             keep_all_outputs=False,
+            graph=False,
         )
 
 
@@ -305,8 +315,10 @@ def test_outputs_must_come_back_in_row_order() -> None:
 def test_partials_grow_and_the_clock_fields_are_left_to_the_loop() -> None:
     adapter, _ = _adapter()
     adapter.open_stream(1, None)
-    first = adapter.transcribe_step([_frame(1, _speech(10), is_first=True)], keep_all_outputs=False)
-    second = adapter.transcribe_step([_frame(1, _speech(11))], keep_all_outputs=False)
+    first = adapter.transcribe_step(
+        [_frame(1, _speech(10), is_first=True)], keep_all_outputs=False, graph=False
+    )
+    second = adapter.transcribe_step([_frame(1, _speech(11))], keep_all_outputs=False, graph=False)
     assert first[0].partial_text and second[0].partial_text.startswith(first[0].partial_text + " ")
     assert first[0].final_text is None and second[0].final_text is None
     for result in (*first, *second):
@@ -319,11 +331,15 @@ def test_partials_grow_and_the_clock_fields_are_left_to_the_loop() -> None:
 def test_endpointing_silence_produces_a_final_without_a_last_frame() -> None:
     adapter, _ = _adapter()
     adapter.open_stream(1, SessionOptions(stop_history_eou_ms=3 * CHUNK.ms))
-    adapter.transcribe_step([_frame(1, _speech(12), is_first=True)], keep_all_outputs=False)
-    adapter.transcribe_step([_frame(1, _speech(13))], keep_all_outputs=False)
+    adapter.transcribe_step(
+        [_frame(1, _speech(12), is_first=True)], keep_all_outputs=False, graph=False
+    )
+    adapter.transcribe_step([_frame(1, _speech(13))], keep_all_outputs=False, graph=False)
     finals = []
     for _ in range(3):
-        (result,) = adapter.transcribe_step([_frame(1, _silence())], keep_all_outputs=False)
+        (result,) = adapter.transcribe_step(
+            [_frame(1, _silence())], keep_all_outputs=False, graph=False
+        )
         finals.append(result.final_text)
     assert finals[:2] == [None, None]
     assert finals[2] is not None and finals[2].count(" ") == 1  # two words, one final
@@ -332,9 +348,11 @@ def test_endpointing_silence_produces_a_final_without_a_last_frame() -> None:
 def test_a_final_carries_integer_millisecond_words_and_their_mean_confidence() -> None:
     adapter, _ = _adapter()
     adapter.open_stream(1, None)
-    adapter.transcribe_step([_frame(1, _speech(14), is_first=True)], keep_all_outputs=False)
+    adapter.transcribe_step(
+        [_frame(1, _speech(14), is_first=True)], keep_all_outputs=False, graph=False
+    )
     last = PcmFrame(stream_id=1, samples=_speech(15), is_first=False, is_last=True, valid_samples=N)
-    (result,) = adapter.transcribe_step([last], keep_all_outputs=True)
+    (result,) = adapter.transcribe_step([last], keep_all_outputs=True, graph=False)
     assert result.final_text is not None and result.final_text.count(" ") == 1
     assert [(w.start_ms, w.end_ms) for w in result.words] == [(0, 160), (160, 320)]
     assert result.words[0].word == result.final_text.split()[0]
@@ -346,10 +364,12 @@ def test_step_costs_are_measured_wall_time() -> None:
     adapter, _ = _adapter()
     adapter.open_stream(1, None)
     assert adapter.step_ms == 0.0 and adapter.edge_step_ms == 0.0
-    adapter.transcribe_step([_frame(1, _speech(16), is_first=True)], keep_all_outputs=False)
+    adapter.transcribe_step(
+        [_frame(1, _speech(16), is_first=True)], keep_all_outputs=False, graph=False
+    )
     assert adapter.step_ms > 0.0 and adapter.edge_step_ms == 0.0
     last = PcmFrame(stream_id=1, samples=_speech(17), is_first=False, is_last=True, valid_samples=N)
-    adapter.transcribe_step([last], keep_all_outputs=True)
+    adapter.transcribe_step([last], keep_all_outputs=True, graph=False)
     assert adapter.edge_step_ms > 0.0
 
 
@@ -363,9 +383,10 @@ def test_close_stream_releases_nemo_slots_only_for_a_stream_that_never_ended() -
     adapter.transcribe_step(
         [_frame(1, _speech(18), is_first=True), _frame(2, _speech(19), is_first=True)],
         keep_all_outputs=False,
+        graph=False,
     )
     last = PcmFrame(stream_id=2, samples=_silence(), is_first=False, is_last=True, valid_samples=0)
-    adapter.transcribe_step([last], keep_all_outputs=True)
+    adapter.transcribe_step([last], keep_all_outputs=True, graph=False)
     adapter.close_stream(2)  # ended through NeMo: nothing to release
     adapter.close_stream(1)  # stepped, never ended: the failed-session shape
     adapter.close_stream(3)  # never opened at all: a no-op
@@ -386,12 +407,14 @@ def test_a_ctc_step_that_raises_on_a_final_frame_does_not_strand_the_streams_slo
     ``close_stream`` would skip the release and strand the context slot for good."""
     adapter, pipeline = _adapter()
     adapter.open_stream(1, None)
-    adapter.transcribe_step([_frame(1, _speech(30), is_first=True)], keep_all_outputs=False)
+    adapter.transcribe_step(
+        [_frame(1, _speech(30), is_first=True)], keep_all_outputs=False, graph=False
+    )
     assert pipeline.live_slots == 1
     pipeline.raise_in_encoder = RuntimeError("CUDA error: device-side assert triggered")
     last = PcmFrame(stream_id=1, samples=_speech(31), is_first=False, is_last=True, valid_samples=N)
     with pytest.raises(RuntimeError, match="device-side assert"):
-        adapter.transcribe_step([last], keep_all_outputs=True)
+        adapter.transcribe_step([last], keep_all_outputs=True, graph=False)
     assert pipeline.live_slots == 1  # NeMo never reached its cleanup
     adapter.close_stream(1)  # what fail_live does for every live session
     assert pipeline.released == [1]
@@ -404,7 +427,9 @@ def test_a_ctc_step_that_raises_on_a_first_frame_releases_what_nemo_allocated() 
     adapter.open_stream(1, None)
     pipeline.raise_in_encoder = RuntimeError("encoder failed")
     with pytest.raises(RuntimeError, match="encoder failed"):
-        adapter.transcribe_step([_frame(1, _speech(32), is_first=True)], keep_all_outputs=False)
+        adapter.transcribe_step(
+            [_frame(1, _speech(32), is_first=True)], keep_all_outputs=False, graph=False
+        )
     assert pipeline.live_slots == 1
     adapter.close_stream(1)
     assert pipeline.released == [1]
@@ -496,3 +521,64 @@ def test_the_spec_refuses_a_decoding_type_nemos_builder_has_no_branch_for() -> N
             batch_size=32,
             decoding="malsd",
         )
+
+
+# --- the graph seam, on the CTC arm ----------------------------------------------------
+
+
+def _graph_adapter(
+    *, use_cuda_graphs: bool, graph_step_available: bool
+) -> tuple[CacheAwareCTCAdapter, FakeCacheAwareCTCPipeline]:
+    config = _config()
+    pipeline = FakeCacheAwareCTCPipeline(CHUNK.ms, num_slots=config.num_slots)
+    adapter = CacheAwareCTCAdapter(
+        config.chunk,
+        boundary_for(pipeline, graph_step_available=graph_step_available),
+        buckets=config.buckets or (),
+        required_slots=config.num_slots,
+        use_cuda_graphs=use_cuda_graphs,
+    )
+    return adapter, pipeline
+
+
+def test_the_ctc_adapter_reports_the_same_three_graph_states() -> None:
+    """The capability lives in the shared body, so CTC gets it by inheriting rather
+    than by a second implementation -- but a subclass can shadow a method, and the row
+    a CTC run publishes says eager or graphed on the strength of this answer.
+
+    What the runtime half means for CTC is narrower than it looks: the probe reads the
+    cache-aware RNNT wrapper, because where PR #15863 puts the switch for the CTC
+    wrapper cannot be read from an installed wheel here. It answers which NeMo track is
+    installed, which is what the ``missing`` state is for.
+    """
+    eager, _ = _graph_adapter(use_cuda_graphs=False, graph_step_available=True)
+    assert (eager.graph_capability().requested, eager.graph_capability().available) == (
+        False,
+        False,
+    )
+    absent, _ = _graph_adapter(use_cuda_graphs=True, graph_step_available=False)
+    assert "15863" in (absent.graph_capability().reason or "")
+    graphed, _ = _graph_adapter(use_cuda_graphs=True, graph_step_available=True)
+    assert graphed.graph_capability() == GraphCapability.graphed()
+
+
+def test_a_ctc_graph_step_on_a_runtime_without_one_raises_rather_than_running_eager() -> None:
+    adapter, pipeline = _graph_adapter(use_cuda_graphs=True, graph_step_available=False)
+    adapter.open_stream(1, None)
+    with pytest.raises(GraphPathUnavailable, match="15863"):
+        adapter.transcribe_step(
+            [_frame(1, _speech(60), is_first=True)], keep_all_outputs=False, graph=True
+        )
+    assert pipeline.step_calls == 0
+
+
+def test_a_ctc_steady_batch_on_an_available_graph_path_runs() -> None:
+    """The positive control for the two refusals: without it they would both pass on an
+    adapter that refused every graphed batch."""
+    adapter, pipeline = _graph_adapter(use_cuda_graphs=True, graph_step_available=True)
+    adapter.open_stream(1, None)
+    (result,) = adapter.transcribe_step(
+        [_frame(1, _speech(61), is_first=True)], keep_all_outputs=False, graph=True
+    )
+    assert pipeline.step_calls == 1
+    assert result.stream_id == 1

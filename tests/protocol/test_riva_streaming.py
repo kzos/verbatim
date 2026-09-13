@@ -506,13 +506,13 @@ class _Flaky(FakePipelineAdapter):
         self.real_steps = 0
 
     def transcribe_step(
-        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool, graph: bool = False
     ) -> list[StepResult]:
         if any(frame.stream_id > 0 for frame in frames):
             self.real_steps += 1
             if self.real_steps == 2:
                 raise RuntimeError("boom")
-        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs)
+        return super().transcribe_step(frames, keep_all_outputs=keep_all_outputs, graph=graph)
 
 
 async def test_a_pipeline_exception_aborts_with_internal() -> None:

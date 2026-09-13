@@ -26,7 +26,12 @@ import numpy as np
 from verbatim.config import ChunkMode
 from verbatim.core.errors import InvalidArgument
 from verbatim.core.types import PcmFrame, StepResult
-from verbatim.pipelines.base import PipelineAdapter
+from verbatim.pipelines.base import (
+    GraphCapability,
+    GraphKey,
+    GraphPathUnavailable,
+    PipelineAdapter,
+)
 from verbatim.protocols.base import Hypothesis, SessionOptions, Word
 
 __all__ = ["BATCH_LEAKS", "FakePipelineAdapter", "ScriptSource", "ScriptedTranscript"]
@@ -142,6 +147,14 @@ class FakePipelineAdapter(PipelineAdapter):
     It also records every batch shape it was called with, so a test can assert the steady
     batch never changed shape without instrumenting the scheduler.
 
+    It fakes capture and replay at the same seam the real adapter uses. ``graphs``
+    sets what ``graph_capability()`` reports, so the CPU suite can drive all three
+    states -- graphed, eager by choice, and asked-for-but-absent -- on a machine that
+    has no graph path at all. The first ``graph=True`` call at a shape is recorded as
+    a capture and every later one at that shape as a replay, which is NeMo's own
+    lazy-on-first-sight behaviour; a ``graph=True`` call with no available graph path
+    raises instead of running, because a silent downgrade is the bug.
+
         The NeMo adapter is ``verbatim.pipelines.cache_aware_rnnt``; this fake exists so
     the scheduler is testable without a GPU, and must never be mistaken for it.
     """
@@ -157,6 +170,7 @@ class FakePipelineAdapter(PipelineAdapter):
         script_for: ScriptSource | None = None,
         partial_every: int = 1,
         batch_leak: Sequence[str] = (),
+        graphs: GraphCapability | None = None,
     ) -> None:
         leak = frozenset(batch_leak)
         unknown = leak - BATCH_LEAKS
@@ -174,10 +188,20 @@ class FakePipelineAdapter(PipelineAdapter):
         self._scripted = scripted
         self._script_for = script_for
         self._partial_every = partial_every
+        self._graphs = (
+            graphs
+            if graphs is not None
+            else GraphCapability.eager(
+                "the CPU fake runs no graphs unless a test hands it a GraphCapability"
+            )
+        )
         self._texts: dict[int, list[str]] = {}
         self._stubs: dict[int, ScriptedTranscript] = {}
         self._last_partial: dict[int, str] = {}
         self._shapes: list[tuple[int, bool]] = []
+        self._calls_seen: list[tuple[int, bool, bool]] = []
+        self._captures: list[GraphKey] = []
+        self._replays: list[GraphKey] = []
         self._calls = 0
         self._eager_calls = 0
 
@@ -187,6 +211,19 @@ class FakePipelineAdapter(PipelineAdapter):
 
     def supported_buckets(self) -> tuple[int, ...]:
         return self._buckets
+
+    def graph_capability(self) -> GraphCapability:
+        return self._graphs
+
+    @property
+    def captures(self) -> list[GraphKey]:
+        """Shapes captured, in order: the first ``graph=True`` call at each key."""
+        return list(self._captures)
+
+    @property
+    def replays(self) -> list[GraphKey]:
+        """Every later ``graph=True`` call at an already-captured key, in order."""
+        return list(self._replays)
 
     @property
     def step_ms(self) -> float:
@@ -202,6 +239,13 @@ class FakePipelineAdapter(PipelineAdapter):
     def shapes_seen(self) -> list[tuple[int, bool]]:
         """Every batch stepped: ``(batch size, keep_all_outputs)``, in call order."""
         return list(self._shapes)
+
+    @property
+    def calls_seen(self) -> list[tuple[int, bool, bool]]:
+        """Every batch stepped: ``(batch size, keep_all_outputs, graph)``, in call
+        order. The third element is what the scheduler asked for, which is the whole
+        question a test about the graph path is asking."""
+        return list(self._calls_seen)
 
     @property
     def steps(self) -> int:
@@ -252,12 +296,25 @@ class FakePipelineAdapter(PipelineAdapter):
         return f"w{digest}"
 
     def transcribe_step(
-        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool, graph: bool
     ) -> list[StepResult]:
         self._calls += 1
         if keep_all_outputs:
             self._eager_calls += 1
         self._shapes.append((len(frames), keep_all_outputs))
+        self._calls_seen.append((len(frames), keep_all_outputs, graph))
+        if graph:
+            if not self._graphs.available:
+                raise GraphPathUnavailable(
+                    f"a batch of {len(frames)} rows was handed to the graph path and this "
+                    f"adapter has none: {self._graphs.reason}"
+                )
+            key = GraphKey(
+                chunk_ms=self._chunk.ms,
+                batch_size=len(frames),
+                keep_all_outputs=keep_all_outputs,
+            )
+            (self._replays if key in self._captures else self._captures).append(key)
         if self._scripted:
             return [self._scripted_row(frame) for frame in frames]
         # The batch composition a row's output must not depend on: how many real streams

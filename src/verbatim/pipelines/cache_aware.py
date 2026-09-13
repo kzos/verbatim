@@ -68,7 +68,11 @@ import numpy as np
 from verbatim.config import SAMPLE_RATE_HZ, ChunkMode
 from verbatim.core.errors import InvalidArgument
 from verbatim.core.types import PcmFrame, StepResult, Word
-from verbatim.pipelines.base import PipelineAdapter
+from verbatim.pipelines.base import (
+    GraphCapability,
+    GraphPathUnavailable,
+    PipelineAdapter,
+)
 from verbatim.protocols.base import SessionOptions
 from verbatim.scheduler.graph_budget import ConfigError
 
@@ -111,6 +115,15 @@ class NeMoBoundary:
     ``ASRRequestOptions``, the bufferer and the context manager are the same classes
     on either, so ``from_pipeline`` binds an RNNT or a CTC pipeline unchanged. Which
     of the two it is, is the adapter's business, not the boundary's.
+
+    ``graph_step_available`` is the runtime fact behind ``graph_capability()``:
+    whether the installed NeMo carries both halves of PR #15863. It is probed once,
+    where the boundary is bound, rather than assumed from a version number -- see
+    ``docs/decisions/0002-the-graph-path-is-not-in-a-released-wheel.md``, where a
+    version number would have got it wrong twice. The probe reads the cache-aware
+    RNNT wrapper for either pipeline: it answers which NeMo track is installed, and
+    where PR #15863 puts the switch for the CTC wrapper cannot be read from an
+    installed wheel here.
     """
 
     pipeline: CacheAwarePipelineLike
@@ -118,9 +131,12 @@ class NeMoBoundary:
     make_options: Callable[..., Any]
     to_samples: Callable[[np.ndarray], Any]
     release_stream: Callable[[int], None] | None = None
+    graph_step_available: bool = False
 
     @classmethod
-    def from_pipeline(cls, pipeline: Any) -> NeMoBoundary:
+    def from_pipeline(
+        cls, pipeline: Any, *, graph_step_available: bool | None = None
+    ) -> NeMoBoundary:
         """Bind a built ``CacheAwareRNNTPipeline`` or ``CacheAwareCTCPipeline``.
 
         Imports torch and NeMo here and nowhere else on this package's import path,
@@ -149,12 +165,17 @@ class NeMoBoundary:
             if stream_id in getattr(context, "streamidx2slotidx", {}):
                 context.reset_slots([stream_id], [True])
 
+        if graph_step_available is None:
+            from verbatim.pipelines.nemo_runtime import graph_step_present
+
+            graph_step_available = graph_step_present()
         return cls(
             pipeline=pipeline,
             make_frame=Frame,
             make_options=ASRRequestOptions,
             to_samples=to_samples,
             release_stream=release_stream,
+            graph_step_available=graph_step_available,
         )
 
 
@@ -210,6 +231,7 @@ class CacheAwareAdapter(PipelineAdapter):
         required_slots: int,
         stop_history_eou_ms: int = 800,
         language_code: str | None = None,
+        use_cuda_graphs: bool = False,
     ) -> None:
         pipeline = boundary.pipeline
         self._refuse_a_crossed_wire(pipeline)
@@ -235,6 +257,7 @@ class CacheAwareAdapter(PipelineAdapter):
         self._buckets = tuple(buckets)
         self._stop_history_eou_ms = int(stop_history_eou_ms)
         self._language_code = language_code
+        self._use_cuda_graphs = bool(use_cuda_graphs)
         # Real streams opened by open_stream, with the request options NeMo was given.
         self._opened: dict[int, Any] = {}
         # Streams, real or pad, that NeMo has seen at least once and not yet ended.
@@ -264,6 +287,25 @@ class CacheAwareAdapter(PipelineAdapter):
 
     def supported_buckets(self) -> tuple[int, ...]:
         return self._buckets
+
+    def graph_capability(self) -> GraphCapability:
+        """Two facts, kept apart: what the pipeline was built for, and what the
+        runtime has. Only ``use_cuda_graphs=True`` on a runtime that carries both
+        halves of NeMo PR #15863 is the graph path; ``use_cuda_graphs=True`` without
+        them is the refusal ``docs/decisions/0002`` records, and is reported as such
+        rather than quietly becoming an eager run."""
+        if not self._use_cuda_graphs:
+            return GraphCapability.eager(
+                "the pipeline was built with asr.use_cuda_graphs=false, so the encoder "
+                "step runs eager and the row must say so"
+            )
+        if not self._boundary.graph_step_available:
+            return GraphCapability.missing(
+                "the installed NeMo lacks the graphed streaming encoder step "
+                "(NeMo PR #15863: streaming_encoder_cuda_graphs."
+                "CudaGraphsStreamingEncoderStep and set_streaming_cuda_graphs)"
+            )
+        return GraphCapability.graphed()
 
     @property
     def step_ms(self) -> float:
@@ -316,8 +358,27 @@ class CacheAwareAdapter(PipelineAdapter):
         self._boundary.pipeline.delete_state(stream_id)
 
     def transcribe_step(
-        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool
+        self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool, graph: bool
     ) -> list[StepResult]:
+        if graph:
+            capability = self.graph_capability()
+            if not capability.available:
+                # Never downgrade. NeMo would run this batch eager and nothing outside
+                # would know, which is exactly how a row comes to look graphed without
+                # being graphed.
+                raise GraphPathUnavailable(
+                    f"a batch of {len(frames)} rows was handed to the graph path and "
+                    f"this pipeline has none: {capability.reason}"
+                )
+            if keep_all_outputs:
+                # The peel, restated at the seam. NeMo's own `_can_use_graphs()` never
+                # captures a keep_all_outputs=True call, so a final sub-batch claiming
+                # the graph path is a caller bug, not a capture the scheduler declined.
+                raise GraphPathUnavailable(
+                    f"a final (keep_all_outputs=True) batch of {len(frames)} rows was "
+                    "handed to the graph path; finals are peeled into an eager "
+                    "side-batch and that shape is never captured"
+                )
         if not frames:
             return []
         requests = []
