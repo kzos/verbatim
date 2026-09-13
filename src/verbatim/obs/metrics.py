@@ -92,6 +92,12 @@ def render(snapshot: MetricsSnapshot, *, labels: Mapping[str, str]) -> str:
         "verbatim_steady_steps_total", "counter", "Steady batches stepped.", c.steady_steps_total
     )
     series(
+        "verbatim_steady_graphed_steps_total",
+        "counter",
+        "Steady batches the scheduler stepped on the graph path.",
+        c.steady_graphed_steps_total,
+    )
+    series(
         "verbatim_eager_steps_total",
         "counter",
         "Edge batches stepped eagerly.",

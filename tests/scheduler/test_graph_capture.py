@@ -396,3 +396,33 @@ def test_ragged_padding_is_fine_on_the_eager_arm() -> None:
     controller = CaptureController(config, pipeline)
     assert controller.mode == "eager"
     assert controller.warmup(PadPool(16, CHUNK)) == ()
+
+
+def test_the_graphed_steady_steps_are_counted_and_not_only_computed() -> None:
+    """`TickStats.steady_graphed` was set on every tick and then discarded.
+
+    Nothing folded it into the counters, so a graphed run and an eager one produced
+    byte-identical exposition, and the acceptance criterion "at most 2% of steps eager"
+    had no instrument at all. It is the only thing that would show a graph path that
+    stopped being one mid-run -- upstream evicts without saying so.
+    """
+    from verbatim.obs.counters import Counters
+
+    counters = Counters()
+    graphed_loop, _ = _loop((8,))
+    _join(graphed_loop, 1, 3, drain=False)
+    graphed_loop.run_for(3)
+    for stat in graphed_loop.stats:
+        counters.observe_tick(stat, budget_ms=112.0, period_ms=160.0)
+    assert counters.steady_steps_total == 3
+    assert counters.steady_graphed_steps_total == 3
+
+    eager = Counters()
+    eager_loop, _ = _loop((8,), graphs=GraphCapability.eager("this fake runs no graphs"))
+    _join(eager_loop, 1, 3, drain=False)
+    eager_loop.run_for(3)
+    for stat in eager_loop.stats:
+        eager.observe_tick(stat, budget_ms=112.0, period_ms=160.0)
+    assert eager.steady_steps_total == 3
+    # The whole point: the two runs are now distinguishable from the counters alone.
+    assert eager.steady_graphed_steps_total == 0
