@@ -55,6 +55,7 @@ __all__ = [
     "PsiWindow",
     "WindowRecorder",
     "run_load_recorded",
+    "run_sharded_load_recorded",
     "summarise_gpu",
     "throttling_reasons",
 ]
@@ -294,6 +295,7 @@ class WindowRecorder:
         gpu_index: int = 0,
         server_pid: int | None = None,
         client_pid: int | None = None,
+        client_pids: Sequence[int] | None = None,
         interval_s: float = DEFAULT_INTERVAL_S,
         procfs: Path = Path("/proc"),
         cgroupfs: Path | None = None,
@@ -311,6 +313,7 @@ class WindowRecorder:
         self._sampler = HostSampler(
             server_pid=server_pid,
             client_pid=client_pid,
+            client_pids=client_pids,
             procfs=procfs,
             cgroupfs=cgroupfs,
             cgroup_root=cgroup_root,
@@ -325,6 +328,21 @@ class WindowRecorder:
     @property
     def hooks(self) -> WindowHooks:
         return WindowHooks(on_open=self.on_window_open, on_close=self.on_window_close)
+
+    def track_client_pids(self, pids: Sequence[int]) -> None:
+        """Charge these processes' CPU to the client side of this record.
+
+        The record is the box's, taken once, whatever the load generator did with its own
+        processes. Its client CPU is not the box's, though: a rung split across processes
+        spends it in the children, and a budget applied to the parent alone would read a
+        process that forked and waited. The children are named here, between building the
+        recorder and opening the window, because that is when they exist.
+        """
+        self._sampler.add_client_pids(pids)
+
+    @property
+    def client_pids(self) -> tuple[int, ...]:
+        return self._sampler.client_pids
 
     def on_window_open(self) -> None:
         self._open_s = self._clock()
@@ -386,6 +404,35 @@ async def run_load_recorded(spec: LoadSpec, recorder: WindowRecorder) -> RunResu
     poller = asyncio.create_task(recorder.run(stop))
     try:
         return await run_load(spec, hooks=recorder.hooks)
+    finally:
+        stop.set()
+        await poller
+
+
+async def run_sharded_load_recorded(
+    spec: LoadSpec, recorder: WindowRecorder, *, processes: int, **kwargs: Any
+) -> RunResult:
+    """``run_sharded_load`` with ONE host record, taken here, over the shared window.
+
+    The box is one box. Its record is sampled in this process, between the two instants
+    every load process was handed, and not once per process: N records of the same box
+    over the same window are not N observations, and picking one of them would attribute
+    the box to whichever process happened to be asked. The load processes are named to
+    the sampler as they are forked so the client's CPU is charged where it is spent.
+    """
+    from verbatim_bench.multiproc import run_sharded_load
+
+    stop = asyncio.Event()
+    poller = asyncio.create_task(recorder.run(stop))
+    try:
+        run = await run_sharded_load(
+            spec,
+            processes=processes,
+            hooks=recorder.hooks,
+            on_children=recorder.track_client_pids,
+            **kwargs,
+        )
+        return run.result
     finally:
         stop.set()
         await poller

@@ -1271,11 +1271,17 @@ class HostSampler:
         *,
         server_pid: int | None = None,
         client_pid: int | None = None,
+        client_pids: Sequence[int] | None = None,
         procfs: Path = Path("/proc"),
         cgroupfs: Path | None = None,
         clock: Callable[[], float] = time.monotonic,
         cgroup_root: Path = Path("/sys/fs/cgroup"),
     ) -> None:
+        """`client_pids` names every process driving the load, not just the one holding
+        this sampler. A load generator split across processes spends its CPU in its
+        children, and a client budget applied to the parent alone would read a process
+        that did almost nothing and could never fail. `client_pid` is the single-process
+        spelling of the same thing and still means this process when it is None."""
         if cgroupfs is None:
             cgroupfs = own_cgroup(procfs, cgroup_root)
         self._clock = clock
@@ -1290,7 +1296,12 @@ class HostSampler:
         self._start_sys_some: int | None = None
         self._start_sys_full: int | None = None
         self._server_pid = server_pid
-        self._client_pid = client_pid if client_pid is not None else os.getpid()
+        if client_pids is not None:
+            self._client_pids = list(dict.fromkeys(int(pid) for pid in client_pids))
+        elif client_pid is not None:
+            self._client_pids = [int(client_pid)]
+        else:
+            self._client_pids = [os.getpid()]
         self._procfs = procfs
         self._cgroupfs = cgroupfs
         self._start_wall: float = 0.0
@@ -1302,9 +1313,27 @@ class HostSampler:
         self._start_some: int | None = None
         self._start_full: int | None = None
         self._start_server: int | None = None
-        self._start_client: int | None = None
+        self._start_client: dict[int, int] = {}
         self._start_threads: dict[int, int] = {}
         self._started = False
+
+    def add_client_pids(self, pids: Sequence[int]) -> None:
+        """Add processes to the client side of the record, before the window opens.
+
+        The load generator's children exist only once they are forked, which is after the
+        sampler is built and before it is started, so this is the moment they can be
+        named.
+        """
+        if self._started:
+            raise RuntimeError("client processes must be named before the window opens")
+        for pid in pids:
+            if int(pid) not in self._client_pids:
+                self._client_pids.append(int(pid))
+
+    @property
+    def client_pids(self) -> tuple[int, ...]:
+        """Every process whose CPU this record charges to the client."""
+        return tuple(self._client_pids)
 
     def _task_pids(self, pid: int) -> list[int]:
         task_dir = self._procfs / str(pid) / "task"
@@ -1339,8 +1368,11 @@ class HostSampler:
                 )
                 is not None
             }
-        if self._client_pid is not None:
-            self._start_client = _read_proc_cpu_time(self._procfs / str(self._client_pid) / "stat")
+        self._start_client = {
+            pid: value
+            for pid in self._client_pids
+            if (value := _read_proc_cpu_time(self._procfs / str(pid) / "stat")) is not None
+        }
         self._started = True
 
     def stop(self, *, stream_hours: float | None = None) -> HostCounters:
@@ -1392,13 +1424,13 @@ class HostSampler:
                 thread_delta_s = max(end_value - start_value, 0) / float(hertz)
                 thread_pcts.append(thread_delta_s / wall * 100.0)
             hottest = max(thread_pcts) if thread_pcts else None
-        client_pct = 0.0
-        client_processes = 1
-        if self._client_pid is not None:
-            end_client = _read_proc_cpu_time(self._procfs / str(self._client_pid) / "stat")
-            if end_client is not None and self._start_client is not None:
-                delta_jiffies = max(end_client - self._start_client, 0)
-                client_pct = delta_jiffies / float(hertz) / wall / float(cpuset_size) * 100.0
+        client_delta_jiffies = 0
+        for pid, start_value in self._start_client.items():
+            end_client = _read_proc_cpu_time(self._procfs / str(pid) / "stat")
+            if end_client is not None:
+                client_delta_jiffies += max(end_client - start_value, 0)
+        client_pct = client_delta_jiffies / float(hertz) / wall / float(cpuset_size) * 100.0
+        client_processes = len(self._client_pids)
         return HostCounters(
             steal_pct=steal_pct,
             psi_cpu_some_avg=psi_some,
