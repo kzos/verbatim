@@ -64,9 +64,11 @@ NVML_THROTTLE_EVENTS_MAX: Final = 0
 FOREIGN_GPU_PROCESSES_MAX: Final = 0
 GPU_PERSISTENCE_MODE_REQUIRED: Final = True
 
-# Calibrated by the harness on the box, per section 7 and DR-0007. Never guess these.
-# Calibrated by the harness on the box against the server under test, scoped to this
-# session's own cgroup, per section 7 and DR-0007. Never guess these.
+# Recorded, not gated (DR-0008). These are the last values calibrated by the harness on
+# the box against the server under test, scoped to this session's own cgroup (DR-0007),
+# kept as a record: nothing reads them as a gate, because the scoped reading measures our
+# own load, the variable a capacity search sweeps, and the machine-wide one measures
+# background we do not control. The readings stay on every rung. Never guess these.
 PSI_CPU_SOME_MAX_PCT: Final[float | None] = 0.13
 PSI_CPU_FULL_MAX_PCT: Final[float | None] = 0.12
 # Not yet frozen: no measurement exists. Never guess these.

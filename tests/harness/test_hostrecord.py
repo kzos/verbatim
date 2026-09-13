@@ -219,28 +219,33 @@ def test_an_uncovered_window_leaves_thermal_unevaluated(monkeypatch: pytest.Monk
     assert rung.passed is False
 
 
-def test_unfrozen_pressure_thresholds_keep_a_sampled_rung_invalid_and_recorded(
+def test_pressure_readings_ride_on_a_valid_rung_whatever_the_thresholds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The frozen document: a rung measured while a required threshold is null is invalid
-    rather than passing. The record is still kept, because it is the calibration's input.
-
-    The thresholds were calibrated on 2026-09-11 (DR-0007), so this state no longer arises
-    by default and is constructed. The rule still has to hold, because the other two
-    calibration values are null and the pressure pair is re-calibrated per box session."""
+    """Processor pressure is recorded and gates nothing (DR-0008): a null threshold, an
+    exceeded one and an unavailable reading all leave the rung valid, and the readings,
+    scoped and machine-wide, stay on the record as the next instrument's input."""
     monkeypatch.setattr(constants, "PSI_CPU_SOME_MAX_PCT", None)
-    host = _host()
-    rung = rung_from_run(
-        _run([_session(index) for index in range(4)]),
-        plan=RungPlan(n=4, seed=SEED),
-        threshold_ms=THRESHOLD_MS,
-        batch1_wer=0.0,
-        host=host,
-    )
-    assert rung.valid is False
-    assert rung.invalid_reason is InvalidReason.PSI_THRESHOLD_UNFROZEN
-    assert rung.host is host
-    assert rung.host.to_json_dict()["gpu"]["throttle_events"] == 0
+    for host in (
+        _host(),
+        _host(psi_cpu_some_avg=99.0, psi_cpu_full_avg=99.0),
+        _host(psi_cpu_some_avg=None, psi_cpu_full_avg=None, psi_scope="unavailable"),
+    ):
+        rung = rung_from_run(
+            _run([_session(index) for index in range(4)]),
+            plan=RungPlan(n=4, seed=SEED),
+            threshold_ms=THRESHOLD_MS,
+            batch1_wer=0.0,
+            host=host,
+        )
+        assert rung.valid is True
+        assert rung.invalid_reason is None
+        assert rung.host is host
+        recorded = rung.host.to_json_dict()
+        assert "psi_scope" in recorded["counters"]
+        assert "psi_system_some_pct_window" in recorded["counters"]
+        assert "some_window_pct" in recorded["psi"]
+        assert recorded["gpu"]["throttle_events"] == 0
 
 
 class _ScriptedProbe:
@@ -454,16 +459,14 @@ async def test_the_ladder_records_the_host_window_when_asked(tmp_path: Path) -> 
         assert rung["host"]["gpu"]["throttle_events"] == 0
         assert rung["host"]["gpu"]["foreign_pids"] == []
         assert rung["host"]["counters"]["client_cpu_pct_of_cpuset"] >= 0.0
-        # This test's subject is that the window record rides on the rung, and it must not
-        # depend on what the box was doing while the suite ran. Before the thresholds were
-        # calibrated (DR-0007) a sampled rung was always invalid as unfrozen; now it is
-        # valid on a quiet box and invalid for pressure on a busy one, and a test suite is
-        # a busy box. Either is correct here; an unrelated reason is not.
-        if not rung["valid"]:
-            assert rung["invalid_reason"] in {
-                InvalidReason.PSI.value,
-                InvalidReason.PSI_THRESHOLD_UNFROZEN.value,
-            }
+        # Pressure is recorded and gates nothing (DR-0008): whatever the box was doing while
+        # the suite ran, a rung is never invalid for it, and the readings are on the record.
+        assert rung["invalid_reason"] not in {
+            InvalidReason.PSI.value,
+            InvalidReason.PSI_THRESHOLD_UNFROZEN.value,
+        }
+        assert "some_window_pct" in rung["host"]["psi"]
+        assert "psi_scope" in rung["host"]["counters"]
 
 
 def test_host_record_needs_a_server_pid(tmp_path: Path) -> None:
