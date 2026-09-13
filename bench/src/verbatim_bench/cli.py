@@ -529,6 +529,10 @@ def _ladder(args: argparse.Namespace) -> int:
             threshold_ms=threshold_ms,
             batch1_wer=reference.wer if reference is not None else None,
             host=host,
+            # Recorded on the rung so an UNSTABLE verdict can be read against the
+            # tolerance the readings were actually tested at, not against the default
+            # someone assumes it ran with.
+            warm_up_convergence=float(args.warm_up_convergence),
         )
 
     outcome = run_ladder(

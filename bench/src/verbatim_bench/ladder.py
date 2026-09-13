@@ -98,6 +98,15 @@ class Rung:
     canonical_window: bool = True
     window_s: float = constants.WINDOW_S
     wall_clock_s: float = 0.0
+    #: The warm-up p95 readings this rung actually took, in order, and whether two
+    #: consecutive ones ever agreed within the convergence tolerance. A rung that ends
+    #: as UNSTABLE ended there because they never did, and without the series nobody can
+    #: tell a load still climbing from a tolerance too tight for the concurrency -- which
+    #: is exactly the question a B300 rung at n=39 left unanswerable on 2026-09-13, with
+    #: every integrity counter at zero and the server serving the streams fine.
+    warm_up_readings: tuple[float | None, ...] = ()
+    warm_up_converged: bool | None = None
+    warm_up_convergence: float | None = None
     #: The host record sampled across this rung's window, when one was taken; None is a
     #: rung run from its load alone, which can apply the pacing threshold and nothing else
     #: and can never evaluate thermal.
@@ -196,6 +205,7 @@ def rung_from_run(
     threshold_ms: float,
     batch1_wer: float | None = None,
     host: HostWindow | None = None,
+    warm_up_convergence: float | None = None,
 ) -> Rung:
     """Reduce one executed load to the rung it supports, and to nothing more.
 
@@ -245,6 +255,12 @@ def rung_from_run(
         "canonical_window": executed_canonical_window(result),
         "window_s": float(plan.window_s),
         "wall_clock_s": float(result.wall_clock_s),
+        # Carried on every rung, not only the unstable ones: a rung that converged in one
+        # reading and a rung that took six are different runs, and the series is the only
+        # thing that says which.
+        "warm_up_readings": tuple(result.warm_up_readings),
+        "warm_up_converged": result.warm_up_converged,
+        "warm_up_convergence": warm_up_convergence,
     }
     ran["host"] = host
     if host is not None:
@@ -394,6 +410,13 @@ class LadderResult:
                 row["window_s"] = rung.window_s
                 row["wall_clock_s"] = rung.wall_clock_s
                 row["host"] = rung.host.to_json_dict() if rung.host is not None else None
+                # The warm-up series rides with the window fields for the same reason
+                # they are opt-in: the frozen row schema is closed, and this is the
+                # harness's own artifact. A rung that ends UNSTABLE says so in
+                # `first_failing_criterion` and says WHY only here.
+                row["warm_up_readings"] = list(rung.warm_up_readings)
+                row["warm_up_converged"] = rung.warm_up_converged
+                row["warm_up_convergence"] = rung.warm_up_convergence
         return rows
 
 

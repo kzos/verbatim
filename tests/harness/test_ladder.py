@@ -28,6 +28,7 @@ from verbatim_bench.ladder import (
     next_rung_up,
     run_ladder,
     run_sensitivity,
+    rung_from_run,
     rung_validity,
 )
 from verbatim_bench.nullserver import NullServer, NullServerConfig
@@ -831,3 +832,46 @@ async def test_the_rung_executor_declares_only_the_criteria_it_established(tmp_p
     # No reference was supplied, so nothing was compared and the run says so.
     assert payload["config"]["wer_batch1"] is None
     assert payload["s"] == 0
+
+
+def test_a_rung_that_never_converged_records_the_series_that_did_not_converge() -> None:
+    """An UNSTABLE rung used to be a dead end for whoever read it later.
+
+    Measured on a B300 on 2026-09-13: rungs at 37 and 38 streams passed every criterion
+    with p95 203.7 ms, and 39 and 40 failed as UNSTABLE with no criteria evaluated and
+    p95 infinite -- while every integrity counter read zero, so the server had served
+    those streams without refusing, dropping or losing a final. The warm-up convergence
+    detector simply never settled. Whether the load was still climbing or the tolerance
+    was too tight for that concurrency could not be told from the row, because the
+    readings were computed and thrown away.
+
+    So the series rides on the rung, and on every rung rather than only the unstable
+    ones: converging in one reading and converging in six are different runs.
+    """
+    from verbatim_bench.pace import RunResult
+
+    result = RunResult(
+        spec_dict={
+            "window_s": float(constants.WINDOW_S),
+            "warm_up_s": float(constants.WARM_UP_S),
+            "warm_up_reading_s": float(constants.WARM_UP_READING_S),
+            "warm_up_convergence": float(constants.WARM_UP_CONVERGENCE),
+            "warm_up_cap_s": float(constants.WARM_UP_CAP_S),
+        },
+        wall_clock_s=240.0,
+        warm_up_converged=False,
+        warm_up_readings=(310.0, 260.0, 305.0, 255.0),
+    )
+    rung = rung_from_run(
+        result,
+        plan=RungPlan(n=39, seed=1, warm_up_s=60.0, window_s=180.0),
+        threshold_ms=310.0,
+        warm_up_convergence=0.1,
+    )
+    assert rung.first_failing_criterion is Criterion.UNSTABLE
+    assert rung.criteria_evaluated == ()
+    # The readings are the finding: four readings oscillating by about 20% of each other,
+    # against a tolerance of 10%, is a load that is not settling rather than one drifting.
+    assert rung.warm_up_readings == (310.0, 260.0, 305.0, 255.0)
+    assert rung.warm_up_converged is False
+    assert rung.warm_up_convergence == 0.1
