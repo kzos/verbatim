@@ -37,6 +37,23 @@
 > thing. The ceiling to expect instead is the step: a fixed-shape bucket-32 step on that card costs
 > **53 to 123 ms of the 160 ms tick budget** whether six streams or thirty sit on it.
 >
+> **On 2026-09-13 a search ran in which every rung evaluated all four criteria for the first time.**
+> A6000, bfloat16, eager, bucket 32, 160 ms chunk, with a batch-1 word-error reference and the machine
+> record collected across each window. Two seeds of three put the boundary at **22 concurrent streams**,
+> with p95 at 22 of 303.8 and 307.4 ms against a 310 ms budget; the third seed is non-monotonic across
+> it, failing at 22 with 312.5 ms and passing at 23 with 305.0, so the search reports `s: 0` rather than
+> 22 and **the number is real while the certification is not**. Word error rate ran 2.0 to 2.4 points
+> *better* than the batch-1 reference at every concurrency, against a 0.1 tolerance, and no rung
+> throttled, dropped a stream or lost a final.
+>
+> **The ratio is the sobering part.** NVIDIA's own file-driven script on the same card, same checkpoint,
+> same corpus, eager, reaches 139.71 times real time. Twenty-two sustained streams is **0.157 of that**,
+> against an MVP bar of 0.8. The server delivers about a sixth of what the same model does on the same
+> card when fed from a file. That gap is not the latency budget, which it sits inside, and not the load
+> generator, which stayed well inside its own tolerance; the likeliest cause already measured is that a
+> fixed-shape bucket-32 step costs 53 to 123 ms of a 160 ms budget whether 6 streams or 30 are on it,
+> and the graph path that would make that step cheap does not exist on this die.
+>
 > Telephone audio was checked against recognition rather than against itself: the same utterances at
 > 8 kHz mu-law through the server's decoder and resampler score a mean word error rate of 0.0541 against
 > 0.0484 at native 16 kHz PCM, **half a point**, inside the 0.1 tolerance, measured at float32 so the
