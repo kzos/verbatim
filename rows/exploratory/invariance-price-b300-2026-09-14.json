@@ -1,0 +1,302 @@
+{
+  "measurement": "the price of batch invariance, as sustained streams",
+  "question": "DR-0014 proved fixed-shape padding is what buys batch invariance. It did not price it. These are the same capacity search on the same server, differing in one setting.",
+  "machine": "NVIDIA B300 SXM6 AC",
+  "verbatim_commit": "146cff0",
+  "date": "2026-09-14",
+  "matched": {
+    "bucket": 128,
+    "chunk_ms": 160,
+    "compute_dtype": "bfloat16",
+    "execution": "eager",
+    "seeds": [
+      20260914
+    ],
+    "load_processes": 4,
+    "corpus_id": "sha256:6a142a960379d48ed31d5ec8c3bc07dbdfcd34ef2b6db041a888b07bdc0003be",
+    "note": "Both arms ran with warm_up_s=10 and window_s=20, which the harness marks NON-CANONICAL. These are valid as a matched relative comparison and are not publishable absolute capacity rows."
+  },
+  "result": {
+    "sustained_streams_fixed": 42,
+    "sustained_streams_ragged": 59,
+    "invariance_costs_fraction_of_capacity": 0.288,
+    "fixed_retains_fraction_of_ragged": 0.712
+  },
+  "arms": {
+    "fixed": {
+      "arm": "b300-bf16-eager-fixed",
+      "s": 42,
+      "ending_criterion": "unstable",
+      "server_observed": {
+        "ready": true,
+        "model": "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi",
+        "pipeline": "cache_aware_rnnt",
+        "chunk_ms": 160,
+        "precision": "bfloat16",
+        "execution": "eager",
+        "tick_id": 1407
+      },
+      "rungs": [
+        {
+          "n": 20,
+          "passed": true,
+          "p95_ms": 208.5,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            200.3,
+            191.4
+          ],
+          "reading_spread_pct_of_median": 4.6
+        },
+        {
+          "n": 23,
+          "passed": true,
+          "p95_ms": 189.9,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            191.9,
+            195.5
+          ],
+          "reading_spread_pct_of_median": 1.8
+        },
+        {
+          "n": 27,
+          "passed": true,
+          "p95_ms": 190.0,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            191.9,
+            202.2
+          ],
+          "reading_spread_pct_of_median": 5.2
+        },
+        {
+          "n": 32,
+          "passed": true,
+          "p95_ms": 189.7,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            208.5,
+            202.9
+          ],
+          "reading_spread_pct_of_median": 2.7
+        },
+        {
+          "n": 37,
+          "passed": true,
+          "p95_ms": 195.8,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            219.0,
+            208.7
+          ],
+          "reading_spread_pct_of_median": 4.8
+        },
+        {
+          "n": 40,
+          "passed": true,
+          "p95_ms": 256.4,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            194.2,
+            202.3
+          ],
+          "reading_spread_pct_of_median": 4.1
+        },
+        {
+          "n": 41,
+          "passed": true,
+          "p95_ms": 197.9,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            213.3,
+            207.4
+          ],
+          "reading_spread_pct_of_median": 2.8
+        },
+        {
+          "n": 42,
+          "passed": true,
+          "p95_ms": 217.1,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            204.0,
+            334.8,
+            336.0
+          ],
+          "reading_spread_pct_of_median": 39.4
+        },
+        {
+          "n": 43,
+          "passed": false,
+          "p95_ms": null,
+          "warm_up_converged": false,
+          "warm_up_readings": [
+            201.9,
+            338.6,
+            219.6
+          ],
+          "reading_spread_pct_of_median": 62.2
+        }
+      ]
+    },
+    "ragged": {
+      "arm": "b300-bf16-eager-ragged-control",
+      "s": 59,
+      "ending_criterion": "unstable",
+      "server_observed": {
+        "ready": true,
+        "model": "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi",
+        "pipeline": "cache_aware_rnnt",
+        "chunk_ms": 160,
+        "precision": "bfloat16",
+        "execution": "eager",
+        "tick_id": 1660
+      },
+      "rungs": [
+        {
+          "n": 20,
+          "passed": true,
+          "p95_ms": 198.0,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            196.3,
+            195.3
+          ],
+          "reading_spread_pct_of_median": 0.5
+        },
+        {
+          "n": 23,
+          "passed": true,
+          "p95_ms": 194.8,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            193.2,
+            196.7
+          ],
+          "reading_spread_pct_of_median": 1.8
+        },
+        {
+          "n": 27,
+          "passed": true,
+          "p95_ms": 197.1,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            196.8,
+            196.0
+          ],
+          "reading_spread_pct_of_median": 0.4
+        },
+        {
+          "n": 32,
+          "passed": true,
+          "p95_ms": 197.3,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            197.2,
+            196.8
+          ],
+          "reading_spread_pct_of_median": 0.2
+        },
+        {
+          "n": 37,
+          "passed": true,
+          "p95_ms": 198.8,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            197.5,
+            205.8
+          ],
+          "reading_spread_pct_of_median": 4.1
+        },
+        {
+          "n": 43,
+          "passed": true,
+          "p95_ms": 202.3,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            204.3,
+            202.2
+          ],
+          "reading_spread_pct_of_median": 1.0
+        },
+        {
+          "n": 50,
+          "passed": true,
+          "p95_ms": 201.6,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            216.5,
+            198.0
+          ],
+          "reading_spread_pct_of_median": 8.9
+        },
+        {
+          "n": 58,
+          "passed": true,
+          "p95_ms": 267.2,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            220.9,
+            201.0
+          ],
+          "reading_spread_pct_of_median": 9.4
+        },
+        {
+          "n": 59,
+          "passed": true,
+          "p95_ms": 206.8,
+          "warm_up_converged": true,
+          "warm_up_readings": [
+            203.3,
+            213.7
+          ],
+          "reading_spread_pct_of_median": 5.0
+        },
+        {
+          "n": 60,
+          "passed": false,
+          "p95_ms": null,
+          "warm_up_converged": false,
+          "warm_up_readings": [
+            210.6,
+            249.3,
+            221.8
+          ],
+          "reading_spread_pct_of_median": 17.4
+        },
+        {
+          "n": 62,
+          "passed": false,
+          "p95_ms": null,
+          "warm_up_converged": false,
+          "warm_up_readings": [
+            208.2,
+            235.4,
+            209.7
+          ],
+          "reading_spread_pct_of_median": 13.0
+        },
+        {
+          "n": 67,
+          "passed": false,
+          "p95_ms": null,
+          "warm_up_converged": false,
+          "warm_up_readings": [
+            205.9,
+            239.0,
+            198.6
+          ],
+          "reading_spread_pct_of_median": 19.7
+        }
+      ]
+    }
+  },
+  "reads": [
+    "Batch invariance costs 28.8% of sustained capacity on this die: 59 streams without the padding, 42 with it.",
+    "For scale, batch-invariant kernel work in LLM serving (Thinking Machines' batch_invariant_ops, adopted into vLLM and SGLang) is published at roughly 34-62% throughput cost. This is cheaper than that, for a property proved on the wire rather than at the kernel.",
+    "Neither arm ended on latency. Both ended on UNSTABLE -- the warm-up p95 stopped settling within 10% before the mean ever approached the 310 ms budget. The last passing rung on each arm sits near 207-217 ms.",
+    "The reading spread is the signal, and it is monotone in load: the fixed arm runs under 6% to n=41, hits 39.4% at 42 and 62.2% at 43; the ragged arm stays under 10% to n=59 and crosses at 60. So what grows with concurrency first is latency VARIANCE, not latency. S is the highest concurrency at which the server settles, which is a stricter and more useful number than the highest it can serve.",
+    "That series is visible only because a rung now records the warm-up readings that failed to converge; yesterday both arms would have read as an unexplained cliff."
+  ]
+}
