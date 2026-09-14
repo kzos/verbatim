@@ -129,12 +129,25 @@ class ChurnGate:
         self._in_flight = 0
         self._condition = asyncio.Condition()
         self._observed: list[int] = []
+        self._by_stream: dict[str, int] = {}
 
     @property
     def observed_occupancy(self) -> tuple[int, ...]:
         """The in-flight count at each admission, so a run can show the wave happened
         rather than assert that it was configured."""
         return tuple(self._observed)
+
+    @property
+    def occupancy_by_stream(self) -> dict[str, int]:
+        """Occupancy when each stream was admitted, so a diverging stream can be asked
+        whether it started at the trough of the wave or its crest. Without this the churn
+        arm can report that it churned and not that any particular transcript met the
+        conditions it is being blamed on."""
+        return dict(self._by_stream)
+
+    def admit_as(self, stream_id: str) -> _ChurnAdmission:
+        """Admission that remembers which stream it let in."""
+        return _ChurnAdmission(self, stream_id)
 
     def ceiling_at(self, elapsed_s: float) -> int:
         """The triangle wave: 1 at the period's edges, ``concurrency`` at its middle."""
@@ -159,6 +172,22 @@ class ChurnGate:
         async with self._condition:
             self._in_flight -= 1
             self._condition.notify()
+
+
+class _ChurnAdmission:
+    """One stream's turn through a :class:`ChurnGate`, recording the occupancy it met."""
+
+    def __init__(self, gate: ChurnGate, stream_id: str) -> None:
+        self._gate = gate
+        self._stream_id = stream_id
+
+    async def __aenter__(self) -> _ChurnAdmission:
+        await self._gate.__aenter__()
+        self._gate._by_stream[self._stream_id] = self._gate._observed[-1]
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self._gate.__aexit__(*exc)
 
 
 class GateRefusal(ValueError):
@@ -209,6 +238,9 @@ class LevelRun:
     errors: dict[str, str] = field(default_factory=dict)
     wall_clock_s: float = 0.0
     pacing_slip_p99_ms: float | None = None
+    #: Occupancy each stream met when it was admitted. Empty on a constant level, where
+    #: it would be the level's own concurrency for every stream and say nothing.
+    occupancy_by_stream: dict[str, int] = field(default_factory=dict)
 
     @property
     def digest(self) -> str | None:
@@ -420,6 +452,19 @@ class GateReport:
                     # Null on a constant level. Named here so a churned digest is never
                     # read as a constant-occupancy one: they answer different questions.
                     "churn_period_s": run.level.churn_period_s,
+                    # The wave, shown rather than asserted: how many streams met each
+                    # occupancy when they were admitted, and the occupancy each stream
+                    # met. A churn arm that reports no swing here did not churn.
+                    "admission_occupancy_histogram": (
+                        {
+                            str(value): sum(
+                                1 for v in run.occupancy_by_stream.values() if v == value
+                            )
+                            for value in sorted(set(run.occupancy_by_stream.values()))
+                        }
+                        or None
+                    ),
+                    "admission_occupancy_by_stream": run.occupancy_by_stream or None,
                     "streams": len(run.finals),
                     "errors": len(run.errors),
                     "first_error": next(iter(run.errors.values()), None),
@@ -476,10 +521,22 @@ class GateReport:
                 f"({channels} compared)"
             )
         elif self.verdict == "divergent":
-            batch = {d.stream_id for d in self.divergences if d.against == "1"}
+            # Per comparison, not unioned. The union over every level compared against 1
+            # is dominated by whichever level diverges most, so a change in one arm can
+            # move the union the other way -- which misread once, on 2026-09-14, as a
+            # prediction failing when the arm under test had moved as predicted.
             rerun = {d.stream_id for d in self.divergences if d.against == "32a"}
+
+            def against_one(slot: str) -> int:
+                return len(
+                    {d.stream_id for d in self.divergences if d.against == "1" and d.level == slot}
+                )
+
+            per_level = ", ".join(f"{slot} {against_one(slot)}" for slot in SLOTS if slot != "1")
+            batch = {d.stream_id for d in self.divergences if d.against == "1"}
             lines.append(
-                f"FINAL: divergent, {len(batch)} of {streams} streams differ from concurrency 1; "
+                f"FINAL: divergent. Streams differing from concurrency 1, by level: "
+                f"{per_level} (of {streams}); {len(batch)} distinct streams in total. "
                 f"{len(rerun)} differ between 32a and 32b"
             )
         elif self.verdict == "incomplete":
@@ -552,7 +609,8 @@ async def run_level(
     level_index = SLOTS.index(level.slot)
 
     async def one(index: int, clip: Clip) -> SessionResult:
-        async with gate:
+        admission = gate.admit_as(clip.stream_id) if isinstance(gate, ChurnGate) else gate
+        async with admission:
             utterance = Utterance(
                 stream_id=clip.stream_id,
                 audio_path=Path(clip.stream_id),
@@ -592,6 +650,7 @@ async def run_level(
         errors=errors,
         wall_clock_s=wall_clock_s,
         pacing_slip_p99_ms=percentile(slips, 99) if slips else None,
+        occupancy_by_stream=(gate.occupancy_by_stream if isinstance(gate, ChurnGate) else {}),
     )
 
 

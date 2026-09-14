@@ -528,9 +528,7 @@ promised date — that is for triage once an entry becomes an issue.
 
 ## The churn arm, after 2026-09-14
 
-- `bench/src/verbatim_bench/invariance.py` — `ChurnGate.observed_occupancy` records the in-flight
-  count at each admission, so a run can show its wave happened rather than assert it was
-  configured. It is not plumbed into the record. With it, a diverging stream could be correlated
-  with whether it was admitted at the trough or the crest of the wave, which is the obvious next
-  question about the ragged churn result and cannot be answered from the runs already taken. The
-  instrument exists; nothing reads it.
+- **Done.** The occupancy each stream met is now recorded per level, as a histogram and per
+  stream, so the wave is shown rather than asserted and a diverging stream can be asked whether
+  it started at the trough or the crest. The runs already taken predate it; re-running the ragged
+  churn arm is what would answer the correlation question, and is cheap.

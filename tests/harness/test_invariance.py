@@ -130,7 +130,10 @@ async def test_a_text_leak_turns_the_gate_red_and_names_the_streams() -> None:
         assert d.classification == "batch dependence"
     text = report.render()
     assert "*** DIVERGENCE #1 stream synthetic-" in text
-    assert "FINAL: divergent," in text
+    # The headline names each level rather than unioning them: the union is dominated
+    # by whichever level diverges most, which misread once as a prediction failing.
+    assert "FINAL: divergent. Streams differing from concurrency 1, by level:" in text
+    assert "32a " in text and "max " in text
 
 
 @pytest.mark.asyncio
@@ -462,3 +465,31 @@ def test_the_record_names_the_churn_period_so_a_digest_is_not_misread() -> None:
 def test_a_churn_period_that_is_not_positive_is_refused() -> None:
     with pytest.raises(GateRefusal, match="churn period"):
         Level("max", 38, churn_period_s=0.0)
+
+
+def test_the_churn_gate_records_which_stream_met_which_occupancy() -> None:
+    """The instrument that was built and not read.
+
+    A churn arm could report that it churned without any particular transcript having met
+    the conditions it is blamed on. Recording the occupancy each stream was admitted at is
+    what lets a diverging stream be asked whether it started at the trough of the wave or
+    its crest -- and what lets a run that did not actually swing be caught.
+    """
+    gate = ChurnGate(8, 20.0, clock=lambda: 0.0)
+    assert gate.occupancy_by_stream == {}
+
+    async def admit(stream_id: str) -> None:
+        async with gate.admit_as(stream_id):
+            await asyncio.sleep(0)
+
+    asyncio.run(admit("alpha"))
+    asyncio.run(admit("beta"))
+    assert set(gate.occupancy_by_stream) == {"alpha", "beta"}
+    assert all(v >= 1 for v in gate.occupancy_by_stream.values())
+
+
+def test_a_constant_level_records_no_occupancy_because_it_would_say_nothing() -> None:
+    """On a constant level every stream meets the level's own concurrency, so recording it
+    would be a column of the same number presented as an observation."""
+    run = LevelRun(level=Level("32a", 32), finals={})
+    assert run.occupancy_by_stream == {}
