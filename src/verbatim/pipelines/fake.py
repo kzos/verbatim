@@ -197,6 +197,12 @@ class FakePipelineAdapter(PipelineAdapter):
         self._honour_phrases = bool(honour_phrases)
         #: A stream's own biasing digest, mixed into its own tokens and nothing else's.
         self._phrase_salt: dict[int, bytes] = {}
+        #: Streams opened carrying a non-empty phrase list, counted for the life of the
+        #: adapter. `_phrase_salt` is dropped on close, so a test that only read that
+        #: could not tell a session that sent no list from one that has since ended --
+        #: and "did this arm put phrases on the wire at all" is exactly what a harness
+        #: with a deliberately unbiased control arm has to be able to check.
+        self.phrase_sessions = 0
         self._chunk = chunk
         self._buckets = tuple(buckets)
         # What a tick "costs": an input to the scheduler's budget arithmetic,
@@ -290,8 +296,10 @@ class FakePipelineAdapter(PipelineAdapter):
         own biasing digest. Scripted mode builds one ScriptedTranscript per stream;
         without options no script can be chosen, so that is an InvalidArgument, said
         loudly."""
-        if self._honour_phrases and options is not None and options.phrases:
-            self._phrase_salt[stream_id] = options.biasing_digest.encode()
+        if options is not None and options.phrases:
+            self.phrase_sessions += 1
+            if self._honour_phrases:
+                self._phrase_salt[stream_id] = options.biasing_digest.encode()
         if not self._scripted:
             return
         if options is None:
