@@ -427,16 +427,26 @@ def test_serve_runs_the_fake_pipeline_end_to_end_until_told_to_stop() -> None:
 # --- item 3: the banner and the precision that loses batch invariance ---
 
 
-def test_the_banner_says_the_default_precision_was_measured_to_fail_invariance() -> None:
-    """Decision record 0003, item 4: bfloat16 is the default and the precision at which
-    batch invariance was measured to fail, and the operator reads that in the banner
-    with the counts and the record, not in a document."""
+def test_the_banner_says_the_default_precision_holds_the_property() -> None:
+    """DR-0003 said bfloat16 was the precision at which batch invariance was measured to
+    fail, and the banner said so. That was written before the server had ever run the
+    gate, and it described a probe that varied the batch SIZE -- the one variable this
+    server pins.
+
+    On 2026-09-14 the server's own gate measured 0 of 256 streams diverging at bfloat16
+    across concurrency 1 / 32 / 32 / 42 and under churn, with the control arm diverging
+    66 and 88. So the banner claimed a failure the server's own evidence contradicts.
+
+    It now says what is true and keeps the warning that is still true: the padding is the
+    only thing holding the property at this precision."""
     captured = _Captured()
     assert main([*NEMO, "--eager"], hooks=_hooks(captured, report=RELEASED_REPORT)) == EXIT_OK
-    assert "precision    bfloat16 (the default): batch invariance MEASURED TO FAIL" in captured.out
+    assert "MEASURED TO FAIL" not in captured.out
+    assert "holds batch invariance at bfloat16 by pinning the batch shape" in captured.out
+    assert "0 of 256 streams" in captured.out
+    assert "ONLY thing holding the property" in captured.out
     assert "287 of 2,939" in captured.out and "264 on a B300" in captured.out
-    assert "docs/decisions/0003" in captured.out
-    assert "--compute-dtype float32" in captured.out
+    assert "docs/decisions/0003 and 0014" in captured.out
 
 
 def test_the_banner_at_float32_states_the_measured_counts_and_does_not_warn() -> None:
@@ -454,8 +464,9 @@ def test_the_banner_says_an_unmeasured_precision_is_unmeasured() -> None:
     captured = _Captured()
     argv = [*NEMO, "--eager", "--compute-dtype", "float16"]
     assert main(argv, hooks=_hooks(captured, report=RELEASED_REPORT)) == EXIT_OK
-    assert "precision    float16: not measured at this precision" in captured.out
-    assert "MEASURED TO FAIL at bfloat16" in captured.out
+    assert "precision    float16: NOT MEASURED at this precision" in captured.out
+    assert "may not claim the property" in captured.out
+    assert "287 of 2,939" in captured.out
 
 
 def test_the_fake_pipeline_has_no_precision_line() -> None:

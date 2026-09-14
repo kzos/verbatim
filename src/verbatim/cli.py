@@ -391,24 +391,36 @@ def _precision_lines(settings: ServeSettings) -> list[str]:
     """
     if settings.pipeline == "fake":
         return []
-    measured = (
-        "batch invariance MEASURED TO FAIL at bfloat16 on this server's own code path: "
-        "287 of 2,939 utterances diverged on an A6000 and 264 on a B300 (float32: 6 and 1), "
-        "and equalising row lengths made it worse"
+    # What the precision costs when the SHAPE varies. That is the variable this server
+    # pins, so it is a statement about the margin this precision leaves, not about what
+    # this server does -- see the note below and docs/decisions/0003.
+    shape_varying = (
+        "with the batch shape varying, bfloat16 diverged 287 of 2,939 utterances on an "
+        "A6000 and 264 on a B300, where float32 diverged 6 and 1"
+    )
+    held = (
+        "this server holds batch invariance at bfloat16 by pinning the batch shape: "
+        "0 of 256 streams diverged at concurrency 1 / 32 / 32 / 42 and under churn on a "
+        "B300, and the same corpus with the padding disabled diverged 66 and 88 "
+        "(docs/decisions/0014)"
     )
     if settings.compute_dtype == "float32":
         return [
-            "precision    float32: the precision at which batch invariance was measured, "
+            "precision    float32: the widest margin measured. With the shape varying, "
             "6 of 2,939 utterances divergent on an A6000 and 1 on a B300; docs/decisions/0003"
         ]
     if settings.compute_dtype == "bfloat16":
-        head = f"precision    bfloat16 (the default): {measured}."
-    else:
-        head = f"precision    {settings.compute_dtype}: not measured at this precision; {measured}."
+        return [
+            f"precision    bfloat16 (the default): {held}.",
+            f"             The precision still matters: {shape_varying}, so the padding is "
+            "the ONLY thing holding the property here and float32 would be a second line "
+            "of defence. A row from this run must cite docs/decisions/0003 and 0014.",
+        ]
     return [
-        head,
-        "             A row from this run must cite docs/decisions/0003; pass "
-        "--compute-dtype float32 for the property this server is named for.",
+        f"precision    {settings.compute_dtype}: NOT MEASURED at this precision. For "
+        f"reference, {shape_varying}.",
+        "             The invariance gate has never been run at this precision; a row "
+        "from this run may not claim the property. docs/decisions/0003 and 0014.",
     ]
 
 

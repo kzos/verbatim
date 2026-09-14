@@ -79,3 +79,37 @@ adapter guards, the round-4 attention-context derivation and the slot arithmetic
 NeMo's source rather than guessed, then tested against a fake standing at NeMo's own seam. The slot line
 in the banner, `79 = 32 + 32 + 7 + 8`, is the arithmetic that was argued about in review, printed by the
 running server and accepted by NeMo.
+
+## Amended 2026-09-14: the server holds the property at bfloat16, and this record overstated
+
+This record said bfloat16 is "the one setting that costs it the property it is named for", and the
+serve banner said `batch invariance MEASURED TO FAIL at bfloat16 on this server's own code path`.
+
+Both were written before the server had ever run an invariance gate, and both drew on a probe that
+varied the **batch size** — one utterance alone against the same utterance in a batch of N. That is
+precisely the variable this server pins. The probe's own control, *"batch shape pinned, contents
+varied"*, returned zero differences in 1,024 comparisons, and that line was in the findings all along.
+
+Measured on 2026-09-14 against a live server on a B300, at bfloat16
+(`rows/exploratory/invariance-control-arm-b300-2026-09-14.json`,
+`rows/exploratory/invariance-churn-b300-2026-09-14.json`):
+
+| arm | streams differing from concurrency 1 |
+|---|---|
+| fixed padding, constant occupancy | **0 of 256** |
+| fixed padding, occupancy churned 1 → 42 → 1 | **0 of 256** |
+| padding disabled, constant occupancy | 66 of 256 |
+| padding disabled, occupancy churned | 88 of 256 |
+
+**The server is batch-invariant at bfloat16.** The claim that it was not was a claim about a
+configuration the server does not run.
+
+What remains true, and is the reason this record is amended rather than withdrawn: **at bfloat16 the
+padding is the only thing holding the property.** If a shape ever did vary — a configuration slip, a
+future elastic-bucket mode, a code path that forgot to pad — bfloat16 diverges 287 of 2,939 where
+float32 diverges 6. float32 would be a second line of defence and there is not one today. The default
+stays bfloat16, because the padding is measured to hold and the precision buys real throughput, and
+the banner now says that instead of a failure the evidence contradicts.
+
+The withdrawn wording is left above rather than deleted, per this project's habit of keeping what it
+got wrong.
