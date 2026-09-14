@@ -1,0 +1,75 @@
+{
+  "measurement": "the churn arm: does a transcript survive its neighbour count moving underneath it",
+  "question": "The constant levels pin occupancy at N with a semaphore that refills the instant a clip finishes, so a session never sees its neighbour count move far. This admits on a triangle wave 1 -> N -> 1 every 20 s, so a 33 s utterance lives through a full cycle.",
+  "machine": "NVIDIA B300 SXM6 AC",
+  "verbatim_commit": "146cff0",
+  "date": "2026-09-14",
+  "shared": {
+    "chunk_ms": 160,
+    "compute_dtype": "bfloat16",
+    "execution": "eager",
+    "bucket": 128,
+    "max_level_concurrency": 42,
+    "churn_period_s": 20.0,
+    "streams_per_level": 256,
+    "corpus_id": "sha256:6a142a960379d48ed31d5ec8c3bc07dbdfcd34ef2b6db041a888b07bdc0003be"
+  },
+  "arms": {
+    "fixed_churned": {
+      "verdict": "invariant",
+      "digests": {
+        "1": "f68cbccfa089b4abd98cb01b01a51c555529e67fa3b6ce777476179204e26248",
+        "32a": "f68cbccfa089b4abd98cb01b01a51c555529e67fa3b6ce777476179204e26248",
+        "32b": "f68cbccfa089b4abd98cb01b01a51c555529e67fa3b6ce777476179204e26248",
+        "max": "f68cbccfa089b4abd98cb01b01a51c555529e67fa3b6ce777476179204e26248"
+      },
+      "max_level_concurrency": 42,
+      "max_level_churn_period_s": 20.0,
+      "max_level_wall_clock_s": 87.5,
+      "streams_differing_per_comparison": {}
+    },
+    "ragged_constant": {
+      "verdict": "divergent",
+      "digests": {
+        "1": "32e9e9908072a5925415ffd924452e8159d7517720ec8532423a20ff3c12df7f",
+        "32a": "5d4648566176649ca00c9f16060778971bf4e4f94c4524d9278af9e8c6e70896",
+        "32b": "5d4648566176649ca00c9f16060778971bf4e4f94c4524d9278af9e8c6e70896",
+        "max": "8ebd0f9d0cec0391bf415818f428450f0ba9638f35a383d42c65e911d064bc2a"
+      },
+      "max_level_concurrency": 38,
+      "max_level_churn_period_s": null,
+      "max_level_wall_clock_s": 57.9,
+      "streams_differing_per_comparison": {
+        "32a_vs_1": 118,
+        "32b_vs_1": 118,
+        "max_vs_1": 66
+      }
+    },
+    "ragged_churned": {
+      "verdict": "divergent",
+      "digests": {
+        "1": "32e9e9908072a5925415ffd924452e8159d7517720ec8532423a20ff3c12df7f",
+        "32a": "5d4648566176649ca00c9f16060778971bf4e4f94c4524d9278af9e8c6e70896",
+        "32b": "5d4648566176649ca00c9f16060778971bf4e4f94c4524d9278af9e8c6e70896",
+        "max": "4b46e31bc94403bef050bd6da12130017595cdf48451c60c1a914ad15a31cb66"
+      },
+      "max_level_concurrency": 42,
+      "max_level_churn_period_s": 20.0,
+      "max_level_wall_clock_s": 92.5,
+      "streams_differing_per_comparison": {
+        "32a_vs_1": 118,
+        "32b_vs_1": 118,
+        "max_vs_1": 88
+      }
+    }
+  },
+  "prediction_made_before_the_run": "Ragged under churn should diverge MORE than ragged at constant occupancy, because the batch shape now moves within a session's life as well as between runs. If it did not, the model of the mechanism would be wrong.",
+  "reads": [
+    "Fixed padding under churn is INVARIANT: one digest across 1 / 32a / 32b / churned 42. A session living through its neighbour count swinging 1 -> 42 -> 1 repeatedly produces the same transcript as the same audio run alone. This was the last untested arm of the claim.",
+    "The prediction holds on the comparison that tests it. Ragged max-vs-1 goes from 66 streams differing at constant occupancy to 88 when churned -- a third more. The shape moving within a session does break more transcripts than the shape merely being larger.",
+    "Read the right comparison. The gate's headline counts the UNION over all pairs, which is dominated by the 32-vs-1 comparisons (118 streams in both runs), so the union moves the other way (128 -> 120) while the arm under test moves up. The union is not the measurement.",
+    "The gate is reproducible. Across two independent ragged runs, levels 1, 32a and 32b give byte-identical digests and identical divergence counts; only the churned level differs, which is the only thing that was changed.",
+    "The churned level took 92.5 s against 57.9 s constant, and on the fixed arm 87.5 s against 57.9 s: the wave really does hold occupancy down for part of every cycle."
+  ],
+  "unfinished": "ChurnGate records the in-flight count at each admission (observed_occupancy) so a run can show its wave rather than assert it, and that is not yet plumbed into the record. With it, a diverging stream could be correlated with whether it was admitted at the trough or the crest, which is the obvious next question and cannot be answered from this run."
+}

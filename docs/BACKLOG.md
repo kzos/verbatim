@@ -525,3 +525,12 @@ promised date — that is for triage once an entry becomes an issue.
   the number a buyer will ask for first. The ragged arm can now measure the capacity side of
   it directly: run the same ladder on `--padding ragged` and the difference in sustained
   streams is the price, with the divergence count as what it buys.
+
+## The churn arm, after 2026-09-14
+
+- `bench/src/verbatim_bench/invariance.py` — `ChurnGate.observed_occupancy` records the in-flight
+  count at each admission, so a run can show its wave happened rather than assert it was
+  configured. It is not plumbed into the record. With it, a diverging stream could be correlated
+  with whether it was admitted at the trough or the crest of the wave, which is the obvious next
+  question about the ragged churn result and cannot be answered from the runs already taken. The
+  instrument exists; nothing reads it.
