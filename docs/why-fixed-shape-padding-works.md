@@ -91,27 +91,38 @@ contents varied"*, returned zero differences in 1,024 comparisons.
 The two results agree completely, and between them they isolate the mechanism: **the divergence
 follows the shape, not the contents.**
 
-## The price
+## The price — WITHDRAWN 2026-09-14, and why
 
-The same capacity search, same server, same bucket, precision, execution, seeds, corpus and generator,
-differing only in the padding:
+This section previously read: *"Batch invariance costs 28.8% of sustained capacity on this die"*, from
+a matched pair of capacity searches — ragged 59 sustained streams, fixed 42 — differing only in the
+padding.
 
-| arm | sustained streams |
+**That comparison does not support that number, and the figure is withdrawn.** Each arm was a single
+seed at shortened durations. A later search on the same server at frozen durations over three seeds
+(`rows/exploratory/capacity-canonical-b300-2026-09-14.json`) gives:
+
+| seed | sustained streams |
 |---|---|
-| ragged (no padding) | 59 |
-| fixed (the property) | **42** |
+| 20260914 | 20 |
+| 20260915 | 24 |
+| 20260916 | **46** |
 
-**Batch invariance costs 28.8% of sustained capacity on this die.** For scale, batch-invariant kernel
-work in LLM serving — fixing the reductions rather than pinning the shape — is published at roughly
-34–62% throughput cost. Pinning the shape is the cheaper trade here.
+**The spread on one unchanged configuration is 26 streams, a factor of 2.3.** The fixed-versus-ragged
+difference was 17 streams from one seed each. The noise is larger than the effect, so the paired
+observation establishes a direction at best and a price not at all.
 
-Note what padding does *not* cost: **memory**. The NeMo slot table is allocated up front for the full
-bucket either way, so both arms run 271 slots. Padding spends compute on rows that exist only to hold a
-shape; it does not spend footprint.
+What survives: the two arms *were* matched on everything but the padding, and ragged came out higher.
+That is consistent with padding costing capacity, which it must — it spends compute on rows that exist
+only to hold a shape. How much is unmeasured, and a three-seed paired comparison is what would measure
+it.
 
-Both capacity arms used shortened warm-up and window durations, which the harness marks
-**non-canonical**. They are a matched relative comparison and are not publishable absolute capacity
-rows.
+What still holds independently of any of this: padding costs **compute, not memory**. The NeMo slot
+table is allocated up front for the full bucket either way, so both arms run 271 slots.
+
+The industry anchor is left here because it is someone else's measurement and is unaffected:
+batch-invariant kernel work in LLM serving — fixing the reductions rather than pinning the shape — is
+published at roughly 34–62% throughput cost. Whether this server's approach is cheaper than that is now
+an open question rather than a claim.
 
 ## What actually ends a capacity run
 
@@ -126,7 +137,9 @@ at which the server settles* — stricter than the highest it can serve, and wor
 
 ## What is not claimed
 
-- **No canonical capacity row exists.** Every capacity number here is exploratory.
+- **No capacity price is claimed.** See the withdrawal above. The capacity numbers here are
+  exploratory, and the seed-to-seed spread on one configuration is larger than any difference between
+  arms yet measured.
 - **This is bfloat16 only.** float32 was not run. The property is held by the padding, and at bfloat16
   the padding is the *only* thing holding it: if a shape ever did change, bfloat16 diverges far more
   than float32 would (287 against 6 on the earlier probe). float32 would be a second line of defence,

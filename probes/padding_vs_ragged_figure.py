@@ -24,7 +24,11 @@ import seaborn as sns
 
 # --- measured, all from rows/exploratory/ -------------------------------------------
 BUCKET = 128
-S_FIXED, S_RAGGED = 42, 59  # invariance-price-b300-2026-09-14.json
+S_FIXED, S_RAGGED = 42, 59  # one seed each, shortened durations
+# The same server at frozen durations over three seeds,
+# capacity-canonical-b300-2026-09-14.json. This spread is larger than the
+# fixed-vs-ragged gap above, which is why no price is claimed.
+S_BY_SEED = {"20260914": 20, "20260915": 24, "20260916": 46}
 DIVERGE_FIXED = 0  # invariance-control-arm-b300-2026-09-14.json
 DIVERGE_RAGGED_CONST = 66  # streams differing, max vs concurrency 1
 DIVERGE_RAGGED_CHURN = 88  # invariance-churn-b300-2026-09-14.json
@@ -109,32 +113,39 @@ def panel_divergence(ax: plt.Axes) -> None:
 
 
 def panel_price(ax: plt.Axes) -> None:
-    bars = ax.bar(
-        ["fixed\n(invariant)", "ragged\n(control)"],
-        [S_FIXED, S_RAGGED],
-        color=[PAD_C, RAG_C],
-        width=0.55,
-    )
-    for bar, v in zip(bars, [S_FIXED, S_RAGGED], strict=True):
+    """The comparison, and the noise that swamps it. No price is claimed."""
+    seeds = sorted(S_BY_SEED)
+    labels = ["fixed\n1 seed", "ragged\n1 seed"] + [f"fixed\nseed {s[-4:]}" for s in seeds]
+    values = [S_FIXED, S_RAGGED] + [S_BY_SEED[s] for s in seeds]
+    colors = [PAD_C, RAG_C] + [PAD_C] * len(seeds)
+    bars = ax.bar(labels, values, color=colors, width=0.62)
+    for bar, v in zip(bars, values, strict=True):
         ax.annotate(
             f"{v}",
-            (bar.get_x() + bar.get_width() / 2, v + 1.2),
+            (bar.get_x() + bar.get_width() / 2, v + 1.0),
             ha="center",
-            fontsize=12,
+            fontsize=11,
             fontweight="semibold",
         )
-    cost = (S_RAGGED - S_FIXED) / S_RAGGED
+    for bar in bars[2:]:
+        bar.set_hatch("//")
+        bar.set_edgecolor("white")
+    lo, hi = min(S_BY_SEED.values()), max(S_BY_SEED.values())
+    ax.axhspan(lo, hi, color=WARN, alpha=0.10)
     ax.annotate(
-        f"invariance costs {cost:.0%}\nof sustained capacity",
-        (0.5, S_RAGGED * 1.09),
+        f"same server, three seeds: {hi - lo} streams apart.\n"
+        f"Larger than the {S_RAGGED - S_FIXED}-stream gap on the left,\n"
+        "so no price is claimed.",
+        (3.0, hi * 1.19),
         ha="center",
-        fontsize=10.5,
+        fontsize=9.5,
         color=WARN,
         fontweight="semibold",
     )
-    ax.set_ylim(0, S_RAGGED * 1.32)
+    ax.set_ylim(0, hi * 1.45)
     ax.set_ylabel("sustained concurrent streams")
-    ax.set_title("C · The price\n(matched arms, non-canonical durations)")
+    ax.set_title("C \u00b7 Why no price is published\nthe seed spread exceeds the effect")
+    ax.tick_params(axis="x", labelsize=8.5)
 
 
 def panel_spread(ax: plt.Axes) -> None:
@@ -169,8 +180,8 @@ def main() -> int:
     fig.text(
         0.5,
         0.005,
-        "Verbatim · rows/exploratory/ · 2026-09-13/14 · capacity arms used shortened "
-        "durations and are a matched relative comparison, not canonical rows",
+        "Verbatim · rows/exploratory/ · the 29% price published on 14 Sep is WITHDRAWN: "
+        "the seed-to-seed spread on one unchanged configuration exceeds it",
         ha="center",
         fontsize=9,
         color="#5a6672",
