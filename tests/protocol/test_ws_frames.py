@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 from verbatim.core.errors import ErrorCode, InvalidArgument
-from verbatim.protocols.base import Word
+from verbatim.protocols.base import MAX_BOOST, MAX_PHRASES, Word
 from verbatim.protocols.ws.frames import (
     ErrorFrame,
     FinalFrame,
@@ -148,3 +148,53 @@ def test_chunk_ms_rejects_non_canonical_spellings(query: str) -> None:
 
 def test_parse_query_accepts_canonical_chunk_ms() -> None:
     assert parse_query("chunk_ms=160").chunk_ms == 160
+
+
+# --- per-session phrase lists ------------------------------------------------------
+
+
+def test_phrase_is_the_one_repeatable_parameter() -> None:
+    options = parse_query("?phrase=metformin&phrase=E11.9&phrase=410%20U.S.%20113")
+    assert [p.text for p in options.phrases] == ["metformin", "E11.9", "410 U.S. 113"]
+    # Order is the order sent: it is the order NeMo builds the tree in, and two orders
+    # are two inputs. The digest follows it rather than a sort.
+    assert options.phrases[0].text == "metformin"
+    assert options.biasing_digest != parse_query("?phrase=E11.9&phrase=metformin").biasing_digest
+
+
+def test_no_phrase_parameter_means_no_biasing_at_all() -> None:
+    options = parse_query("chunk_ms=160")
+    assert options.phrases == ()
+    assert options.boost is None
+    assert options.biasing_digest == ""
+
+
+def test_the_session_boost_is_parsed_and_is_a_singleton() -> None:
+    assert parse_query("?phrase=metformin&boost=2.5").boost == 2.5
+    with pytest.raises(InvalidArgument, match="boost"):
+        parse_query("?boost=1&boost=2")
+    with pytest.raises(InvalidArgument, match="boost"):
+        parse_query("?boost=high")
+
+
+def test_a_boost_above_the_ceiling_is_refused() -> None:
+    with pytest.raises(InvalidArgument, match="boost"):
+        parse_query(f"?phrase=metformin&boost={MAX_BOOST + 1}")
+
+
+def test_an_empty_phrase_is_refused_rather_than_dropped() -> None:
+    with pytest.raises(InvalidArgument, match="phrase"):
+        parse_query("?phrase=metformin&phrase=")
+
+
+def test_more_phrases_than_the_session_limit_are_refused() -> None:
+    query = "&".join(f"phrase=p{index}" for index in range(MAX_PHRASES + 1))
+    with pytest.raises(InvalidArgument, match="exceed the limit"):
+        parse_query(query)
+
+
+def test_the_digest_separates_two_sessions_that_asked_for_different_things() -> None:
+    same = parse_query("?phrase=metformin").biasing_digest
+    assert parse_query("?phrase=metformin").biasing_digest == same
+    assert parse_query("?phrase=metformin&boost=2").biasing_digest != same
+    assert parse_query("?phrase=warfarin").biasing_digest != same

@@ -56,6 +56,7 @@ class ServeSettings:
     pipeline: str = "cache_aware_rnnt"
     eager: bool = False
     padding: str = "fixed"
+    biasing: bool = False
     att_context_left: int | None = None
     language_code: str = "en-US"
     compute_dtype: str = "bfloat16"
@@ -94,6 +95,13 @@ class ServeSettings:
         if self.pipeline not in PIPELINES:
             named = ", ".join(PIPELINES)
             raise ConfigError(f"--pipeline must be one of {named}, got {self.pipeline!r}")
+        if self.biasing and self.pipeline != "cache_aware_rnnt":
+            raise ConfigError(
+                f"--biasing needs --pipeline cache_aware_rnnt, got {self.pipeline!r}: NeMo "
+                "reaches per-stream biasing through the RNNT decoding computer and no other "
+                "pipeline here has one, so the server would accept phrase lists and "
+                "transcribe every session unbiased"
+            )
         if not self.host:
             raise ConfigError("--host must not be empty")
 
@@ -115,6 +123,7 @@ def engine_config(settings: ServeSettings) -> EngineConfig:
         stop_history_eou_ms=settings.stop_history_eou_ms,
         idle_timeout_s=settings.idle_timeout_s,
         padding=settings.padding,
+        biasing=settings.biasing,
     )
 
 
@@ -156,6 +165,10 @@ async def run_server(
         precision="none" if settings.pipeline == "fake" else settings.compute_dtype,
         execution=execution,
         pipeline=settings.pipeline,
+        # Read from the adapter, not from the flag: the adapter refused to start unless
+        # the built decoder actually carried the biasing arena, so this is what the
+        # server can do rather than what was asked of it.
+        biasing=bool(getattr(adapter, "biasing", False)),
     )
     riva = RivaServer(
         engine,

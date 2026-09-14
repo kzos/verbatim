@@ -1,0 +1,58 @@
+{
+  "name": "domains-v1",
+  "boost": 2.0,
+  "lists": {
+    "medical": [
+      "metformin",
+      "hydrochlorothiazide",
+      "levothyroxine",
+      "atorvastatin",
+      "lisinopril",
+      "amoxicillin clavulanate",
+      "furosemide",
+      "warfarin",
+      "clopidogrel",
+      "prednisolone",
+      "E11.9",
+      "I10",
+      "J44.9",
+      "N18.3",
+      "myocardial infarction",
+      "atrial fibrillation",
+      "chronic kidney disease",
+      "diabetic ketoacidosis",
+      "deep vein thrombosis",
+      "percutaneous coronary intervention"
+    ],
+    "legal": [
+      "410 U.S. 113",
+      "347 U.S. 483",
+      "certiorari",
+      "appellant",
+      "appellee",
+      "amicus curiae",
+      "voir dire",
+      "res judicata",
+      "stare decisis",
+      "habeas corpus",
+      "summary judgment",
+      "interrogatories",
+      "deposition transcript",
+      "motion in limine",
+      "prima facie",
+      "subpoena duces tecum",
+      "Federal Rule of Civil Procedure 12",
+      "Miranda v. Arizona",
+      "tortious interference",
+      "promissory estoppel"
+    ]
+  },
+  "unrelated": [
+    "brontosaurus",
+    "quokka",
+    "hydrothermal",
+    "syncopation",
+    "tessellation",
+    "philately"
+  ]
+}

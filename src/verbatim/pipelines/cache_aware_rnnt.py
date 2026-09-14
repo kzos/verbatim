@@ -16,7 +16,11 @@ What is this pipeline's own, all of it behind that seam and none of it crossing 
   sees a hypothesis; it only has to not strand the state that holds one, which is
   what the post-step bookkeeping in the shared body is for.
 - Per-stream biasing, through ``Hypothesis.biasing_cfg`` and the decoding computer's
-  biasing multi-model. Verbatim builds with it off (a later task).
+  biasing multi-model. This is the pipeline that carries a session's phrase list, and
+  the only one: ``supports_biasing`` is true here and false on the CTC sibling. It is
+  off unless an operator passes ``--biasing``, because turning it on changes the
+  decoder's arithmetic for every row, biased or not, so a run with it on is a different
+  configuration and does not inherit the transcript digests of a run with it off.
 - Prompt conditioning. ``create_state`` fills a default ``language_code`` when the
   checkpoint is prompt-enabled and resolves it to a prompt index, raising
   ``ValueError`` for a code the checkpoint's prompt dictionary does not carry. That

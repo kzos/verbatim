@@ -47,6 +47,9 @@ class ServerFacts:
     precision: str | None
     execution: str | None
     tick_id: int | None
+    #: Whether the server serves per-session phrase lists. None from a server too old
+    #: to report it, which is a different situation from one reporting False.
+    biasing: bool | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -56,6 +59,7 @@ class ServerFacts:
             "chunk_ms": self.chunk_ms,
             "precision": self.precision,
             "execution": self.execution,
+            "biasing": self.biasing,
             "tick_id": self.tick_id,
         }
 
@@ -100,6 +104,7 @@ def read_server_facts(endpoint: str, *, fetch: Fetcher | None = None) -> ServerF
         chunk_ms=body.get("chunk_ms"),
         precision=body.get("precision"),
         execution=body.get("execution"),
+        biasing=None if body.get("biasing") is None else bool(body.get("biasing")),
         tick_id=body.get("tick_id"),
     )
 
@@ -118,13 +123,17 @@ def check_arm(
     arm: str,
     declared_dtype: str | None = None,
     declared_chunk_ms: int | None = None,
+    declared_biasing: bool | None = None,
 ) -> None:
     """Raise ``ArmContradiction`` when the declaration and the server disagree.
 
-    Three comparisons, each only made when both sides are present:
+    Four comparisons, each only made when both sides are present:
 
     * the declared dtype against the server's reported precision, which is exact;
     * the declared chunk mode against the server's, which is exact;
+    * whether the run sends phrase lists against whether the server serves them, which
+      is exact, because biasing changes the decode for every row and not only the
+      biased ones;
     * the arm name against the server's execution mode, but only when the arm names a
       mode at all. An arm called "b300-bf16-graphed" on an eager server is a
       contradiction; an arm called "run-4" says nothing about execution and is left alone.
@@ -141,6 +150,17 @@ def check_arm(
         raise ArmContradiction(
             f"the run is configured for {declared_chunk_ms} ms chunks and the server "
             f"reports {facts.chunk_ms} ms"
+        )
+    if (
+        declared_biasing is not None
+        and facts.biasing is not None
+        and bool(declared_biasing) != bool(facts.biasing)
+    ):
+        raise ArmContradiction(
+            f"the run {'sends' if declared_biasing else 'sends no'} phrase lists and the "
+            f"server reports biasing {'on' if facts.biasing else 'off'}. Turning biasing on "
+            "changes the decoder's arithmetic for every row, biased or not, so the two are "
+            "different arms and their transcript digests do not compare"
         )
     execution = facts.execution
     if not execution:

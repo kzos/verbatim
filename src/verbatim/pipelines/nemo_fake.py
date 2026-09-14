@@ -44,6 +44,8 @@ import numpy as np
 from verbatim.pipelines.cache_aware import NeMoBoundary
 
 __all__ = [
+    "FakeBiasingArena",
+    "FakeBiasingConfig",
     "FakeCacheAwareCTCPipeline",
     "FakeCacheAwarePipeline",
     "FakeCacheAwareRNNTPipeline",
@@ -77,6 +79,25 @@ class FakeFrame:
 
 
 @dataclass(slots=True)
+class FakeBiasingConfig:
+    """Shaped like ``BiasingRequestItemConfig``, with the fields that matter here.
+
+    ``multi_model_id`` is None until the decoder registers the tree, which upstream does
+    **inside the step** rather than at ``init_state``; ``remove_from_multi_model`` clears
+    it and returns early when it is already None, so a double release is safe there and
+    is safe here.
+    """
+
+    phrases: tuple[tuple[str, float | None], ...] = ()
+    alpha: float = 1.0
+    multi_model_id: int | None = None
+    auto_manage_multi_model: bool = True
+
+    def is_empty(self) -> bool:
+        return not self.phrases
+
+
+@dataclass(slots=True)
 class FakeRequestOptions:
     """Shaped like ``ASRRequestOptions``: ``None`` means the pipeline default."""
 
@@ -84,6 +105,42 @@ class FakeRequestOptions:
     stop_history_eou: int | None = None
     asr_output_granularity: Any = None
     language_code: str | None = None
+    biasing_cfg: FakeBiasingConfig | None = None
+
+    def has_biasing_request(self) -> bool:
+        """``ASRRequestOptions.has_biasing_request``: set, and not empty."""
+        return self.biasing_cfg is not None and not self.biasing_cfg.is_empty()
+
+
+class FakeBiasingArena:
+    """The decoder's biasing multi-model, at the one behaviour the adapter depends on.
+
+    Upstream keeps compiled trees in pooled buffers and hands back an id per registered
+    model. What matters here is the lifecycle: an entry is taken when the decoder first
+    sees a stream's request, inside the step, and given back only when something releases
+    it. Nothing releases it on ``delete_state``, which is why a stream that never sends
+    ``is_last`` leaks one -- the fake holds that rule so the leak is reproducible on a
+    machine with no GPU.
+    """
+
+    def __init__(self) -> None:
+        self._next_id = 0
+        self.active: set[int] = set()
+        self.registrations = 0
+
+    def add(self, cfg: FakeBiasingConfig) -> int:
+        model_id = self._next_id
+        self._next_id += 1
+        self.active.add(model_id)
+        self.registrations += 1
+        cfg.multi_model_id = model_id
+        return model_id
+
+    def remove(self, cfg: FakeBiasingConfig) -> None:
+        if cfg.multi_model_id is None:
+            return  # upstream's remove_from_multi_model returns early too
+        self.active.discard(cfg.multi_model_id)
+        cfg.multi_model_id = None
 
 
 @dataclass(slots=True)
@@ -114,6 +171,10 @@ class _State:
     frames_seen: int = 0
     silence_ms: float = 0.0
 
+    def has_biasing_request(self) -> bool:
+        """``StreamingState.has_biasing_request``: asks its options, as NeMo's does."""
+        return self.options.has_biasing_request()
+
 
 class FakeCacheAwarePipeline:
     """The fake pipeline. Records every request it was handed in ``seen``."""
@@ -132,7 +193,12 @@ class FakeCacheAwarePipeline:
         sample_rate: int = 16000,
         num_slots: int = 64,
         stop_history_eou: int = 800,
+        per_stream_biasing: bool = False,
     ) -> None:
+        #: The biasing arena, or None when this pipeline was built without per-stream
+        #: biasing -- which is the case the adapter must refuse to start on, because
+        #: upstream logs a warning per step and decodes unbiased.
+        self.biasing_arena = FakeBiasingArena() if per_stream_biasing else None
         self.chunk_size_in_secs = chunk_ms / 1000
         self.sample_rate = sample_rate
         self.num_slots = num_slots
@@ -173,12 +239,18 @@ class FakeCacheAwarePipeline:
         if stream_id not in self._state_pool:
             stop = self.stop_history_eou_in_milliseconds
             language = None
+            biasing_cfg = None
             if options is not None:
                 if options.stop_history_eou is not None:
                     stop = int(options.stop_history_eou)
                 language = options.language_code
+                biasing_cfg = getattr(options, "biasing_cfg", None)
             self._state_pool[stream_id] = _State(
-                FakeRequestOptions(stop_history_eou=stop, language_code=language)
+                FakeRequestOptions(
+                    stop_history_eou=stop,
+                    language_code=language,
+                    biasing_cfg=biasing_cfg,
+                )
             )
         return self._state_pool[stream_id]
 
@@ -200,9 +272,19 @@ class FakeCacheAwarePipeline:
     # --- the step ---
 
     @staticmethod
-    def _word_of(valid: np.ndarray) -> str:
-        digest = hashlib.sha256(np.ascontiguousarray(valid, dtype=np.float32).tobytes())
-        return "w" + digest.hexdigest()[:6]
+    def _word_of(valid: np.ndarray, cfg: FakeBiasingConfig | None = None) -> str:
+        """The word this frame's audio produces, and this stream's vocabulary if it has one.
+
+        A biasing tree changes what a decoder emits for the same audio -- that is the
+        whole point of sending one -- so the fake's transcript depends on the phrase list
+        too. Without a list the digest is exactly what it was, so nothing unbiased moves.
+        It depends on the stream's OWN list and never on a neighbour's, which is the
+        property the real pipeline has to have and this one has by construction.
+        """
+        hasher = hashlib.sha256(np.ascontiguousarray(valid, dtype=np.float32).tobytes())
+        if cfg is not None and not cfg.is_empty():
+            hasher.update(repr((cfg.phrases, cfg.alpha)).encode())
+        return "w" + hasher.hexdigest()[:6]
 
     def transcribe_step(self, requests: list[FakeFrame]) -> list[FakeStepOutput]:
         if len(requests) == 0:
@@ -220,6 +302,16 @@ class FakeCacheAwarePipeline:
                 if len(self._slots) >= self.num_slots:
                     raise RuntimeError("No free slots available")
                 self._slots.add(request.stream_id)
+        # Upstream registers a stream's tree here, on the decode path inside the step,
+        # not at init_state: `_prepare_per_stream_biasing` runs before the encoder call.
+        # So an entry is already taken by the time the encoder can raise.
+        if self.biasing_arena is not None:
+            for state in states:
+                if state is not None and state.has_biasing_request():
+                    cfg = state.options.biasing_cfg
+                    assert cfg is not None
+                    if cfg.multi_model_id is None and cfg.auto_manage_multi_model:
+                        self.biasing_arena.add(cfg)
         if self.raise_in_encoder is not None:
             # NeMo's encoder step: after allocation, before any of the cleanup below.
             raise self.raise_in_encoder
@@ -236,7 +328,8 @@ class FakeCacheAwarePipeline:
             start = state.frames_seen * self.chunk_size_in_secs
             state.frames_seen += 1
             if valid.size and bool(np.any(valid != 0)):
-                state.words.append((self._word_of(valid), start, start + self.chunk_size_in_secs))
+                word = self._word_of(valid, state.options.biasing_cfg)
+                state.words.append((word, start, start + self.chunk_size_in_secs))
                 state.silence_ms = 0.0
             else:
                 state.silence_ms += chunk_ms
@@ -262,9 +355,25 @@ class FakeCacheAwarePipeline:
             )
         for request in requests:
             if request.is_last:
+                # Upstream's only release point. Note the order: the arena entry goes
+                # back HERE, on a final frame, and `delete_state` below frees nothing.
+                self.release_biasing(request.stream_id)
                 self.delete_state(request.stream_id)
                 self._slots.discard(request.stream_id)
         return outputs
+
+    def release_biasing(self, stream_id: int) -> None:
+        """Give back a stream's arena entry, as ``release_auto_managed_stream_biasing``
+        does: nothing to do for a stream with no request, and safe to call twice."""
+        if self.biasing_arena is None:
+            return
+        state = self.get_state(stream_id)
+        if state is None or not state.has_biasing_request():
+            return
+        cfg = state.options.biasing_cfg
+        assert cfg is not None
+        if cfg.auto_manage_multi_model:
+            self.biasing_arena.remove(cfg)
 
 
 class FakeCacheAwareRNNTPipeline(FakeCacheAwarePipeline):
@@ -318,6 +427,17 @@ def boundary_for(
     pipeline's situation if upstream's CTC branch never calls the switch.
     """
     attached = graph_step_available if step_attached is None else step_attached
+
+    def make_biasing(phrases: Any, alpha: float | None = None) -> FakeBiasingConfig:
+        return FakeBiasingConfig(
+            phrases=tuple((text, boost) for text, boost in phrases),
+            alpha=1.0 if alpha is None else float(alpha),
+        )
+
+    # Bound only when this pipeline actually has the arena, which is the rule
+    # ``_biasing_seam`` follows against the real decoding computer: a pipeline built
+    # without per-stream biasing gets None here and the adapter refuses to start.
+    has_arena = pipeline.biasing_arena is not None
     return NeMoBoundary(
         pipeline=pipeline,
         make_frame=FakeFrame,
@@ -326,4 +446,6 @@ def boundary_for(
         release_stream=pipeline.release_stream,
         graph_step_available=graph_step_available,
         retained_graphs=pipeline.retained_graphs if attached else None,
+        make_biasing=make_biasing if has_arena else None,
+        release_biasing=pipeline.release_biasing if has_arena else None,
     )

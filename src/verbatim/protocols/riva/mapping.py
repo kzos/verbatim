@@ -16,7 +16,13 @@ from typing import Final
 
 from verbatim.audio.resample import SUPPORTED_RATES
 from verbatim.core.errors import InvalidArgument, NotFound, Unimplemented
-from verbatim.protocols.base import VALID_CHUNK_MS, Hypothesis, SessionOptions
+from verbatim.protocols.base import (
+    MAX_PHRASES,
+    VALID_CHUNK_MS,
+    Hypothesis,
+    Phrase,
+    SessionOptions,
+)
 from verbatim.protocols.riva._gen import riva_asr_pb2, riva_audio_pb2
 
 __all__ = [
@@ -53,6 +59,43 @@ class RivaSessionConfig:
     request_id: str
     stop_history_eou_ms: int
     ignored: tuple[str, ...]  # fields accepted-and-ignored on this request, for logging/tests
+
+
+def _phrases_from_contexts(
+    contexts: Sequence[riva_asr_pb2.SpeechContext],
+) -> tuple[Phrase, ...]:
+    """Every ``SpeechContext`` flattened into one ordered phrase list.
+
+    Riva allows several contexts on one request, each with its own ``boost``, and NeMo
+    takes a per-phrase alpha, so each context's weight rides on its own phrases rather
+    than being collapsed into one number for the session. A ``boost`` of ``0.0`` is
+    proto3's unset scalar and becomes ``None``: "use the server's weight".
+
+    An empty phrase is refused here rather than dropped. NeMo divides a phrase's score
+    by its character count, so an empty one is a division by zero inside the tree build,
+    and dropping it silently would give a client a shorter vocabulary than it sent.
+    """
+    phrases: list[Phrase] = []
+    for context_index, context in enumerate(contexts):
+        boost = float(context.boost) if context.boost else None
+        for phrase_index, text in enumerate(context.phrases):
+            if not text.strip():
+                raise InvalidArgument(
+                    f"invalid speech_contexts[{context_index}].phrases[{phrase_index}]"
+                    f"={text!r}: a phrase needs at least one non-space character"
+                )
+            try:
+                phrases.append(Phrase(text=text, boost=boost))
+            except InvalidArgument as exc:
+                raise InvalidArgument(
+                    f"invalid speech_contexts[{context_index}].phrases[{phrase_index}]: {exc}"
+                ) from None
+    if len(phrases) > MAX_PHRASES:
+        raise InvalidArgument(
+            f"invalid speech_contexts: {len(phrases)} phrases across "
+            f"{len(contexts)} context(s) exceeds the limit of {MAX_PHRASES} for one session"
+        )
+    return tuple(phrases)
 
 
 def options_from_config(
@@ -138,10 +181,12 @@ def options_from_config(
     if config.verbatim_transcripts:
         note("verbatim_transcripts", "transcripts pass through unmodified")
 
-    if len(config.speech_contexts) > 0:
+    phrases = _phrases_from_contexts(config.speech_contexts)
+    if phrases and any(phrase.boost is not None for phrase in phrases):
         note(
-            "speech_contexts",
-            f"got {len(config.speech_contexts)} context(s); per-stream biasing is a later task",
+            "speech_contexts.boost",
+            "used as NeMo's boosting alpha; Riva's boost scale is a different one and "
+            "the two have not been calibrated against each other here",
         )
 
     if config.HasField("diarization_config"):
@@ -203,6 +248,7 @@ def options_from_config(
         stop_history_eou_ms=stop_history_eou_ms,
         wire_encoding=wire_encoding,
         wire_sample_rate_hz=sample_rate,
+        phrases=phrases,
     )
     return RivaSessionConfig(
         options=options,

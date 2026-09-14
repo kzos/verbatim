@@ -48,6 +48,7 @@ from verbatim.pipelines.nemo_runtime import (
     build_pipeline,
     inspect_runtime,
 )
+from verbatim.protocols.base import MAX_BOOST
 from verbatim.scheduler.graph_budget import ConfigError
 from verbatim.serve import PIPELINES, Endpoints, ServeSettings, engine_config, run_server
 
@@ -208,6 +209,15 @@ def _parser() -> argparse.ArgumentParser:
         "for, not a serving mode (docs/decisions/0014)",
     )
     serve.add_argument(
+        "--biasing",
+        action="store_true",
+        help="serve per-session phrase lists: a session's Riva speech_contexts or ?phrase= "
+        "values reach NeMo's per-stream boosting tree. Without it a session that sends "
+        "phrases is refused rather than transcribed unbiased. It changes the decoder's "
+        "arithmetic for every row, biased or not, so a run with it on is a different arm "
+        "and its transcript digests do not compare with a run without it",
+    )
+    serve.add_argument(
         "--att-context-left",
         type=int,
         metavar="N",
@@ -252,6 +262,7 @@ def _settings(args: argparse.Namespace) -> ServeSettings:
             pipeline=args.pipeline,
             eager=args.eager,
             padding=args.padding,
+            biasing=args.biasing,
             att_context_left=args.att_context_left,
             language_code=args.language_code,
             compute_dtype=args.compute_dtype,
@@ -315,6 +326,7 @@ def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapt
             batch_size=max(config.buckets or (1,)),
             decoding=decoding,
             stop_history_eou_ms=settings.stop_history_eou_ms,
+            enable_per_stream_biasing=settings.biasing,
             use_cuda_graphs=use_graphs,
             compute_dtype=settings.compute_dtype,
             device_id=settings.device_id,
@@ -363,10 +375,32 @@ def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapt
                 if settings.padding == "ragged"
                 else []
             ),
+            *_biasing_lines(adapter, settings),
             *_language_lines(decoding, settings.language_code),
         ],
         "graph path" if use_graphs else "eager",
     )
+
+
+def _biasing_lines(adapter: PipelineAdapter, settings: ServeSettings) -> list[str]:
+    """What the banner says about per-session phrase lists.
+
+    Read off the built adapter, never off ``--biasing``: the adapter refused to start
+    unless the built decoder actually carried the biasing arena, so this line reports
+    what the server can do. A server with biasing off says nothing, because refusing a
+    session that sends phrases is the visible behaviour and it says so itself.
+    """
+    if not adapter.biasing:
+        return []
+    return [
+        "biasing      ON: sessions may carry phrase lists (NeMo per-stream boosting tree).",
+        "             This is a SEPARATE ARM: the fused decode path changes the arithmetic "
+        "for every",
+        "             row, biased or not, so digests from this server do not compare with a server",
+        f"             without --biasing. Weights are NeMo alpha, capped at {MAX_BOOST}, "
+        "and a tree is",
+        "             built per session, on the tick thread, and never cached across sessions.",
+    ]
 
 
 def _language_lines(decoding: str, language_code: str) -> list[str]:

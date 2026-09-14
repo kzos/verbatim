@@ -14,7 +14,9 @@ from verbatim_bench import invariance as invariance_gate
 from verbatim_bench.client import ChunkMode
 from verbatim_bench.corpus import manifest_corpus_id
 from verbatim_bench.pace import DEFAULT_RAMP_S, LoadSpec, run_load
+from verbatim_bench.phrases import PhraseBookError, load_phrase_book
 from verbatim_bench.results import write_results
+from verbatim_bench.serverfacts import ArmContradiction, check_arm, read_server_facts
 from verbatim_bench.wer import Batch1Reference, ReferenceError, load_batch1_reference
 
 if TYPE_CHECKING:
@@ -240,6 +242,31 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     gate.add_argument("--lang", default="en-US")
+    gate.add_argument(
+        "--phrases",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help=(
+            "a phrase book: run the gate with per-session phrase lists. Half the corpus "
+            "carries a list and half carries none, interleaved, and a stream keeps the "
+            "SAME list at every level so batch composition stays the only thing that "
+            "changed. Two controls run first at concurrency 1: a positive control that "
+            "must show a list changing a transcript (without it a server ignoring every "
+            "list would pass), and a negative control that records any word an unrelated "
+            "list inserted. Needs a server started with --biasing, and the record says so"
+        ),
+    )
+    gate.add_argument(
+        "--control-clips",
+        type=int,
+        default=invariance_gate.DEFAULT_CONTROL_CLIPS,
+        metavar="N",
+        help=(
+            "clips the positive control runs, each twice at concurrency 1 "
+            f"(default {invariance_gate.DEFAULT_CONTROL_CLIPS})"
+        ),
+    )
     gate.add_argument(
         "--out", type=Path, default=None, help="write the vb-invariance/1 record here"
     )
@@ -708,7 +735,20 @@ def _invariance(args: argparse.Namespace) -> int:
     import asyncio
 
     chunk = ChunkMode.parse(args.chunk)
+    book = None
     try:
+        if args.phrases is not None:
+            book = load_phrase_book(args.phrases)
+        # What the server says it is, before a byte is sent. Biasing changes the decode
+        # for every row, biased or not, so a run that sends phrase lists to a server
+        # without it -- or withholds them from a server with it -- is a different arm
+        # than the record would claim.
+        check_arm(
+            read_server_facts(args.endpoint),
+            arm="invariance",
+            declared_chunk_ms=chunk.ms,
+            declared_biasing=book is not None,
+        )
         if args.manifest is not None:
             clips = invariance_gate.manifest_corpus(args.manifest)
             corpus = {
@@ -729,12 +769,20 @@ def _invariance(args: argparse.Namespace) -> int:
             }
         levels = invariance_gate.default_levels(args.max, churn_period_s=args.churn_period_s)
         invariance_gate.check_levels(levels, len(clips))
-    except (invariance_gate.GateRefusal, ValueError) as exc:
+    except (invariance_gate.GateRefusal, ArmContradiction, PhraseBookError, ValueError) as exc:
         print(f"refused: {exc}")
         return invariance_gate.EXIT_NO_VERDICT
     report = asyncio.run(
         invariance_gate.run_gate(
-            args.endpoint, clips, levels, chunk=chunk, lang=args.lang, seed=args.seed, corpus=corpus
+            args.endpoint,
+            clips,
+            levels,
+            chunk=chunk,
+            lang=args.lang,
+            seed=args.seed,
+            corpus=corpus,
+            book=book,
+            control_clips=args.control_clips,
         )
     )
     print(report.render())

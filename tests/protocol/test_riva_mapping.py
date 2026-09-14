@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from verbatim.core.errors import InvalidArgument, NotFound, Unimplemented
-from verbatim.protocols.base import Hypothesis, Word
+from verbatim.protocols.base import MAX_BOOST, MAX_PHRASES, Hypothesis, Word
 from verbatim.protocols.riva._gen import riva_asr_pb2, riva_audio_pb2
 from verbatim.protocols.riva.mapping import (
     DEFAULT_STOP_HISTORY_EOU_MS,
@@ -144,13 +144,78 @@ def test_profanity_filter_and_punctuation_and_verbatim_are_ignored() -> None:
     assert "verbatim_transcripts" in out.ignored
 
 
-def test_speech_contexts_are_accepted_and_ignored() -> None:
+def test_speech_contexts_become_the_session_phrase_list() -> None:
     config = _config()
     context = config.speech_contexts.add()
-    context.phrases.append("hello world")
+    context.phrases.extend(["metformin", "E11.9"])
     context.boost = 2.0
     out = _map(config)
-    assert "speech_contexts" in out.ignored
+    assert [(p.text, p.boost) for p in out.options.phrases] == [
+        ("metformin", 2.0),
+        ("E11.9", 2.0),
+    ]
+    # The boost travelled, and the response says the two scales are not calibrated.
+    assert "speech_contexts.boost" in out.ignored
+
+
+def test_each_speech_context_keeps_its_own_boost() -> None:
+    """Riva allows several contexts on one request and NeMo takes a per-phrase alpha,
+    so the weights are not collapsed into one number for the session."""
+    config = _config()
+    first = config.speech_contexts.add()
+    first.phrases.append("metformin")
+    first.boost = 2.0
+    second = config.speech_contexts.add()
+    second.phrases.append("410 U.S. 113")
+    second.boost = 5.0
+    out = _map(config)
+    assert [(p.text, p.boost) for p in out.options.phrases] == [
+        ("metformin", 2.0),
+        ("410 U.S. 113", 5.0),
+    ]
+
+
+def test_an_unset_boost_is_the_servers_weight_not_zero() -> None:
+    """proto3 has no presence on a scalar: `boost` of 0.0 is "not set", and must not
+    become an alpha of zero, which would ask for a tree that boosts nothing."""
+    config = _config()
+    config.speech_contexts.add().phrases.append("metformin")
+    out = _map(config)
+    assert [p.boost for p in out.options.phrases] == [None]
+    assert "speech_contexts.boost" not in out.ignored
+
+
+def test_an_empty_phrase_is_refused_not_dropped() -> None:
+    """NeMo divides a phrase's score by its character count, and a client that sent
+    five phrases and got four biased would have no way to tell."""
+    config = _config()
+    context = config.speech_contexts.add()
+    context.phrases.extend(["metformin", "   "])
+    with pytest.raises(InvalidArgument, match=r"speech_contexts\[0\]\.phrases\[1\]"):
+        _map(config)
+
+
+def test_a_boost_above_the_ceiling_is_refused_not_clamped() -> None:
+    config = _config()
+    context = config.speech_contexts.add()
+    context.phrases.append("metformin")
+    context.boost = MAX_BOOST + 1.0
+    with pytest.raises(InvalidArgument, match="phrase boost"):
+        _map(config)
+
+
+def test_more_phrases_than_the_session_limit_are_refused() -> None:
+    config = _config()
+    context = config.speech_contexts.add()
+    context.phrases.extend(f"phrase-{index}" for index in range(MAX_PHRASES + 1))
+    with pytest.raises(InvalidArgument, match="exceeds the limit"):
+        _map(config)
+
+
+def test_a_request_without_contexts_carries_no_phrases() -> None:
+    out = _map(_config())
+    assert out.options.phrases == ()
+    assert out.options.biasing_digest == ""
 
 
 def test_endpointing_prefers_stop_history_eou() -> None:

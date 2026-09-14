@@ -49,12 +49,19 @@ class ServiceFacts:
     precision: str
     execution: str  # "eager", "graph path" or "fake"
     pipeline: str
+    #: Whether this server serves per-session phrase lists. It labels every metric and
+    #: appears on ``/readyz`` because turning biasing on changes the decoder's arithmetic
+    #: for every row, biased or not: a transcript digest from a biasing server is not
+    #: comparable with one from a server without it, and a harness that could not read
+    #: this would file both under the same arm.
+    biasing: bool = False
 
     def labels(self) -> dict[str, str]:
         return {
             "chunk_ms": str(self.chunk_ms),
             "precision": self.precision,
             "execution": self.execution,
+            "biasing": "on" if self.biasing else "off",
             "model": self.model,
         }
 
@@ -109,6 +116,7 @@ class HealthReporter:
                     "chunk_ms": self._facts.chunk_ms,
                     "precision": self._facts.precision,
                     "execution": self._facts.execution,
+                    "biasing": self._facts.biasing,
                     "tick_id": snapshot.tick_id,
                 },
             )

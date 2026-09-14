@@ -31,7 +31,10 @@ Where CTC genuinely differs, read from
   -- and ``verbatim serve`` says so in its startup banner instead of leaving an
   operator to infer it from a transcript.
 - **No per-stream biasing.** Biasing is reached through the RNNT decoding computer;
-  there is no CTC equivalent in the inference package.
+  there is no CTC equivalent in the inference package. ``supports_biasing`` is false,
+  so a CTC server started with ``--biasing`` refuses to start, and one started without
+  it refuses a session that carries phrases. Either silence would give a client a
+  transcript it could not tell from a biased one.
 - **The decoding config is NeMo's, not ours.**
   ``CacheAwarePipelineBuilder.get_ctc_decoding_cfg`` takes no argument: it builds a
   ``CTCDecodingConfig`` with ``strategy="greedy"`` and ignores ``asr.decoding``
@@ -68,3 +71,4 @@ class CacheAwareCTCAdapter(CacheAwareAdapter):
     decoder_attribute: ClassVar[str] = "greedy_ctc_decoder"
     sibling_decoder_attribute: ClassVar[str] = "greedy_rnnt_decoder"
     sibling_registry_name: ClassVar[str] = "cache_aware_rnnt"
+    supports_biasing: ClassVar[bool] = False

@@ -40,6 +40,13 @@ What every adapter over this seam owns:
   so a final reaches the wire without a half-close.
 - The adapter never sets ``audio_processed_s``, ``valid_samples`` or ``is_last`` on
   a ``StepResult``; the tick loop stamps all three from the session and the frame.
+- A session's biasing phrases, when the server serves them, become one
+  ``BiasingRequestItemConfig`` on its ``ASRRequestOptions``, built in ``open_stream``
+  and released in ``close_stream``. Every way this can fail quietly is refused
+  instead: a pipeline that cannot bias, a decoder built without the arena, a boundary
+  that cannot release an entry, and a session that sends phrases to a server without
+  biasing. An unbiased transcript is indistinguishable from a biased one, so nothing
+  here is allowed to fall back.
 - ``step_ms`` and ``edge_step_ms`` are the wall time of the last steady and edge
   step, measured, so the admission controller's budget arithmetic runs on real
   numbers. The tick loop reads them after the step.
@@ -61,7 +68,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, ClassVar, Protocol
+from typing import Any, ClassVar, Final, Protocol
 
 import numpy as np
 
@@ -130,6 +137,15 @@ class NeMoBoundary:
     upstream's ``CudaGraphsStreamingEncoderStep`` because upstream exposes no public
     count, and it is bound to None when the attribute is not where this expects --
     a boundary that cannot tell says so, and is not read as zero.
+
+    ``make_biasing`` builds one session's ``BiasingRequestItemConfig`` from its phrase
+    list; ``release_biasing`` drops a stream's entry from the decoder's biasing arena.
+    Both are None when the installed NeMo has no per-stream biasing, and an adapter
+    asked to serve biasing over such a boundary refuses to start rather than accept
+    phrase lists it cannot honour. ``release_biasing`` is separate from
+    ``release_stream`` because NeMo releases the arena entry only on an ``is_last``
+    frame inside ``transcribe_step``: a session that aborts without a final leaks its
+    entry for the life of the process, and ``delete_state`` does not free it.
     """
 
     pipeline: CacheAwarePipelineLike
@@ -139,6 +155,8 @@ class NeMoBoundary:
     release_stream: Callable[[int], None] | None = None
     graph_step_available: bool = False
     retained_graphs: Callable[[], int] | None = None
+    make_biasing: Callable[..., Any] | None = None
+    release_biasing: Callable[[int], None] | None = None
 
     @classmethod
     def from_pipeline(
@@ -177,6 +195,7 @@ class NeMoBoundary:
 
             graph_step_available = graph_step_present()
         retained_graphs = _retained_graphs_reader(pipeline)
+        make_biasing, release_biasing = _biasing_seam(pipeline)
         return cls(
             pipeline=pipeline,
             make_frame=Frame,
@@ -185,6 +204,8 @@ class NeMoBoundary:
             release_stream=release_stream,
             graph_step_available=graph_step_available,
             retained_graphs=retained_graphs,
+            make_biasing=make_biasing,
+            release_biasing=release_biasing,
         )
 
 
@@ -229,6 +250,77 @@ def _retained_graphs_reader(pipeline: Any) -> Callable[[], int] | None:
     return None
 
 
+#: How a session's phrases are tokenised into its boosting tree. Case-insensitive, so a
+#: client sending "Metformin" also boosts "metformin"; the transcript's own casing is the
+#: model's. Set per request because NeMo's ``asr.per_stream_biasing_defaults`` block is
+#: read only by the offline manifest path and never by the pipeline builder.
+BIASING_BPE_MODE: Final = "case_insensitive"
+#: The tokenizer language for phrases, used only by an aggregate (multilingual) tokenizer.
+BIASING_SOURCE_LANG: Final = "en"
+
+
+def _biasing_seam(
+    pipeline: Any,
+) -> tuple[Callable[..., Any] | None, Callable[[int], None] | None]:
+    """``(make_biasing, release_biasing)``, or ``(None, None)`` when this pipeline has no
+    per-stream biasing arena.
+
+    Both are bound only when the *built decoder* actually carries the biasing
+    multi-model -- not when the installed package merely has the classes. A pipeline
+    built with ``enable_per_stream_biasing`` false has no arena, and NeMo logs a warning
+    and decodes unbiased for any stream that carries a request. Returning None here is
+    what lets the adapter refuse to start instead.
+
+    ``cache_key`` is deliberately never set on the config this builds. NeMo's phrase-tree
+    cache is a module-level dictionary with no eviction and no tenant scope; a shared key
+    would hand one caller's vocabulary to another, which for the buyer this server is for
+    is a disclosure, not an optimisation. The tree is rebuilt per session, and what that
+    costs a tick is measured rather than assumed.
+    """
+    try:
+        from nemo.collections.asr.inference.utils.per_stream_biasing import (
+            release_auto_managed_stream_biasing,
+        )
+        from nemo.collections.asr.parts.context_biasing.biasing_multi_model import (
+            BiasingRequestItemConfig,
+        )
+        from nemo.collections.asr.parts.context_biasing.boosting_graph_batched import (
+            BoostingTreeModelConfig,
+            PhraseItem,
+        )
+    except Exception:
+        return None, None
+
+    computer = getattr(pipeline, "decoding_computer", None)
+    if computer is None or not getattr(computer, "per_stream_biasing_enabled", False):
+        return None, None
+    if getattr(computer, "biasing_multi_model", None) is None:
+        return None, None
+
+    def make_biasing(
+        phrases: Sequence[tuple[str, float | None]], alpha: float | None = None
+    ) -> Any:
+        items = [PhraseItem(phrase=text, alpha=boost) for text, boost in phrases]
+        return BiasingRequestItemConfig(
+            boosting_model_cfg=BoostingTreeModelConfig(
+                key_phrase_items_list=items,
+                source_lang=BIASING_SOURCE_LANG,
+                bpe_mode=BIASING_BPE_MODE,
+            ),
+            boosting_model_alpha=1.0 if alpha is None else float(alpha),
+            cache_key=None,
+            auto_manage_multi_model=True,
+        )
+
+    def release_biasing(stream_id: int) -> None:
+        state = pipeline.get_state(stream_id)
+        if state is None or not state.has_biasing_request():
+            return
+        release_auto_managed_stream_biasing(state, computer.biasing_multi_model)
+
+    return make_biasing, release_biasing
+
+
 def _words_of(segments: Sequence[Any] | None) -> tuple[Word, ...]:
     """NeMo ``TextSegment`` records (seconds, float confidence) to integer-millisecond words.
 
@@ -271,6 +363,11 @@ class CacheAwareAdapter(PipelineAdapter):
     decoder_attribute: ClassVar[str] = ""
     sibling_decoder_attribute: ClassVar[str] = ""
     sibling_registry_name: ClassVar[str] = ""
+    #: Whether this pipeline can carry a per-session boosting tree at all. NeMo reaches
+    #: biasing through the RNNT decoding computer and the cache-aware CTC pipeline has no
+    #: equivalent, so the CTC adapter sets this false and refuses rather than accepting
+    #: phrase lists and transcribing every session unbiased.
+    supports_biasing: ClassVar[bool] = True
 
     def __init__(
         self,
@@ -282,6 +379,7 @@ class CacheAwareAdapter(PipelineAdapter):
         stop_history_eou_ms: int = 800,
         language_code: str | None = None,
         use_cuda_graphs: bool = False,
+        biasing: bool = False,
     ) -> None:
         pipeline = boundary.pipeline
         self._refuse_a_crossed_wire(pipeline)
@@ -302,6 +400,9 @@ class CacheAwareAdapter(PipelineAdapter):
             )
         if stop_history_eou_ms < 0:
             raise ConfigError(f"stop_history_eou_ms must be >= 0, got {stop_history_eou_ms!r}")
+        if biasing:
+            self._refuse_unservable_biasing(boundary)
+        self._biasing = bool(biasing)
         self._chunk = chunk
         self._boundary = boundary
         self._buckets = tuple(buckets)
@@ -314,6 +415,38 @@ class CacheAwareAdapter(PipelineAdapter):
         self._started: set[int] = set()
         self._step_ms = 0.0
         self._edge_step_ms = 0.0
+
+    @classmethod
+    def _refuse_unservable_biasing(cls, boundary: NeMoBoundary) -> None:
+        """Refuse to start a biasing server that could not actually bias.
+
+        Three ways it fails, all of them silent if unchecked: the pipeline has no biasing
+        path at all (CTC); NeMo's decoder was built without the biasing multi-model, in
+        which case it logs a warning per step and decodes unbiased; or the arena entry a
+        session takes could not be released, which leaks one entry per aborted session for
+        the life of the process. In each case the server would accept a phrase list, return
+        a transcript, and give the client no way to tell it was never biased.
+        """
+        if not cls.supports_biasing:
+            raise ConfigError(
+                f"per-stream biasing was asked for and {cls.registry_name} cannot serve it: "
+                "NeMo reaches biasing through the RNNT decoding computer and the cache-aware "
+                f"CTC pipeline has no equivalent. Serve --pipeline {cls.sibling_registry_name} "
+                "or start without --biasing"
+            )
+        if boundary.make_biasing is None:
+            raise ConfigError(
+                "per-stream biasing was asked for and this built pipeline has no biasing "
+                "arena: NeMo's decoding computer reports per_stream_biasing_enabled false, "
+                "so it was built without asr.decoding.greedy.enable_per_stream_biasing. It "
+                "would log a warning per step and decode every session unbiased"
+            )
+        if boundary.release_biasing is None:
+            raise ConfigError(
+                "per-stream biasing was asked for and this boundary cannot release a "
+                "stream's arena entry: NeMo frees one only on an is_last frame, so every "
+                "session that aborts would leak an entry for the life of the process"
+            )
 
     @classmethod
     def _refuse_a_crossed_wire(cls, pipeline: Any) -> None:
@@ -399,6 +532,38 @@ class CacheAwareAdapter(PipelineAdapter):
         """Real streams opened and not yet closed."""
         return frozenset(self._opened)
 
+    @property
+    def biasing(self) -> bool:
+        """Whether this adapter serves per-session phrase lists."""
+        return self._biasing
+
+    def _biasing_cfg(self, options: SessionOptions | None) -> Any | None:
+        """This session's boosting-tree request, or None when it asked for no phrases.
+
+        A session that asked for phrases on a server without biasing is refused here,
+        on the tick thread, where ``open_stream`` turns it into one failed session
+        rather than a wrong transcript. Transcribing it unbiased would return text the
+        client cannot distinguish from a biased one, which is the whole failure mode
+        this server exists to rule out.
+        """
+        if options is None or not options.phrases:
+            return None
+        if not self._biasing:
+            raise InvalidArgument(
+                f"this session sent {len(options.phrases)} biasing phrase(s) and this "
+                "server was started without --biasing: it would transcribe the session "
+                "unbiased and the transcript would not say so"
+            )
+        make_biasing = self._boundary.make_biasing
+        if make_biasing is None:  # refused at construction; belt and braces
+            raise InvalidArgument(
+                "this session sent biasing phrases and this pipeline has no biasing arena"
+            )
+        return make_biasing(
+            [(phrase.text, phrase.boost) for phrase in options.phrases],
+            options.boost,
+        )
+
     def _request_options(self, options: SessionOptions | None) -> Any:
         eou = self._stop_history_eou_ms
         if options is not None and options.stop_history_eou_ms is not None:
@@ -406,7 +571,12 @@ class CacheAwareAdapter(PipelineAdapter):
         language = self._language_code
         if language is None and options is not None:
             language = options.language_code
-        return self._boundary.make_options(stop_history_eou=eou, language_code=language)
+        biasing_cfg = self._biasing_cfg(options)
+        if biasing_cfg is None:
+            return self._boundary.make_options(stop_history_eou=eou, language_code=language)
+        return self._boundary.make_options(
+            stop_history_eou=eou, language_code=language, biasing_cfg=biasing_cfg
+        )
 
     def open_stream(self, stream_id: int, options: SessionOptions | None) -> None:
         """Create the stream's NeMo state now, on the tick thread, before its first frame.
@@ -426,8 +596,18 @@ class CacheAwareAdapter(PipelineAdapter):
 
     def close_stream(self, stream_id: int) -> None:
         """Drop the stream. NeMo already deleted the state and freed the slots if the
-        stream's ``is_last`` frame went through; otherwise release them here."""
+        stream's ``is_last`` frame went through; otherwise release them here.
+
+        The biasing arena is the third thing NeMo frees only on ``is_last``, and
+        ``delete_state`` does not free it: without this a session that aborts -- a
+        dropped socket, an idle deadline, a failed step -- leaks its arena entry for
+        the life of the process. It runs before ``delete_state`` because it reads the
+        state that ``delete_state`` removes, and it is a no-op for a stream NeMo has
+        already released.
+        """
         self._opened.pop(stream_id, None)
+        if self._biasing and self._boundary.release_biasing is not None:
+            self._boundary.release_biasing(stream_id)
         if stream_id in self._started:
             self._started.discard(stream_id)
             if self._boundary.release_stream is not None:

@@ -100,6 +100,14 @@ class EngineConfig:
     either transport and both wires inherit it. ``None`` disables it, which is what
     the CPU test harness does; a server should not.
 
+    ``biasing`` serves per-session phrase lists: a session's ``phrases`` reach NeMo's
+    per-stream boosting tree, and a server with it off refuses a session that sends any
+    rather than transcribing it unbiased. It is off by default and belongs on the row,
+    because turning it on changes the decoder's arithmetic for every row, biased or not,
+    so a transcript digest from a biasing server is not comparable with one from a server
+    without it. With it on, a transcript is a function of the audio, the checkpoint, the
+    phrase list and its weight, which is why a session carries a ``biasing_digest``.
+
     ``max_result_backlog`` is the most unread hypotheses a session's result queue holds
     before the engine drops its oldest *partials* to stay within it; a final and an
     error are never dropped. A partial is a running prefix the next partial supersedes,
@@ -119,6 +127,7 @@ class EngineConfig:
     elastic_buckets: bool = False
     pipeline: str = "fake"
     padding: str = "fixed"
+    biasing: bool = False
     stop_history_eou_ms: int = 800
     idle_timeout_s: float | None = 30.0
     max_result_backlog: int = 1024

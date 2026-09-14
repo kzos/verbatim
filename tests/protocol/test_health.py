@@ -230,7 +230,7 @@ async def test_metrics_is_the_exposition_with_the_facts_as_labels() -> None:
         status, headers, body = await _get(_base(server) + "/metrics")
     assert status == 200
     assert headers["Content-Type"] == "text/plain; version=0.0.4; charset=utf-8"
-    labels = 'chunk_ms="160",precision="none",execution="fake",model="fake-model"'
+    labels = 'chunk_ms="160",precision="none",execution="fake",biasing="off",model="fake-model"'
     assert f"verbatim_live_sessions{{{labels}}} 1" in body
     assert f"verbatim_up{{{labels}}} 1" in body
     assert "# TYPE verbatim_ticks_total counter" in body
