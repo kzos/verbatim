@@ -11,6 +11,7 @@ nothing, and this file is where it is shown that this one can.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -32,6 +33,7 @@ from verbatim_bench.invariance import (
     EXIT_INVARIANT,
     EXIT_NO_VERDICT,
     SLOTS,
+    ChurnGate,
     Clip,
     GateRefusal,
     Level,
@@ -381,3 +383,82 @@ def test_the_command_refuses_a_corpus_that_cannot_reach_its_max(
     assert (
         "refused: a corpus of 8 utterances cannot reach concurrency 128" in capsys.readouterr().out
     )
+
+
+# --- the churn arm ---------------------------------------------------------------------
+
+
+def test_the_churn_wave_walks_between_one_and_the_ceiling_and_back() -> None:
+    """The schedule is a pure function of elapsed time, so a re-run admits identically."""
+    gate = ChurnGate(38, 20.0)
+    assert gate.ceiling_at(0.0) == 1
+    assert gate.ceiling_at(10.0) == 38
+    assert gate.ceiling_at(20.0) == 1
+    assert gate.ceiling_at(5.0) == gate.ceiling_at(15.0)
+    # And it repeats: a 33 s utterance spans more than one full period.
+    assert gate.ceiling_at(30.0) == gate.ceiling_at(10.0)
+
+
+def test_a_churn_gate_of_one_never_admits_two() -> None:
+    """Degenerate but reachable: --max 1 with a churn period must not divide by zero or
+    admit a second stream."""
+    gate = ChurnGate(1, 5.0)
+    assert {gate.ceiling_at(t) for t in (0.0, 1.0, 2.5, 4.9)} == {1}
+
+
+async def test_the_churn_gate_actually_holds_occupancy_down_at_the_trough() -> None:
+    """The wave has to happen, not merely be configured.
+
+    Without this the churn arm would be a normal run with a different label: the gate
+    would admit everything immediately and the record would claim a swing that never
+    occurred. The gate records the in-flight count at each admission so the run can show
+    its own occupancy rather than assert it.
+    """
+    now = 0.0
+
+    def clock() -> float:
+        return now
+
+    gate = ChurnGate(8, 20.0, clock=clock)
+    held: list[str] = []
+
+    async def hold(tag: str) -> None:
+        async with gate:
+            held.append(tag)
+            await asyncio.sleep(0)
+
+    # At t=0 the ceiling is 1, so only one of three may be in flight at a time.
+    await asyncio.gather(hold("a"), hold("b"), hold("c"))
+    assert sorted(held) == ["a", "b", "c"]
+    assert max(gate.observed_occupancy) == 1
+
+    # At the crest the ceiling is the full concurrency, so they overlap. The wave is
+    # measured from the gate's own construction, so the clock has to move after it.
+    crest_now = 0.0
+    crest = ChurnGate(8, 20.0, clock=lambda: crest_now)
+    crest_now = 10.0
+    started = asyncio.Event()
+
+    async def linger() -> None:
+        async with crest:
+            started.set()
+            await asyncio.sleep(0.05)
+
+    tasks = [asyncio.create_task(linger()) for _ in range(4)]
+    await started.wait()
+    await asyncio.gather(*tasks)
+    assert max(crest.observed_occupancy) > 1
+
+
+def test_the_record_names_the_churn_period_so_a_digest_is_not_misread() -> None:
+    """A churned max level and a constant one answer different questions, and the digests
+    are indistinguishable without this."""
+    churned = default_levels(38, churn_period_s=20.0)
+    assert churned[-1].churn_period_s == 20.0
+    assert [level.churn_period_s for level in churned[:-1]] == [None, None, None]
+    assert default_levels(38)[-1].churn_period_s is None
+
+
+def test_a_churn_period_that_is_not_positive_is_refused() -> None:
+    with pytest.raises(GateRefusal, match="churn period"):
+        Level("max", 38, churn_period_s=0.0)

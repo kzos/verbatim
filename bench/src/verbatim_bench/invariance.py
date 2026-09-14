@@ -29,6 +29,7 @@ run it with a deliberate leak and pin that the gate goes red.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -91,6 +92,75 @@ EXIT_NO_VERDICT: Final = 2
 _CLASSIFICATION: Final = {"1": "batch dependence", "32a": "run-to-run at one concurrency"}
 
 
+class ChurnGate:
+    """Admission on a triangle wave, so occupancy swings instead of sitting pinned.
+
+    The constant levels use ``asyncio.Semaphore(N)``: a clip releases its permit and the
+    next clip takes it immediately, so occupancy holds at ``N`` for the whole run and only
+    drains at the tail. That tests whether a transcript depends on how busy the server was
+    *for the run*. It does not test whether a transcript depends on how busy the server was
+    *during that session*, because no session ever sees its neighbour count move far.
+
+    Here the ceiling walks 1 -> N -> 1 over ``period_s`` and repeats, so an utterance long
+    enough to span a period lives through the full swing. Under fixed-shape padding this
+    should be inert: the steady batch is the bucket at every occupancy, so the encoder sees
+    the same shape throughout. "Should be" is the phrase this project keeps being caught by,
+    which is the reason to run it.
+
+    The wave is a pure function of elapsed time, so a re-run with the same corpus and the
+    same period admits on the same schedule.
+    """
+
+    def __init__(
+        self,
+        concurrency: int,
+        period_s: float,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if concurrency < 1:
+            raise GateRefusal(f"churn concurrency must be >= 1, got {concurrency!r}")
+        if period_s <= 0:
+            raise GateRefusal(f"churn period must be positive, got {period_s!r}")
+        self._concurrency = concurrency
+        self._period_s = period_s
+        self._clock = clock
+        self._started = clock()
+        self._in_flight = 0
+        self._condition = asyncio.Condition()
+        self._observed: list[int] = []
+
+    @property
+    def observed_occupancy(self) -> tuple[int, ...]:
+        """The in-flight count at each admission, so a run can show the wave happened
+        rather than assert that it was configured."""
+        return tuple(self._observed)
+
+    def ceiling_at(self, elapsed_s: float) -> int:
+        """The triangle wave: 1 at the period's edges, ``concurrency`` at its middle."""
+        if self._concurrency == 1:
+            return 1
+        phase = (elapsed_s % self._period_s) / self._period_s
+        rising = 2.0 * phase if phase < 0.5 else 2.0 * (1.0 - phase)
+        return max(1, min(self._concurrency, 1 + round(rising * (self._concurrency - 1))))
+
+    async def __aenter__(self) -> ChurnGate:
+        async with self._condition:
+            while self._in_flight >= self.ceiling_at(self._clock() - self._started):
+                # Wake on the next release, and independently on a slice of the period so
+                # a rising ceiling admits even when nothing has finished.
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(self._condition.wait(), timeout=self._period_s / 20.0)
+            self._in_flight += 1
+            self._observed.append(self._in_flight)
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        async with self._condition:
+            self._in_flight -= 1
+            self._condition.notify()
+
+
 class GateRefusal(ValueError):
     """The gate declined to run: it could not have produced a meaningful verdict."""
 
@@ -102,12 +172,20 @@ class Level:
 
     slot: str
     concurrency: int
+    #: When set, this level admits on a triangle wave between 1 and ``concurrency`` with
+    #: this period in seconds, instead of holding a constant number in flight. A session
+    #: then lives through a large swing in how many neighbours it has, which the constant
+    #: levels never produce: their semaphore refills the instant a clip finishes, so
+    #: occupancy sits pinned at ``concurrency`` until the tail drains.
+    churn_period_s: float | None = None
 
     def __post_init__(self) -> None:
         if self.slot not in SLOTS:
             raise GateRefusal(f"invalid level slot {self.slot!r}: must be one of {SLOTS}")
         if self.concurrency < 1:
             raise GateRefusal(f"invalid concurrency {self.concurrency!r} for level {self.slot}")
+        if self.churn_period_s is not None and self.churn_period_s <= 0:
+            raise GateRefusal(f"invalid churn period {self.churn_period_s!r} for level {self.slot}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,9 +249,25 @@ class Divergence:
         }
 
 
-def default_levels(max_concurrency: int = DEFAULT_MAX_CONCURRENCY) -> tuple[Level, ...]:
-    """1 / 32a / 32b / max, with `max` the caller's."""
-    return (Level("1", 1), Level("32a", 32), Level("32b", 32), Level("max", max_concurrency))
+def default_levels(
+    max_concurrency: int = DEFAULT_MAX_CONCURRENCY, *, churn_period_s: float | None = None
+) -> tuple[Level, ...]:
+    """1 / 32a / 32b / max, with `max` the caller's.
+
+    ``churn_period_s`` churns the ``max`` level rather than adding a fifth: the row fields
+    are ``hash_1``/``hash_32a``/``hash_32b``/``hash_max`` and the frozen methodology
+    forbids adding one after a run. It lands in the right place anyway -- ``max`` against
+    ``1`` is already classified as batch dependence, and "does a transcript survive the
+    neighbour count moving under it" is the same question asked of a harder arrival
+    pattern. The record names the period, so a churned run is never mistaken for a
+    constant one.
+    """
+    return (
+        Level("1", 1),
+        Level("32a", 32),
+        Level("32b", 32),
+        Level("max", max_concurrency, churn_period_s=churn_period_s),
+    )
 
 
 def check_levels(levels: Sequence[Level], corpus_size: int) -> None:
@@ -323,6 +417,9 @@ class GateReport:
                 {
                     "slot": run.level.slot,
                     "concurrency": run.level.concurrency,
+                    # Null on a constant level. Named here so a churned digest is never
+                    # read as a constant-occupancy one: they answer different questions.
+                    "churn_period_s": run.level.churn_period_s,
                     "streams": len(run.finals),
                     "errors": len(run.errors),
                     "first_error": next(iter(run.errors.values()), None),
@@ -447,7 +544,11 @@ async def run_level(
     """Every clip once, in corpus order, at most `level.concurrency` in flight, each on
     its own connection at real-time pace with canonical framing. The frame jitter is
     seeded per level and clip, so 32a and 32b arrive at different phases on purpose."""
-    gate = asyncio.Semaphore(level.concurrency)
+    gate: asyncio.Semaphore | ChurnGate = (
+        ChurnGate(level.concurrency, level.churn_period_s, clock=clock)
+        if level.churn_period_s is not None
+        else asyncio.Semaphore(level.concurrency)
+    )
     level_index = SLOTS.index(level.slot)
 
     async def one(index: int, clip: Clip) -> SessionResult:
@@ -500,6 +601,7 @@ async def run_gate(
     levels: Sequence[Level] | None = None,
     *,
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    churn_period_s: float | None = None,
     chunk: ChunkMode | None = None,
     lang: str = "en-US",
     frame_ms: int = constants.FRAME_MS,
@@ -509,7 +611,11 @@ async def run_gate(
 ) -> GateReport:
     """The four levels in order, then the verdict. Refuses before sending a byte if the
     corpus cannot reach the highest level."""
-    chosen = tuple(levels) if levels is not None else default_levels(max_concurrency)
+    chosen = (
+        tuple(levels)
+        if levels is not None
+        else default_levels(max_concurrency, churn_period_s=churn_period_s)
+    )
     check_levels(chosen, len(clips))
     selected_chunk = chunk if chunk is not None else ChunkMode(160)
     started = clock()

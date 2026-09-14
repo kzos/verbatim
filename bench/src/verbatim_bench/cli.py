@@ -216,6 +216,20 @@ def _build_parser() -> argparse.ArgumentParser:
     gate.add_argument("--seed", type=int, default=invariance_gate.DEFAULT_SEED)
     gate.add_argument("--chunk", default="160ms")
     gate.add_argument(
+        "--churn-period-s",
+        type=float,
+        default=None,
+        metavar="S",
+        help=(
+            "churn the max level: admit on a triangle wave between 1 and --max with this "
+            "period, instead of holding a constant number in flight. The constant levels "
+            "refill the instant a clip finishes, so occupancy sits pinned and no session "
+            "sees its neighbour count move far; this asks whether a transcript survives "
+            "that count moving underneath it. Recorded on the level, so a churned digest "
+            "is never read as a constant-occupancy one"
+        ),
+    )
+    gate.add_argument(
         "--max",
         type=int,
         default=invariance_gate.DEFAULT_MAX_CONCURRENCY,
@@ -713,7 +727,7 @@ def _invariance(args: argparse.Namespace) -> int:
                 "duration_s": args.synthetic_s,
                 "seed": args.seed,
             }
-        levels = invariance_gate.default_levels(args.max)
+        levels = invariance_gate.default_levels(args.max, churn_period_s=args.churn_period_s)
         invariance_gate.check_levels(levels, len(clips))
     except (invariance_gate.GateRefusal, ValueError) as exc:
         print(f"refused: {exc}")
