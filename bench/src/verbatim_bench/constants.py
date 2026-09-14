@@ -29,6 +29,13 @@ LADDER_N0_WITHOUT_CEILING: Final = 16
 LADDER_MULTIPLIER: Final = 1.15
 LADDER_RESOLUTION: Final = 0.02
 LADDER_INVALID_RUNGS_TO_ABORT: Final = 2
+#: How many times a rung whose warm-up never settled is run before its non-convergence is
+#: read as a ceiling. A load that opened no window took no measurement, and the ladder used
+#: to score that as a failed rung and bisect downward from it -- so the stream count it
+#: reported was the point at which convergence first went wrong, not the point at which the
+#: server did. 2 means one repeat: converge on either attempt and the rung is measured;
+#: fail to converge twice at the same stream count and it is the server's answer.
+LADDER_UNSTABLE_REPEATS: Final = 2
 SEEDS: Final = (20260914, 20260915, 20260916)
 S_REPEATS: Final = 3
 
