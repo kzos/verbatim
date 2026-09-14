@@ -42,7 +42,7 @@ from verbatim_bench import constants
 from verbatim_bench.canonical import FinalRecord, finals_digest
 from verbatim_bench.client import ChunkMode, SessionResult, run_session
 from verbatim_bench.corpus import Utterance, load_manifest, read_pcm16, validate_pcm_sha256
-from verbatim_bench.phrases import PhraseBook, assign, rare_words
+from verbatim_bench.phrases import PhraseBook, assign, missed_words
 from verbatim_bench.results import percentile
 
 __all__ = [
@@ -811,6 +811,11 @@ async def run_level(
 #: and one clip moving is enough to establish that a phrase list reaches the decoder.
 DEFAULT_CONTROL_CLIPS: Final = 4
 
+#: How far past ``control_clips`` the scan may walk looking for clips the bare pass got
+#: something wrong on. A clip transcribed perfectly has nothing to prove: boosting words
+#: the model already produced changes nothing whether biasing works or not.
+CONTROL_SCAN_FACTOR: Final = 6
+
 
 async def _one(
     endpoint: str,
@@ -861,28 +866,34 @@ async def run_controls(
 ) -> BiasingControls:
     """The two controls, before the levels, at concurrency 1.
 
-    The positive control boosts each control clip's own longer reference words and
-    requires at least one transcript to move. It is built from the reference rather than
-    from a domain list because the question is only whether boosting reaches the decoder,
-    and the words a model is most likely to have got wrong are the ones most likely to
-    answer it. A synthetic corpus has no reference, so the control is skipped there and
-    the run says so rather than passing quietly.
+    The positive control runs each control clip bare, takes the reference words the bare
+    pass did **not** produce, boosts those, and runs it again. At least one transcript
+    must move.
 
-    The negative control sends an unrelated list to one clip and records which of its
-    words appear in the biased transcript and not the bare one.
+    Boosting the missed words rather than the reference's rare words is the whole design,
+    and it was learned from a control that reported failure on a working server: a list
+    of words the model already emitted changes nothing, correctly, so the control was
+    measuring its own choice of words rather than the server. A clip the bare pass got
+    completely right is skipped, because it has nothing to prove either way, and the scan
+    walks further down the corpus to find one that has. A synthetic corpus has no
+    reference at all, so the control cannot be built there and the run says so rather
+    than passing quietly.
+
+    The negative control sends an unrelated list to one clip at the book's own weight and
+    records which of its words appear in the biased transcript and not the bare one.
     """
     positive: list[tuple[str, str, str]] = []
     errors: list[str] = []
-    chosen = [clip for clip in clips if clip.text][:control_clips]
-    if not chosen:
+    with_text = [clip for clip in clips if clip.text]
+    if not with_text:
         errors.append(
             "no control clip carries a reference transcript, so the positive control "
             "could not be built: this corpus cannot show that biasing reached the decoder"
         )
-    for index, clip in enumerate(chosen):
-        phrases = rare_words(clip.text)
-        if not phrases:
-            continue
+    scanned = 0
+    for index, clip in enumerate(with_text[: control_clips * CONTROL_SCAN_FACTOR]):
+        if scanned >= control_clips:
+            break
         bare = await _one(
             endpoint,
             clip,
@@ -892,6 +903,14 @@ async def run_controls(
             frame_ms=frame_ms,
             frame_seed=seed * 7 + index,
         )
+        if bare.error is not None:
+            errors.append(f"{clip.stream_id}: {bare.error}")
+            continue
+        phrases = missed_words(clip.text, bare.final_text)
+        if not phrases:
+            # The bare pass already produced every reference word. Boosting them would
+            # correctly change nothing, so this clip cannot speak either way.
+            continue
         boosted = await _one(
             endpoint,
             clip,
@@ -903,9 +922,10 @@ async def run_controls(
             phrases=phrases,
             boost=book.boost,
         )
-        if bare.error is not None or boosted.error is not None:
-            errors.append(f"{clip.stream_id}: {bare.error or boosted.error}")
+        if boosted.error is not None:
+            errors.append(f"{clip.stream_id}: {boosted.error}")
             continue
+        scanned += 1
         positive.append((clip.stream_id, bare.final_text, boosted.final_text))
 
     negative_stream = ""

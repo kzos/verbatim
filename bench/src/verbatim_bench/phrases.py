@@ -32,6 +32,7 @@ __all__ = [
     "PhraseBookError",
     "assign",
     "load_phrase_book",
+    "missed_words",
     "rare_words",
 ]
 
@@ -136,21 +137,51 @@ def assign(stream_ids: Sequence[str], book: PhraseBook) -> dict[str, tuple[str, 
     return out
 
 
-#: Words shorter than this are too common to be worth boosting, and a positive control
-#: built from them would be testing the model's grip on "the" rather than on a rare term.
+#: Words shorter than this are too common to be worth boosting, and a list built from
+#: them would be testing the model's grip on "the" rather than on a rare term.
 RARE_WORD_CHARS = 7
+
+_PUNCTUATION = ".,;:!?\"'()[]"
+
+
+def _clean(word: str) -> str:
+    return word.strip(_PUNCTUATION)
 
 
 def rare_words(text: str, *, limit: int = 16) -> tuple[str, ...]:
-    """The longer words of a reference transcript, in order, without duplicates.
-
-    Used to build the positive control: boosting the words a model is most likely to
-    have got wrong is the sharpest test of whether boosting reached the decoder at all.
-    """
+    """The longer words of a reference transcript, in order, without duplicates."""
     seen: list[str] = []
     for word in text.split():
-        cleaned = word.strip(".,;:!?\"'()[]")
+        cleaned = _clean(word)
         if len(cleaned) < RARE_WORD_CHARS or cleaned in seen:
+            continue
+        seen.append(cleaned)
+        if len(seen) >= limit:
+            break
+    return tuple(seen)
+
+
+def missed_words(reference: str, transcript: str, *, limit: int = 32) -> tuple[str, ...]:
+    """Reference words the transcript did not produce, in order, without duplicates.
+
+    This is what the positive control boosts, and the distinction from ``rare_words``
+    was learned the hard way. A control built from a clip's reference regardless of
+    whether the model got those words right boosts words the model already emitted, and
+    a correct boosting implementation then changes nothing -- so the control reported
+    "biasing reached nothing" on a server where biasing demonstrably worked. Measured on
+    a B300, 2026-09-14: three clips, every boosted word already present in the bare
+    transcript, zero change; the same server with the words it had MISSED boosted moved
+    six transcripts of twelve and recovered `risdongram` to `risdon graeme`,
+    `ray stroke` to `raystoke` and `important` to `importance`.
+
+    Comparison is case-insensitive and ignores surrounding punctuation, because the
+    question is whether the word was recognised, not how it was typeset.
+    """
+    said = {_clean(word).lower() for word in transcript.split()}
+    seen: list[str] = []
+    for word in reference.split():
+        cleaned = _clean(word)
+        if not cleaned or cleaned.lower() in said or cleaned in seen:
             continue
         seen.append(cleaned)
         if len(seen) >= limit:

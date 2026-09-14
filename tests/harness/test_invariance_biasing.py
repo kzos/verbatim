@@ -38,6 +38,7 @@ from verbatim_bench.phrases import (
     PhraseBookError,
     assign,
     load_phrase_book,
+    missed_words,
     rare_words,
 )
 from verbatim_bench.serverfacts import ArmContradiction, ServerFacts, check_arm
@@ -161,6 +162,21 @@ def test_rare_words_takes_the_longer_reference_words_in_order() -> None:
     assert rare_words("appellant, appellant the a") == ("appellant",)
     assert rare_words("a b c") == ()
     assert rare_words("alphabet beta gamma delta", limit=2) == ("alphabet",)
+
+
+def test_the_positive_control_boosts_only_what_the_bare_pass_missed() -> None:
+    """The control's whole design. Boosting words the model already produced changes
+    nothing on a working server, so a control built that way measures its own choice of
+    words. Measured on a B300, 2026-09-14: three clips, every boosted word already in the
+    bare transcript, zero change; the words the pass had MISSED moved six of twelve."""
+    reference = "that my father sir risdon graeme has smuggled goods here"
+    bare = "that my father sir risdongram has smuggled goods here"
+    assert missed_words(reference, bare) == ("risdon", "graeme")
+    # A clip the model got right has nothing to prove and yields no list at all.
+    assert missed_words(reference, reference) == ()
+    # Case and punctuation are typesetting, not recognition.
+    assert missed_words("Archy, silent.", "archy silent") == ()
+    assert missed_words("a b", "", limit=1) == ("a",)
 
 
 # --- the arm the server can fail ---------------------------------------------------
