@@ -114,9 +114,17 @@ Two controls run first, at concurrency 1:
 
 - **The positive control can void the run.** A phrase list that reaches nothing produces
   exactly the transcripts an unbiased server produces, every level agrees, and the gate
-  would report "invariant" for a feature that was never on. Each control clip is run bare
-  and then boosting its own reference's longer words; at least one pair must differ, and
-  when none does the verdict is `uncontrolled` and there is no verdict at all.
+  would report "invariant" for a feature that was never on. Each control clip is run bare,
+  the reference words that pass did **not** produce are boosted, and it is run again; at
+  least one pair must differ, and when none does the verdict is `uncontrolled` and there
+  is no verdict at all.
+
+  Boosting the *missed* words rather than the reference's rare words is the whole design,
+  and it was learned from a control that reported failure on a working server. A list of
+  words the model already emitted changes nothing — correctly — so the first version of
+  this control measured its own choice of words. A clip the bare pass got entirely right
+  is skipped rather than counted against the server, and the scan walks further down the
+  corpus to find one that has something to prove.
 - **The negative control is a reading, not a gate.** One clip is run against an unrelated
   list and any word it inserted is recorded. Over-boosting is an accuracy fact about a
   weight; the verdict is about batch composition, and conflating them would mean a green
@@ -126,3 +134,44 @@ The ragged control arm (DR-0014) matters more here, not less: a padded server pa
 own padding test is close to a restatement of the design, and a boost large enough to
 swamp decision margins could collapse the ragged arm's divergence and quietly remove the
 gate's power to fail. A biasing run reports alongside a ragged run with the same book.
+
+## What it measured, 2026-09-14, B300, bfloat16, eager
+
+Both arms: 256 LibriSpeech test-other utterances (`sha256:6a142a96…`), phrase book
+`domains-v1` (`cc726a6a…`) at weight 2.0, 128 of the 256 streams carrying a list,
+interleaved; levels 1 / 32 / 32 / 42 with the max level churned on a 20 s triangle wave.
+Both arms' positive control changed 4 of 4 clips and both negative controls inserted
+nothing.
+
+| arm | verdict | digests | streams differing from concurrency 1 (32a / 32b / max) |
+|---|---|---|---|
+| fixed + biasing | invariant | one, `bbf5e18dc3bf…` | 0 / 0 / 0 |
+| ragged + biasing | divergent | four, all different | 117 / 117 / 89 |
+| ragged, no biasing (same shape, DR-0014) | divergent | four | 118 / 118 / 88 |
+
+Two readings, and the second is the one that makes the first mean anything.
+
+**The property holds with per-session vocabularies.** One digest across four levels,
+churned, with biased and unbiased rows sharing every batch.
+
+**Boosting did not blunt the control.** The ragged arm diverged 117 / 117 / 89 against
+118 / 118 / 88 for the same configuration without biasing: one stream of difference in
+each comparison. A weight high enough to swamp decision margins would have pulled those
+numbers toward zero and left a gate that could no longer fail. It did not.
+
+The fixed arm's digest is `bbf5e18dc3bf…` where the same server without biasing produced
+`f68cbccfa089…`. That is the predicted cost of the fused decode path, and it is the whole
+reason this is a separate arm rather than a feature folded into the existing rows.
+
+One difference between the two ragged runs is **not** claimed here: the biased one has 2
+streams differing between 32a and 32b where the unbiased one had none. On a server that
+is divergent by construction, two streams of 256 is not distinguishable from the
+batch-dependence already being measured, and one observation is not an interval. It wants
+a second ragged run before anyone reads anything into it.
+
+The weight was calibrated at both ends on the same hardware. At 2.0 the positive control
+recovered `risdongram` → `risdon graeme`, `archie` → `archy` and `i'm` → `i am`, and an
+unrelated list inserted nothing. At the ceiling of 10 the domain list moved 12 transcripts
+of 12 and inserted `certiorari`, `metformin` and `tortious interference` into audio that
+merely sounds like them. That is what makes 2.0 a default rather than a guess, and it is
+also the reason the ceiling exists.
