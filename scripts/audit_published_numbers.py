@@ -135,6 +135,27 @@ def main() -> int:
         {"32a": 117, "32b": 117, "max": 89},
     )
 
+    # --- DR-0017: the bucket is the capacity knob, and 128 is its optimum ----------
+    b256 = a.load("ladder-b300-fixed-bucket256-2026-09-15.json")
+    a.claim("DR-0017 bucket-256 S", b256["s"], 19)
+    a.claim("DR-0017 bucket-256 criterion", b256["ending_criterion"], "latency")
+
+    def best_per_seed(document):
+        out = {}
+        for rung in document["rungs"]:
+            if rung.get("passed"):
+                seed = rung["seed"] % 100
+                out[seed] = max(out.get(seed, 0), rung["n"])
+        return out
+
+    a.claim("DR-0017 bucket-256 per seed", best_per_seed(b256), {14: 46, 15: 46, 16: 19})
+    a.claim("DR-0017 bucket-128 per seed", best_per_seed(fixed), {14: 124, 15: 126, 16: 124})
+    # Capacity is bounded above by the bucket, so the optimum is where they meet. At 128
+    # the server reaches 97% of its bucket; at 256, 18%. That is the whole argument.
+    a.claim("DR-0017 bucket 128 is at its fixed point", round(124 / 128, 2), 0.97, 0.005)
+    ragged_repeat = a.load("ladder-b300-ragged-repeat-2026-09-15.json")
+    a.claim("DR-0017 the ragged arm did not reproduce", ragged_repeat["s"], 0)
+
     # --- DR-0016 and the README: the A6000 is NOT withdrawn ------------------------
     a6000 = a.load("ladder-a6000-bf16-eager-2026-09-13-all-criteria.json")
     a.claim(
