@@ -1,0 +1,2592 @@
+{
+  "arm": "b300-bf16-eager-ragged-canonical-dr0016",
+  "s": 77,
+  "ending_criterion": "integrity:refused",
+  "aborted": false,
+  "abort_reason": null,
+  "config": {
+    "canonical_window": false,
+    "warm_up_s": 60.0,
+    "window_s": 180.0,
+    "warm_up_reading_s": 30.0,
+    "warm_up_convergence": 0.1,
+    "warm_up_cap_s": 120.0,
+    "ramp_s": 60.0,
+    "frame_ms": 20,
+    "processes": 4,
+    "server": {
+      "ready": true,
+      "model": "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi",
+      "pipeline": "cache_aware_rnnt",
+      "chunk_ms": 160,
+      "precision": "bfloat16",
+      "execution": "eager",
+      "biasing": false,
+      "tick_id": 32
+    },
+    "wer_batch1": {
+      "checkpoint": "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi",
+      "chunk_ms": 160,
+      "corpus_id": "sha256:6a142a960379d48ed31d5ec8c3bc07dbdfcd34ef2b6db041a888b07bdc0003be",
+      "dtype": "bfloat16",
+      "wer": 0.07077814569536424
+    },
+    "host_record": true,
+    "server_pid": 2490874,
+    "gpu_index": 0,
+    "gpu_sample_interval_s": 1.0
+  },
+  "rungs": [
+    {
+      "n": 20,
+      "seed": 20260914,
+      "p95_ms": 188.0965179298073,
+      "wer_vs_batch1": -0.02160133441204789,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50339549500495,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 316.3863257688936,
+      "host": {
+        "window_open_s": 1398302.84310171,
+        "window_close_s": 1398482.853197182,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.301080024233935,
+          "psi_cpu_full_avg_window": 0.30106835760938394,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 6.27,
+          "loadavg_end": 6.51,
+          "server_cpu_pct_of_cpuset": 0.15151855025118202,
+          "server_hottest_thread_pct": 22.10547575638213,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.0924692842481075,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5274808736098615,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1638201889581978,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.301080024233935,
+          "full_window_pct": 0.30106835760938394,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.32,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        187.00784002430737,
+        188.80380992777646
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 23,
+      "seed": 20260914,
+      "p95_ms": 188.63423680886626,
+      "wer_vs_batch1": -0.020041955129857347,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.5048276220914,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.39280522987247,
+      "host": {
+        "window_open_s": 1398619.4609849,
+        "window_close_s": 1398799.470858593,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.2864976270941462,
+          "psi_cpu_full_avg_window": 0.2864620714883443,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 6.21,
+          "loadavg_end": 6.75,
+          "server_cpu_pct_of_cpuset": 0.1682728072437446,
+          "server_hottest_thread_pct": 23.633366731469142,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.10440552948796174,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.48524124128743035,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1535228069406003,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.2864976270941462,
+          "full_window_pct": 0.2864620714883443,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.26,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        188.57155903242528,
+        187.2771850321442
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 27,
+      "seed": 20260914,
+      "p95_ms": 193.37645103223622,
+      "wer_vs_batch1": -0.017071245683322335,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50398665200919,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.0491926809773,
+      "host": {
+        "window_open_s": 1398935.159098404,
+        "window_close_s": 1399115.169271811,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.2788375296042734,
+          "psi_cpu_full_avg_window": 0.2788119741223797,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 6.33,
+          "loadavg_end": 6.71,
+          "server_cpu_pct_of_cpuset": 0.18535102823903485,
+          "server_hottest_thread_pct": 28.27769626935862,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.11417067785570334,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.48057528144309314,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1510549399536103,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.2788375296042734,
+          "full_window_pct": 0.2788119741223797,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.28,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        190.880523994565,
+        190.63088088296354
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 32,
+      "seed": 20260914,
+      "p95_ms": 192.95741082169116,
+      "wer_vs_batch1": -0.01420452178756837,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50444226502441,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.0153541630134,
+      "host": {
+        "window_open_s": 1399250.540447554,
+        "window_close_s": 1399430.549822704,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.3207948382617982,
+          "psi_cpu_full_avg_window": 0.32075483835123764,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 6.19,
+          "loadavg_end": 7.18,
+          "server_cpu_pct_of_cpuset": 0.19322873460932494,
+          "server_hottest_thread_pct": 29.261045683732306,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.12840683093928296,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.48707113313648426,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1586585480254143,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.3207948382617982,
+          "full_window_pct": 0.32075483835123764,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.25,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        194.45126596838236,
+        190.68800518289208
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 37,
+      "seed": 20260914,
+      "p95_ms": 190.75851514935493,
+      "wer_vs_batch1": -0.009720282720568359,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.503665959928185,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 314.9893639360089,
+      "host": {
+        "window_open_s": 1399566.006597914,
+        "window_close_s": 1399746.015750858,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.31747320654411576,
+          "psi_cpu_full_avg_window": 0.31744987330176405,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 6.64,
+          "loadavg_end": 6.6,
+          "server_cpu_pct_of_cpuset": 0.1753031358975968,
+          "server_hottest_thread_pct": 30.744324565321733,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.13858452907180652,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.4906386424437584,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1632270091213286,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.31747320654411576,
+          "full_window_pct": 0.31744987330176405,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.24,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        188.2955958135426,
+        188.4766509756446
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 43,
+      "seed": 20260914,
+      "p95_ms": 195.30189502984285,
+      "wer_vs_batch1": -0.004764922469823352,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50457635312341,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.4340495991055,
+      "host": {
+        "window_open_s": 1399881.320364075,
+        "window_close_s": 1400061.329848558,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.3474242684825228,
+          "psi_cpu_full_avg_window": 0.34739871306250514,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 6.03,
+          "loadavg_end": 6.91,
+          "server_cpu_pct_of_cpuset": 0.20101889913702728,
+          "server_hottest_thread_pct": 34.80537095886104,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.15403564137694267,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.47877134963686724,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1566447250079364,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.3474242684825228,
+          "full_window_pct": 0.34739871306250514,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.21,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        195.18421590328217,
+        190.46655693091452
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 50,
+      "seed": 20260914,
+      "p95_ms": 194.15102689526975,
+      "wer_vs_batch1": 0.001008980598447673,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50546391797252,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.39081478491426,
+      "host": {
+        "window_open_s": 1400197.255562144,
+        "window_close_s": 1400377.265151276,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.39766599066837927,
+          "psi_cpu_full_avg_window": 0.3976348796536176,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 6.72,
+          "loadavg_end": 6.97,
+          "server_cpu_pct_of_cpuset": 0.20358009868817775,
+          "server_hottest_thread_pct": 35.472112366671766,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.178319760251653,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.4655880025391591,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1636091589462012,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.39766599066837927,
+          "full_window_pct": 0.3976348796536176,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.19,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        201.57258887775242,
+        197.13887199759483
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 58,
+      "seed": 20260914,
+      "p95_ms": 197.22024002112448,
+      "wer_vs_batch1": 0.006916283214908239,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50581374997273,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.016092013102,
+      "host": {
+        "window_open_s": 1400513.12878991,
+        "window_close_s": 1400693.13835136,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.4328982872044538,
+          "psi_cpu_full_avg_window": 0.4328910650200752,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 6.65,
+          "loadavg_end": 8.53,
+          "server_cpu_pct_of_cpuset": 0.22272018713136804,
+          "server_hottest_thread_pct": 38.28313273289466,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.1899512616155963,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.47577639586005593,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1707797630224377,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.4328982872044538,
+          "full_window_pct": 0.4328910650200752,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.2,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        195.11694298125803,
+        190.81359007395804
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 67,
+      "seed": 20260914,
+      "p95_ms": 199.65629000216722,
+      "wer_vs_batch1": 0.01246985242446319,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.505861365934834,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 314.9706029619556,
+      "host": {
+        "window_open_s": 1400828.674485387,
+        "window_close_s": 1401008.683131797,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.5129997372374537,
+          "psi_cpu_full_avg_window": 0.5129930705886412,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 11.65,
+          "loadavg_end": 7.5,
+          "server_cpu_pct_of_cpuset": 0.2411234861873771,
+          "server_hottest_thread_pct": 40.61655789074556,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.2118266896476454,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.4703909624598771,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1622323668561876,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.5129997372374537,
+          "full_window_pct": 0.5129930705886412,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.13,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        192.26253195665777,
+        200.23853983730078
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 78,
+      "seed": 20260914,
+      "p95_ms": Infinity,
+      "wer_vs_batch1": null,
+      "passed": false,
+      "first_failing_criterion": "unstable",
+      "criteria_evaluated": [],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 120.00357440882362,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": false,
+      "window_s": 180.0,
+      "wall_clock_s": 197.33650180418044,
+      "host": null,
+      "warm_up_readings": [
+        222.83979505300522,
+        194.40203998237848,
+        220.30220599845052
+      ],
+      "warm_up_converged": false,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 78,
+      "seed": 20260914,
+      "p95_ms": Infinity,
+      "wer_vs_batch1": null,
+      "passed": false,
+      "first_failing_criterion": "unstable",
+      "criteria_evaluated": [],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 120.00520773907192,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": false,
+      "window_s": 180.0,
+      "wall_clock_s": 197.3253388889134,
+      "host": null,
+      "warm_up_readings": [
+        211.97985811159015,
+        255.0673729274422,
+        212.86041080020368
+      ],
+      "warm_up_converged": false,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 72,
+      "seed": 20260914,
+      "p95_ms": Infinity,
+      "wer_vs_batch1": null,
+      "passed": false,
+      "first_failing_criterion": "unstable",
+      "criteria_evaluated": [],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 120.00445606885478,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": false,
+      "window_s": 180.0,
+      "wall_clock_s": 197.9443872331176,
+      "host": null,
+      "warm_up_readings": [
+        231.8087851163,
+        203.03730806335807,
+        237.9084511194378
+      ],
+      "warm_up_converged": false,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 72,
+      "seed": 20260914,
+      "p95_ms": 199.5395941194147,
+      "wer_vs_batch1": 0.018340424561684082,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 90.50561721087433,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 341.30532120517455,
+      "host": {
+        "window_open_s": 1401767.739171645,
+        "window_close_s": 1401947.748407592,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.3589565519109114,
+          "psi_cpu_full_avg_window": 0.35893821861181346,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 8.03,
+          "loadavg_end": 8.56,
+          "server_cpu_pct_of_cpuset": 0.22999088996211825,
+          "server_hottest_thread_pct": 38.49437256049863,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.1736324882607009,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5222212470323092,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.159227865980938,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.3589565519109114,
+          "full_window_pct": 0.35893821861181346,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.17,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        194.28128912113607,
+        221.16419882513583,
+        201.2457640375942
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 75,
+      "seed": 20260914,
+      "p95_ms": 201.51734678074718,
+      "wer_vs_batch1": 0.019115152796660373,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 90.5068487660028,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 338.9835985589307,
+      "host": {
+        "window_open_s": 1402109.699075785,
+        "window_close_s": 1402289.709278802,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.5954679490367032,
+          "psi_cpu_full_avg_window": 0.5954535046554855,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.21,
+          "loadavg_end": 6.8,
+          "server_cpu_pct_of_cpuset": 0.2609146565194634,
+          "server_hottest_thread_pct": 42.427592061117885,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.2274512613308239,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.4873289779447998,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1569959460757673,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.5954679490367032,
+          "full_window_pct": 0.5954535046554855,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.16,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        303.40345087461174,
+        202.33349804766476,
+        192.25984392687678
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 76,
+      "seed": 20260914,
+      "p95_ms": 209.09981289878488,
+      "wer_vs_batch1": 0.016792852806808353,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50687313918024,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.3056281658355,
+      "host": {
+        "window_open_s": 1402419.343552886,
+        "window_close_s": 1402599.353596092,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.5502959363796098,
+          "psi_cpu_full_avg_window": 0.5502909363811975,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 6.82,
+          "loadavg_end": 6.93,
+          "server_cpu_pct_of_cpuset": 0.26176206966235505,
+          "server_hottest_thread_pct": 43.44998620363914,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.23700079280240252,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5015548407449074,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1607487520668656,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.5502959363796098,
+          "full_window_pct": 0.5502909363811975,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.22,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        195.19718014635146,
+        210.45245486311615
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 77,
+      "seed": 20260914,
+      "p95_ms": Infinity,
+      "wer_vs_batch1": null,
+      "passed": false,
+      "first_failing_criterion": "unstable",
+      "criteria_evaluated": [],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 120.00545522291213,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": false,
+      "window_s": 180.0,
+      "wall_clock_s": 197.76101185497828,
+      "host": null,
+      "warm_up_readings": [
+        277.80641592107713,
+        209.96817597188056,
+        236.74953100271523
+      ],
+      "warm_up_converged": false,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 77,
+      "seed": 20260914,
+      "p95_ms": 202.549341134727,
+      "wer_vs_batch1": 0.01717445469963247,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.506155209150165,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.23271610517986,
+      "host": {
+        "window_open_s": 1402933.383175789,
+        "window_close_s": 1403113.394206105,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.5381717031623621,
+          "psi_cpu_full_avg_window": 0.5381700365041849,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.03,
+          "loadavg_end": 7.35,
+          "server_cpu_pct_of_cpuset": 0.25618359091246246,
+          "server_hottest_thread_pct": 43.222002062561046,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.22599711272870684,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5104762886787786,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1638000479433686,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.5381717031623621,
+          "full_window_pct": 0.5381700365041849,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.22,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        195.97067590802908,
+        213.57340295799077
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 77,
+      "seed": 20260915,
+      "p95_ms": 230.8108808938414,
+      "wer_vs_batch1": 0.01712782217894694,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50712554901838,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.63660346902907,
+      "host": {
+        "window_open_s": 1403249.367798049,
+        "window_close_s": 1403429.376687555,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.621506419502356,
+          "psi_cpu_full_avg_window": 0.6213080860706097,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.41,
+          "loadavg_end": 7.01,
+          "server_cpu_pct_of_cpuset": 0.3245444318721549,
+          "server_hottest_thread_pct": 48.51669074062985,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.24177529357991825,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.49602357946004155,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1934931478463113,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.621506419502356,
+          "full_window_pct": 0.6213080860706097,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.17,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        267.8916968870908,
+        242.99493501894176
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 78,
+      "seed": 20260915,
+      "p95_ms": 234.1817009728402,
+      "wer_vs_batch1": 0.017513684166901078,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50745479087345,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.1610897539649,
+      "host": {
+        "window_open_s": 1403565.609075937,
+        "window_close_s": 1403745.618441874,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.6370407852800825,
+          "psi_cpu_full_avg_window": 0.6368830073078118,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.28,
+          "loadavg_end": 8.11,
+          "server_cpu_pct_of_cpuset": 0.3187503929235626,
+          "server_hottest_thread_pct": 49.18894952409975,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.24503068399373265,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5299384310328039,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.164519228041172,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.6370407852800825,
+          "full_window_pct": 0.6368830073078118,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.23,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        233.33484795875847,
+        217.99801010638475
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 90,
+      "seed": 20260915,
+      "p95_ms": 208.7270119227469,
+      "wer_vs_batch1": 0.019182199240747044,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.506456278963014,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.331035801908,
+      "host": {
+        "window_open_s": 1403881.37768571,
+        "window_close_s": 1404061.388900388,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.6345731499652194,
+          "psi_cpu_full_avg_window": 0.6345475946631529,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.43,
+          "loadavg_end": 6.93,
+          "server_cpu_pct_of_cpuset": 0.28929834565994617,
+          "server_hottest_thread_pct": 47.44397383659146,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.25388203029598,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5171804255221712,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1801591000985354,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.6345731499652194,
+          "full_window_pct": 0.6345475946631529,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.19,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        232.99587005749345,
+        244.67563000507653
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 104,
+      "seed": 20260915,
+      "p95_ms": Infinity,
+      "wer_vs_batch1": null,
+      "passed": false,
+      "first_failing_criterion": "unstable",
+      "criteria_evaluated": [],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 120.003934080014,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": false,
+      "window_s": 180.0,
+      "wall_clock_s": 195.87964589195326,
+      "host": null,
+      "warm_up_readings": [
+        278.3867970574647,
+        226.67896701022983,
+        259.0564889833331
+      ],
+      "warm_up_converged": false,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 104,
+      "seed": 20260915,
+      "p95_ms": 225.210330914706,
+      "wer_vs_batch1": 0.01862778191435774,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50872540497221,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 316.4674829968717,
+      "host": {
+        "window_open_s": 1404393.714909379,
+        "window_close_s": 1404573.725059399,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.6990145487162686,
+          "psi_cpu_full_avg_window": 0.6989917709169899,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.84,
+          "loadavg_end": 7.37,
+          "server_cpu_pct_of_cpuset": 0.30852893706595563,
+          "server_hottest_thread_pct": 49.73893583943057,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.28164089085193594,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.49031546282808797,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1550723330583423,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.6990145487162686,
+          "full_window_pct": 0.6989917709169899,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.17,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        224.8877000529319,
+        218.40983000583947
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 120,
+      "seed": 20260915,
+      "p95_ms": 250.72412099689245,
+      "wer_vs_batch1": 0.015435022729517536,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50900745484978,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 316.915259832982,
+      "host": {
+        "window_open_s": 1404711.026942028,
+        "window_close_s": 1404891.036110267,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.8010085266107337,
+          "psi_cpu_full_avg_window": 0.800977415556849,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.21,
+          "loadavg_end": 7.53,
+          "server_cpu_pct_of_cpuset": 0.34168773954907766,
+          "server_hottest_thread_pct": 54.227678030426674,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.29418348665146377,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.6358366082086627,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1587492951657623,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.8010085266107337,
+          "full_window_pct": 0.800977415556849,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.42,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        252.6557499077171,
+        280.49935796298087
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 138,
+      "seed": 20260915,
+      "p95_ms": Infinity,
+      "wer_vs_batch1": null,
+      "passed": false,
+      "first_failing_criterion": "unstable",
+      "criteria_evaluated": [],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 120.00493457703851,
+      "sessions_refused": 10,
+      "sessions_dropped": 0,
+      "sessions_without_final": 10,
+      "canonical_window": false,
+      "window_s": 180.0,
+      "wall_clock_s": 196.79709848901257,
+      "host": null,
+      "warm_up_readings": [
+        273.82609504275024,
+        237.77599702589214,
+        280.9919791761786
+      ],
+      "warm_up_converged": false,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 138,
+      "seed": 20260915,
+      "p95_ms": 326.3478309381753,
+      "wer_vs_batch1": 0.013291658261389602,
+      "passed": false,
+      "first_failing_criterion": "integrity:refused",
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.509156415006146,
+      "sessions_refused": 10,
+      "sessions_dropped": 0,
+      "sessions_without_final": 10,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 320.90174128417857,
+      "host": {
+        "window_open_s": 1405226.199915181,
+        "window_close_s": 1405406.209310663,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.8747956121073932,
+          "psi_cpu_full_avg_window": 0.8747522788538175,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.96,
+          "loadavg_end": 7.36,
+          "server_cpu_pct_of_cpuset": 0.36759914980017033,
+          "server_hottest_thread_pct": 58.055448700951395,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.32191781026835864,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5736783885542825,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 158,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1792942120227963,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.8747956121073932,
+          "full_window_pct": 0.8747522788538175,
+          "avg60_samples": 158,
+          "avg60_some_max": 0.19,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        232.2015438694507,
+        255.51898684352636
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 129,
+      "seed": 20260915,
+      "p95_ms": 305.8643077965826,
+      "wer_vs_batch1": 0.017312866618196115,
+      "passed": false,
+      "first_failing_criterion": "integrity:refused",
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.507872425951064,
+      "sessions_refused": 29,
+      "sessions_dropped": 0,
+      "sessions_without_final": 29,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 319.6094084449578,
+      "host": {
+        "window_open_s": 1405548.107618203,
+        "window_close_s": 1405728.117511606,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.7636046230721688,
+          "psi_cpu_full_avg_window": 0.7634685120282443,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.58,
+          "loadavg_end": 11.29,
+          "server_cpu_pct_of_cpuset": 0.3721135315964037,
+          "server_hottest_thread_pct": 55.46108373460581,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.281705590112143,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5669580534734909,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1701919210609049,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.7636046230721688,
+          "full_window_pct": 0.7634685120282443,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.16,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        344.0678669139743,
+        315.3653230983764
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 124,
+      "seed": 20260915,
+      "p95_ms": 271.37630386278033,
+      "wer_vs_batch1": 0.014264998188792802,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.508726505795494,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 318.44185071997344,
+      "host": {
+        "window_open_s": 1405868.644711513,
+        "window_close_s": 1406048.656243602,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.8306592324897913,
+          "psi_cpu_full_avg_window": 0.8305558999430365,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 9.59,
+          "loadavg_end": 7.61,
+          "server_cpu_pct_of_cpuset": 0.35917695340711503,
+          "server_hottest_thread_pct": 56.8884558479577,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.3155140913289859,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5252660016197473,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1730778249911964,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.8306592324897913,
+          "full_window_pct": 0.8305558999430365,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.12,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        263.4403919801116,
+        240.02245510928333
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 126,
+      "seed": 20260915,
+      "p95_ms": 267.7051369100809,
+      "wer_vs_batch1": 0.013595710035137404,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50935595785268,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 320.6100822179578,
+      "host": {
+        "window_open_s": 1406188.022053331,
+        "window_close_s": 1406368.033224575,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.8385423948479052,
+          "psi_cpu_full_avg_window": 0.8384429505806418,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.17,
+          "loadavg_end": 8.23,
+          "server_cpu_pct_of_cpuset": 0.36106706501583824,
+          "server_hottest_thread_pct": 57.233231360202566,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.309851878488769,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5706595388046507,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1529101489577442,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.8385423948479052,
+          "full_window_pct": 0.8384429505806418,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.23,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        238.4906189981848,
+        258.770143147558
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 127,
+      "seed": 20260915,
+      "p95_ms": Infinity,
+      "wer_vs_batch1": null,
+      "passed": false,
+      "first_failing_criterion": "unstable",
+      "criteria_evaluated": [],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 120.0053942729719,
+      "sessions_refused": 60,
+      "sessions_dropped": 0,
+      "sessions_without_final": 60,
+      "canonical_window": false,
+      "window_s": 180.0,
+      "wall_clock_s": 193.24655371997505,
+      "host": null,
+      "warm_up_readings": [
+        504.1565459687263,
+        216.57767496071756,
+        194.90461610257626
+      ],
+      "warm_up_converged": false,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 127,
+      "seed": 20260915,
+      "p95_ms": Infinity,
+      "wer_vs_batch1": null,
+      "passed": false,
+      "first_failing_criterion": "unstable",
+      "criteria_evaluated": [],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 120.00414904206991,
+      "sessions_refused": 30,
+      "sessions_dropped": 0,
+      "sessions_without_final": 30,
+      "canonical_window": false,
+      "window_s": 180.0,
+      "wall_clock_s": 192.11586540704593,
+      "host": null,
+      "warm_up_readings": [
+        404.12365598604083,
+        307.50292097218335,
+        266.4311029948294
+      ],
+      "warm_up_converged": false,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 77,
+      "seed": 20260916,
+      "p95_ms": 202.44868006557226,
+      "wer_vs_batch1": 0.017204529926133208,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.50533118005842,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.4635276698973,
+      "host": {
+        "window_open_s": 1406895.677068485,
+        "window_close_s": 1407075.687949586,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.609488070871086,
+          "psi_cpu_full_avg_window": 0.6093525164859387,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.38,
+          "loadavg_end": 7.61,
+          "server_cpu_pct_of_cpuset": 0.26406022004243335,
+          "server_hottest_thread_pct": 43.46073586097475,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.22955530963254933,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.49925791151289656,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.189237569924444,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.609488070871086,
+          "full_window_pct": 0.6093525164859387,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.18,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        195.16496686264873,
+        211.98128606192768
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 78,
+      "seed": 20260916,
+      "p95_ms": Infinity,
+      "wer_vs_batch1": null,
+      "passed": false,
+      "first_failing_criterion": "unstable",
+      "criteria_evaluated": [],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 120.00398072600365,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": false,
+      "window_s": 180.0,
+      "wall_clock_s": 197.2642625560984,
+      "host": null,
+      "warm_up_readings": [
+        236.51455901563168,
+        196.9883560668677,
+        234.4170759897679
+      ],
+      "warm_up_converged": false,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 78,
+      "seed": 20260916,
+      "p95_ms": 203.22721800766885,
+      "wer_vs_batch1": 0.01984501137166937,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 90.50625341618434,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 343.8833659279626,
+      "host": {
+        "window_open_s": 1407439.595248421,
+        "window_close_s": 1407619.605794543,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.5692800655038301,
+          "psi_cpu_full_avg_window": 0.5692595101063881,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.16,
+          "loadavg_end": 7.04,
+          "server_cpu_pct_of_cpuset": 0.26399536516320005,
+          "server_hottest_thread_pct": 44.205215526059774,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.2379538988092469,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.4921751030448402,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1533321309834719,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.5692800655038301,
+          "full_window_pct": 0.5692595101063881,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.16,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        189.84908005222678,
+        229.2010630480945,
+        221.13834507763386
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 90,
+      "seed": 20260916,
+      "p95_ms": 214.5235389471054,
+      "wer_vs_batch1": 0.019728724707737413,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 90.50777060701512,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 346.80827562790364,
+      "host": {
+        "window_open_s": 1407784.109623302,
+        "window_close_s": 1407964.120159631,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.6453279237178446,
+          "psi_cpu_full_avg_window": 0.645260701885514,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.19,
+          "loadavg_end": 7.4,
+          "server_cpu_pct_of_cpuset": 0.3009748168242053,
+          "server_hottest_thread_pct": 49.57193470140099,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.24997684872723486,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5135947988906464,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.169713586801663,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.6453279237178446,
+          "full_window_pct": 0.645260701885514,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.14,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        278.30174402333796,
+        213.44276005402207,
+        236.36608105152845
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 104,
+      "seed": 20260916,
+      "p95_ms": 217.13517606258392,
+      "wer_vs_batch1": 0.024028423691104542,
+      "passed": false,
+      "first_failing_criterion": "integrity:refused",
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 90.5084785039071,
+      "sessions_refused": 27,
+      "sessions_dropped": 0,
+      "sessions_without_final": 27,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 348.450165922055,
+      "host": {
+        "window_open_s": 1408131.779821925,
+        "window_close_s": 1408311.78947707,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.607928479459665,
+          "psi_cpu_full_avg_window": 0.6077912577060596,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.67,
+          "loadavg_end": 6.81,
+          "server_cpu_pct_of_cpuset": 0.2873905116074407,
+          "server_hottest_thread_pct": 45.28873422636164,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.23639242187871717,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.4941577568793393,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.166168097173795,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.607928479459665,
+          "full_window_pct": 0.6077912577060596,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.18,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        327.754587167874,
+        270.7887028809637,
+        277.69343997351825
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 97,
+      "seed": 20260916,
+      "p95_ms": 214.89704004488885,
+      "wer_vs_batch1": 0.023102173854452374,
+      "passed": false,
+      "first_failing_criterion": "integrity:refused",
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 90.50774774397723,
+      "sessions_refused": 23,
+      "sessions_dropped": 0,
+      "sessions_without_final": 23,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 348.8068074740004,
+      "host": {
+        "window_open_s": 1408481.052435284,
+        "window_close_s": 1408661.061124776,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.7282985120050708,
+          "psi_cpu_full_avg_window": 0.7281840672706501,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 6.72,
+          "loadavg_end": 7.53,
+          "server_cpu_pct_of_cpuset": 0.3144322203089514,
+          "server_hottest_thread_pct": 47.872343519564645,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.2430344699592758,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5379130296127049,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1766086448915303,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.7282985120050708,
+          "full_window_pct": 0.7281840672706501,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.21,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        256.28751819022,
+        304.9259081017226,
+        288.250942947343
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 93,
+      "seed": 20260916,
+      "p95_ms": 221.7644820921123,
+      "wer_vs_batch1": 0.019221121113052797,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.507958239875734,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.3759413259104,
+      "host": {
+        "window_open_s": 1408800.655389321,
+        "window_close_s": 1408980.666152885,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.7601995288540999,
+          "psi_cpu_full_avg_window": 0.7601661957850242,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.28,
+          "loadavg_end": 8.68,
+          "server_cpu_pct_of_cpuset": 0.2871288000923486,
+          "server_hottest_thread_pct": 45.049642855937336,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.2751063259595422,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5462328918031162,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 159,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1811018439475447,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.7601995288540999,
+          "full_window_pct": 0.7601661957850242,
+          "avg60_samples": 159,
+          "avg60_some_max": 0.29,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        225.26410198770463,
+        233.1062899902463
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 95,
+      "seed": 20260916,
+      "p95_ms": 270.62795707024634,
+      "wer_vs_batch1": 0.01944611426843333,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 90.50889202277176,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 347.35465990100056,
+      "host": {
+        "window_open_s": 1409146.800106096,
+        "window_close_s": 1409326.809995283,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.8649441870649239,
+          "psi_cpu_full_avg_window": 0.8647302985144436,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 9.11,
+          "loadavg_end": 8.07,
+          "server_cpu_pct_of_cpuset": 0.36260793323625956,
+          "server_hottest_thread_pct": 52.02213991423961,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.27593272314914363,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5900679552997846,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1680327239446342,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.8649441870649239,
+          "full_window_pct": 0.8647302985144436,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.27,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        226.64210898801684,
+        262.26065191440284,
+        265.24566300213337
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    },
+    {
+      "n": 96,
+      "seed": 20260916,
+      "p95_ms": 218.35293900221586,
+      "wer_vs_batch1": 0.019162445089711405,
+      "passed": true,
+      "first_failing_criterion": null,
+      "criteria_evaluated": [
+        "latency",
+        "wer",
+        "integrity:refused",
+        "integrity:dropped",
+        "integrity:no_final",
+        "thermal"
+      ],
+      "valid": true,
+      "invalid_reason": null,
+      "warm_up_s": 60.508443805156276,
+      "sessions_refused": 0,
+      "sessions_dropped": 0,
+      "sessions_without_final": 0,
+      "canonical_window": true,
+      "window_s": 180.0,
+      "wall_clock_s": 315.5875144889578,
+      "host": {
+        "window_open_s": 1409465.070946314,
+        "window_close_s": 1409645.080903856,
+        "counters": {
+          "steal_pct_window": 0.0,
+          "psi_cpu_some_avg_window": 0.7703968060436679,
+          "psi_cpu_full_avg_window": 0.7703906949446719,
+          "cgroup_nr_throttled_delta": 0,
+          "cgroup_throttled_usec_delta": 0,
+          "loadavg_start": 7.63,
+          "loadavg_end": 7.68,
+          "server_cpu_pct_of_cpuset": 0.290884839995779,
+          "server_hottest_thread_pct": 45.64990950035818,
+          "server_threads": 278,
+          "client_cpu_pct_of_cpuset": 0.2766487571072957,
+          "client_processes": 5,
+          "server_cpu_s_per_stream_hour": null,
+          "psi_scope": "cgroup:/",
+          "psi_system_some_pct_window": 0.5318722789117307,
+          "psi_system_full_pct_window": 0.0
+        },
+        "gpu": {
+          "samples": 160,
+          "interval_s": 1.0,
+          "covered": true,
+          "max_gap_s": 1.1674870550632477,
+          "throttle_events": 0,
+          "throttle_reasons": {
+            "clocks_event_reason_sw_power_cap": 0,
+            "clocks_event_reason_hw_slowdown": 0,
+            "clocks_event_reason_hw_thermal_slowdown": 0,
+            "clocks_event_reason_hw_power_brake_slowdown": 0,
+            "clocks_event_reason_sw_thermal_slowdown": 0
+          },
+          "foreign_pids": [],
+          "persistence_mode": true
+        },
+        "psi": {
+          "estimator": "total-counter delta over the window; avg60 samples as context",
+          "some_window_pct": 0.7703968060436679,
+          "full_window_pct": 0.7703906949446719,
+          "avg60_samples": 160,
+          "avg60_some_max": 0.2,
+          "avg60_full_max": 0.0
+        }
+      },
+      "warm_up_readings": [
+        214.61349888704717,
+        218.0943489074707
+      ],
+      "warm_up_converged": true,
+      "warm_up_convergence": 0.1
+    }
+  ]
+}

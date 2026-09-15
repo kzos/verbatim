@@ -216,14 +216,24 @@ async def test_a_server_that_honours_phrase_lists_is_invariant_and_controlled() 
 
 
 @pytest.mark.asyncio
-async def test_the_negative_control_reports_no_insertion_from_an_unrelated_list() -> None:
+async def test_the_negative_control_reports_its_exposure_not_just_its_result() -> None:
+    """Its power is entirely exposure, and a control that says "nothing inserted" without
+    saying how hard it looked reads as more reassurance than it earned. At weight 2.0 one
+    clip and six terms reported zero while a corpus-wide sweep at the same weight found
+    105 false accepts."""
     async with _server(honour_phrases=True) as endpoint:
         report = await run_gate(
-            endpoint, _clips(), LEVELS, chunk=BenchChunk(CHUNK_MS), book=BOOK, control_clips=1
+            endpoint, _clips(), LEVELS, chunk=BenchChunk(CHUNK_MS), book=BOOK, control_clips=3
         )
-    assert report.controls.negative_stream
-    assert report.controls.inserted == ()
-    assert "gained no word" in report.render()
+    controls = report.controls
+    assert controls.negative_stream
+    assert controls.negative_clips == 3  # every control clip, not only the last
+    assert controls.inserted == ()
+    document = report.to_json_dict()["controls"]
+    assert document["negative_exposure"] == 3 * len(BOOK.unrelated)
+    rendered = report.render()
+    assert "3 clip(s) gained no word" in rendered
+    assert "smoke test" in rendered
 
 
 @pytest.mark.asyncio

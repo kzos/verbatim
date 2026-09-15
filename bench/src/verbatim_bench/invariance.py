@@ -439,6 +439,13 @@ class BiasingControls:
     negative_stream: str = ""
     negative_phrases: tuple[str, ...] = ()
     inserted: tuple[str, ...] = ()
+    #: How many clips the negative control ran. Recorded because its power is entirely
+    #: exposure: clips times unrelated terms. It reported zero insertions at weight 2.0
+    #: from one clip and six terms, while a corpus-wide sweep at the same weight found
+    #: 105 false accepts. It was not wrong, it was small, and read as reassurance it gave
+    #: more than it had. The instrument for false accepts is ``verbatim-bench
+    #: rare-terms``; this stays a smoke test that says how big it is.
+    negative_clips: int = 0
     errors: tuple[str, ...] = ()
 
     @property
@@ -470,8 +477,11 @@ class BiasingControls:
             "positive_changed": self.changed,
             "proved_biasing": self.proved_biasing,
             "negative_stream": self.negative_stream or None,
+            "negative_clips": self.negative_clips,
             "negative_phrases": list(self.negative_phrases),
             "negative_inserted": list(self.inserted),
+            # Its power, as a number, so a small control is never read as a large one.
+            "negative_exposure": self.negative_clips * len(self.negative_phrases),
             "errors": list(self.errors),
         }
 
@@ -665,18 +675,21 @@ class GateReport:
         if controls.negative_stream:
             if controls.inserted:
                 lines.append(
-                    f"*** NEGATIVE CONTROL: stream {controls.negative_stream} gained "
+                    f"*** NEGATIVE CONTROL: {controls.negative_clips} clip(s) gained "
                     f"{len(controls.inserted)} word(s) from an unrelated list: "
-                    + ", ".join(controls.inserted)
+                    + ", ".join(sorted(set(controls.inserted)))
                 )
                 lines.append(
                     "      the weight is inserting list words into audio that only sounds "
                     "like them; this is an accuracy reading and does not change the verdict"
                 )
             else:
+                exposure = controls.negative_clips * len(controls.negative_phrases)
                 lines.append(
-                    f"  negative control: stream {controls.negative_stream} gained no word "
-                    f"from an unrelated list of {len(controls.negative_phrases)}"
+                    f"  negative control: {controls.negative_clips} clip(s) gained no word "
+                    f"from an unrelated list of {len(controls.negative_phrases)} "
+                    f"({exposure} clip-term exposures; a smoke test, not the false-accept "
+                    "measurement -- that is verbatim-bench rare-terms)"
                 )
         for error in controls.errors:
             lines.append(f"  control error: {error}")
@@ -929,43 +942,44 @@ async def run_controls(
         positive.append((clip.stream_id, bare.final_text, boosted.final_text))
 
     negative_stream = ""
-    inserted: tuple[str, ...] = ()
-    if book.unrelated and clips:
-        clip = clips[-1]
+    negative_clips = 0
+    found: list[str] = []
+    negative_clip_pool = list(clips[-control_clips:]) if book.unrelated else []
+    for index, clip in enumerate(negative_clip_pool):
         bare = await _one(
             endpoint,
             clip,
-            session_id="control-negative-bare",
+            session_id=f"control-negative-bare-{index:02d}",
             chunk=chunk,
             lang=lang,
             frame_ms=frame_ms,
-            frame_seed=seed * 11,
+            frame_seed=seed * 11 + index,
         )
         biased = await _one(
             endpoint,
             clip,
-            session_id="control-negative-biased",
+            session_id=f"control-negative-biased-{index:02d}",
             chunk=chunk,
             lang=lang,
             frame_ms=frame_ms,
-            frame_seed=seed * 11,
+            frame_seed=seed * 11 + index,
             phrases=book.unrelated,
             boost=book.boost,
         )
         if bare.error is not None or biased.error is not None:
             errors.append(f"negative control {clip.stream_id}: {bare.error or biased.error}")
-        else:
-            negative_stream = clip.stream_id
-            before = set(bare.final_text.lower().split())
-            after = set(biased.final_text.lower().split())
-            inserted = tuple(
-                phrase for phrase in book.unrelated if phrase.lower() in after - before
-            )
+            continue
+        negative_clips += 1
+        negative_stream = negative_stream or clip.stream_id
+        before = set(bare.final_text.lower().split())
+        after = set(biased.final_text.lower().split())
+        found.extend(phrase for phrase in book.unrelated if phrase.lower() in after - before)
     return BiasingControls(
         positive=tuple(positive),
         negative_stream=negative_stream,
         negative_phrases=book.unrelated,
-        inserted=inserted,
+        inserted=tuple(found),
+        negative_clips=negative_clips,
         errors=tuple(errors),
     )
 

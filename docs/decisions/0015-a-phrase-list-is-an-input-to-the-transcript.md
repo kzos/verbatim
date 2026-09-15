@@ -169,9 +169,57 @@ is divergent by construction, two streams of 256 is not distinguishable from the
 batch-dependence already being measured, and one observation is not an interval. It wants
 a second ragged run before anyone reads anything into it.
 
-The weight was calibrated at both ends on the same hardware. At 2.0 the positive control
-recovered `risdongram` → `risdon graeme`, `archie` → `archy` and `i'm` → `i am`, and an
-unrelated list inserted nothing. At the ceiling of 10 the domain list moved 12 transcripts
-of 12 and inserted `certiorari`, `metformin` and `tortious interference` into audio that
-merely sounds like them. That is what makes 2.0 a default rather than a guess, and it is
-also the reason the ceiling exists.
+## The default weight, and the correction to it
+
+**This section previously said the default of 2.0 was "a default rather than a guess". It
+was a guess, and a better instrument has since falsified it.** The evidence was two
+readings at opposite extremes on a handful of clips: at 2.0 the positive control recovered
+`risdongram` → `risdon graeme`, `archie` → `archy` and `i'm` → `i am`, and a six-word
+unrelated list inserted nothing into one clip; at the ceiling of 10 the domain list moved
+12 transcripts of 12 and inserted `certiorari`, `metformin` and `tortious interference`
+into audio that merely sounds like them. Two points and a gap between them is not a curve.
+
+`verbatim-bench rare-terms` measured the curve: 256 utterances, 256 terms derived from the
+corpus's own references by document frequency, the whole list sent to every session, one
+pass per weight. B300, 2026-09-15.
+
+| weight | recall | hits | missed | false accepts | precision | WER |
+|---|---|---|---|---|---|---|
+| bare | 0.911 | 266 | 26 | 3 | 0.989 | 0.0739 |
+| **1.0** | **0.945** | **276** | **16** | **17** | **0.942** | **0.0737** |
+| 2.0 | 0.942 | 275 | 17 | 105 | 0.724 | 0.0911 |
+| 4.0 | 0.921 | 269 | 23 | 591 | 0.313 | 0.2543 |
+| 10.0 | 0.438 | 128 | 164 | 1867 | 0.064 | 0.8175 |
+
+**The knee is at 1.0 and the shipped default is now 1.0.** It recovers nine terms
+(`baghdad`, `forelock`, `orficer`, `weevilly` among them), loses none, costs fourteen
+false accepts and leaves word error rate where it was. **2.0 buys one occurrence less
+than 1.0 and pays six times the false accepts and 23 percent relative word error rate.**
+By 4.0 the transcript is coming apart, and at 10.0 recall falls *below bare*: the decoder
+emits list words so freely that it loses the real occurrences too.
+
+Two things this also says about the design:
+
+**The ceiling of 10 is not a safety margin.** It is past the point where the feature
+inverts. It stays as a refusal boundary because a client asking for 20 has misunderstood
+the scale, but nothing between 4 and 10 is a usable setting and the documentation should
+not imply otherwise.
+
+**The gate's negative control is a smoke test, not the measurement.** It reported zero
+insertions at 2.0 — from one clip and a six-word list, while the corpus-wide reading at
+the same weight shows 105 false accepts. It was not wrong; it was underpowered by three
+orders of magnitude of exposure, and read as reassurance it should not have given. It now
+runs over every control clip and records its exposure so its power is visible rather than
+assumed. The instrument for false accepts is `rare-terms`.
+
+**What biasing actually buys, stated plainly:** the model already gets 91.1 percent of
+rare terms right unaided. Boosting at the knee closes **ten of the twenty-six missing
+occurrences — 38 percent of the gap — at roughly one false accept per word recovered.**
+That is a real gain and a modest one, and it is under the half-the-gap line the beam-search
+trigger names. Whether the residual sixteen are deletions rather than substitutions is the
+other half of that trigger and has not been checked; it is the next measurement, not a
+claim.
+
+The invariance arms in the table above were run at 2.0. They are unaffected: the gate
+compares digests across batch compositions and is not an accuracy measurement. A re-run at
+1.0 would produce a different digest and the same verdict.

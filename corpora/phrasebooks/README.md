@@ -17,7 +17,11 @@ at. `verbatim-bench invariance --phrases <file>` reads one.
   A stream keeps the same list at every concurrency level — the gate's question is what
   changes when batch composition changes, so the other input is held fixed.
 - **`boost`** is NeMo's boosting alpha, not Riva's `boost` scale; the two are not
-  calibrated against each other and the server caps what it will apply.
+  calibrated against each other and the server caps what it will apply. `domains-v1`
+  ships at **1.0**, which is where `verbatim-bench rare-terms` put the knee on a B300:
+  recall 0.911 bare to 0.945, fourteen false accepts, word error rate unmoved. It shipped
+  at 2.0 for a day on a weaker reading; 2.0 buys one occurrence less than 1.0 and pays
+  six times the false accepts (105) and 23 percent relative word error rate.
 - **`unrelated`** is the negative control: words with no relation to the corpus. Any of
   them that appears in a biased transcript and not in the bare one is recorded, because
   a weight high enough to insert list words into audio that merely sounds like them is
