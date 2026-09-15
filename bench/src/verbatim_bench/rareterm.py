@@ -57,7 +57,9 @@ __all__ = [
     "TermSet",
     "TermSetError",
     "classify_misses",
+    "classify_misses_by_term",
     "derive_terms",
+    "load_dictionary",
     "load_term_set",
     "occurrences",
     "run_rare_terms",
@@ -71,6 +73,15 @@ DEFAULT_MIN_TERM_CHARS: Final = 7
 #: is the rarity rule because it is blind to the transcripts: it can be computed before a
 #: single session runs, so the term set cannot be selected on the outcome.
 DEFAULT_MAX_DOCUMENT_FREQUENCY: Final = 2
+
+#: Word lists tried in order when a caller asks for the out-of-dictionary rule and names
+#: no list. Which one was used is recorded, because it is part of the selection rule and
+#: a term set nobody can reconstruct is not a measurement anyone can repeat.
+DEFAULT_DICTIONARIES: Final = (
+    "/usr/share/dict/british-english",
+    "/usr/share/dict/american-english",
+    "/usr/share/dict/words",
+)
 #: The weights swept by default. ``None`` is the bare arm and must be first: every other
 #: arm is read against it.
 DEFAULT_BOOSTS: Final = (None, 1.0, 2.0, 4.0)
@@ -98,6 +109,11 @@ class TermSet:
 
     name: str
     terms: tuple[str, ...]
+    #: How these terms were chosen, recorded so the set can be rebuilt. A term set nobody
+    #: can reconstruct is not a measurement anyone can repeat, and the rule decides what
+    #: the run is even about: rarity alone selects ordinary vocabulary, while the
+    #: out-of-dictionary rule selects the names the model may never have seen.
+    rule: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -120,7 +136,12 @@ class TermSet:
         return hasher.hexdigest()
 
     def to_json_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "digest": self.digest, "terms": list(self.terms)}
+        return {
+            "name": self.name,
+            "digest": self.digest,
+            "rule": dict(self.rule),
+            "terms": list(self.terms),
+        }
 
 
 def load_term_set(path: Path) -> TermSet:
@@ -137,12 +158,37 @@ def load_term_set(path: Path) -> TermSet:
     return TermSet(name=str(body.get("name") or Path(path).stem), terms=tuple(terms))
 
 
+def load_dictionary(path: str | Path | None = None) -> tuple[frozenset[str], str]:
+    """An English word list and the path it came from.
+
+    Used to tell an ordinary rare word from a name. Possessive forms are folded so
+    ``sarah's`` does not make ``sarah`` look like a dictionary word.
+    """
+    candidates = [Path(path)] if path is not None else [Path(p) for p in DEFAULT_DICTIONARIES]
+    for candidate in candidates:
+        try:
+            text = candidate.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        words = {
+            line.strip().lower().removesuffix("'s") for line in text.splitlines() if line.strip()
+        }
+        if words:
+            return frozenset(words), str(candidate)
+    tried = ", ".join(str(c) for c in candidates)
+    raise TermSetError(
+        f"no usable word list: tried {tried}. The out-of-dictionary rule needs one, and "
+        "guessing which words are names would make the term set unreproducible"
+    )
+
+
 def derive_terms(
     references: Sequence[str],
     *,
     min_chars: int = DEFAULT_MIN_TERM_CHARS,
     max_document_frequency: int = DEFAULT_MAX_DOCUMENT_FREQUENCY,
     limit: int = 256,
+    dictionary: frozenset[str] | None = None,
 ) -> tuple[str, ...]:
     """The corpus's own rare words, in first-appearance order, blind to any transcript.
 
@@ -150,6 +196,23 @@ def derive_terms(
     of the utterances. That rule can be evaluated before a single session runs, which is
     the point -- a term set chosen because the model got those words wrong would make the
     measurement circular, and the improvement would be guaranteed by construction.
+
+    ``dictionary`` narrows it to words that are **not** in an English word list, which is
+    the closest blind proxy available here for "a name the model has never seen". It
+    matters more than it sounds. Rarity alone selects ordinary vocabulary: of 256 terms
+    derived from LibriSpeech test-other on 2026-09-15, 245 were words like ``obliged``,
+    ``frightened`` and ``morning``, which the model already knows. Measured over those,
+    boosting moved recall 0.925 to 0.950. Measured over the 11 that were not in the word
+    list -- ``bassorah``, ``comorin``, ``shahrazad``, ``orficer`` -- it moved 0.583 to
+    0.833, which is a different feature. Aggregating the two hides the second inside the
+    first.
+
+    Fragmentation was tried as the proxy first and abandoned: this checkpoint's tokenizer
+    has a 1024-piece vocabulary, so every word is spelled from fragments (``obliged`` is
+    four pieces, ``baghdad`` five) and there is no out-of-vocabulary at the tokenizer
+    level at all. That is worth knowing on its own -- an unseen name is a language-model
+    problem here, not a vocabulary one, and a boosting tree over subword pieces can spell
+    anything the model never saw.
     """
     if min_chars < 1:
         raise TermSetError(f"min_chars must be >= 1, got {min_chars!r}")
@@ -165,6 +228,8 @@ def derive_terms(
             if len(word) < min_chars or word in order:
                 continue
             if document_frequency[word] > max_document_frequency:
+                continue
+            if dictionary is not None and word in dictionary:
                 continue
             order.append(word)
             if len(order) >= limit:
@@ -233,7 +298,27 @@ def _alignment_ops(reference: Sequence[str], hypothesis: Sequence[str]) -> list[
 
 
 def classify_misses(reference: str, transcript: str, terms: Sequence[str]) -> dict[str, int]:
-    """How the term occurrences this transcript missed were lost: by kind.
+    """How the term occurrences this transcript missed were lost, pooled over the terms."""
+    pooled: dict[str, int] = {
+        MissKind.SUBSTITUTION.value: 0,
+        MissKind.DELETION.value: 0,
+        "unclassified": 0,
+    }
+    for kinds in classify_misses_by_term(reference, transcript, terms).values():
+        for kind, count in kinds.items():
+            pooled[kind] = pooled.get(kind, 0) + count
+    return pooled
+
+
+def classify_misses_by_term(
+    reference: str, transcript: str, terms: Sequence[str]
+) -> dict[str, dict[str, int]]:
+    """How each term's missed occurrences were lost: by kind, per term.
+
+    Per term rather than only pooled, because the question the split answers is asked of
+    a subset. Whether a residual is reachable at any weight matters most for the names the
+    model has never seen, and a pooled count over a term set that is 96 per cent ordinary
+    vocabulary cannot be asked about them.
 
     Only single-word terms are classified. A multi-word term can be part substituted and
     part deleted, and forcing it into one bucket would invent a fact; those are counted
@@ -243,12 +328,12 @@ def classify_misses(reference: str, transcript: str, terms: Sequence[str]) -> di
     reference_words = _words(reference)
     hypothesis_words = _words(transcript)
     ops = _alignment_ops(reference_words, hypothesis_words)
-    out: dict[str, int] = {
-        MissKind.SUBSTITUTION.value: 0,
-        MissKind.DELETION.value: 0,
-        "unclassified": 0,
-    }
+    out: dict[str, dict[str, int]] = {}
     for term in terms:
+        kinds = out.setdefault(
+            term,
+            {MissKind.SUBSTITUTION.value: 0, MissKind.DELETION.value: 0, "unclassified": 0},
+        )
         needle = _words(term)
         expected = occurrences(reference_words, needle)
         produced = occurrences(hypothesis_words, needle)
@@ -256,7 +341,7 @@ def classify_misses(reference: str, transcript: str, terms: Sequence[str]) -> di
         if missed <= 0:
             continue
         if len(needle) != 1:
-            out["unclassified"] += missed
+            kinds["unclassified"] += missed
             continue
         # The positions this term sits at in the reference, in order; the first `missed`
         # of them that are not matches are the ones that did not come back.
@@ -272,7 +357,7 @@ def classify_misses(reference: str, transcript: str, terms: Sequence[str]) -> di
         # reconciliation branch stood here until a mutation showed nothing could reach it
         # -- and an unreachable guard is the shape this project keeps finding.
         for kind in lost[:missed]:
-            out[kind] = out.get(kind, 0) + 1
+            kinds[kind] = kinds.get(kind, 0) + 1
     return out
 
 
@@ -382,6 +467,11 @@ class ArmReading:
     #: a weight's reach; a deletion is not, at any weight, because greedy boosting takes
     #: the blank-versus-emit decision from the unbiased argmax. See ``MissKind``.
     misses_by_kind: dict[str, int] = field(default_factory=dict)
+    #: The same split per term, so the question can be asked of a subset. Whether a
+    #: residual is reachable at any weight matters most for the names the model has never
+    #: seen, and a pooled count over a term set that is mostly ordinary vocabulary cannot
+    #: be asked about them.
+    miss_kinds_by_term: dict[str, dict[str, int]] = field(default_factory=dict)
 
     @property
     def label(self) -> str:
@@ -406,7 +496,10 @@ class ArmReading:
             "first_error": next(iter(self.errors.values()), None),
             "wall_clock_s": self.wall_clock_s,
             "per_term": {
-                term: count.to_json_dict()
+                term: {
+                    **count.to_json_dict(),
+                    "miss_kinds": self.miss_kinds_by_term.get(term, {}),
+                }
                 for term, count in sorted(self.per_term.items())
                 if count.expected or count.false_accepts
             },
@@ -612,6 +705,7 @@ async def run_rare_terms(
         reading = ArmReading(boost=boost, wall_clock_s=clock() - arm_started)
         totals: dict[str, TermCount] = {term: TermCount() for term in term_set.terms}
         by_kind: dict[str, int] = {}
+        by_term: dict[str, dict[str, int]] = {}
         transcripts: dict[str, str] = {}
         for clip, result in zip(clips, results, strict=True):
             if result.error is not None:
@@ -622,11 +716,17 @@ async def run_rare_terms(
                 clip.text, result.final_text, term_set.terms
             ).items():
                 totals[term] = totals[term] + count
-            for kind, n in classify_misses(clip.text, result.final_text, term_set.terms).items():
-                by_kind[kind] = by_kind.get(kind, 0) + n
+            for term, kinds in classify_misses_by_term(
+                clip.text, result.final_text, term_set.terms
+            ).items():
+                bucket = by_term.setdefault(term, {})
+                for kind, n in kinds.items():
+                    bucket[kind] = bucket.get(kind, 0) + n
+                    by_kind[kind] = by_kind.get(kind, 0) + n
             reading.wer = reading.wer + stream_wer_count(clip.text, result.final_text)
         reading.per_term = totals
         reading.misses_by_kind = by_kind
+        reading.miss_kinds_by_term = by_term
         for count in totals.values():
             reading.counts = reading.counts + count
         if boost is None:

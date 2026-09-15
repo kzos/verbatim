@@ -318,6 +318,30 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     rare.add_argument(
+        "--term-rule",
+        choices=("rare", "unseen"),
+        default="rare",
+        help=(
+            "'rare' takes the corpus's rare words by document frequency; 'unseen' keeps "
+            "only those NOT in an English word list, which is the closest blind proxy here "
+            "for a name the model may never have been trained on. It matters: of 256 terms "
+            "derived by rarity alone on 2026-09-15, 245 were ordinary words like 'obliged' "
+            "and 'morning', where boosting moved recall 0.925 to 0.950; over the 11 that "
+            "were not in the word list it moved 0.583 to 0.833. Aggregating hides the second"
+        ),
+    )
+    rare.add_argument(
+        "--dictionary",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help=(
+            "the word list --term-rule unseen subtracts, one word per line; the default "
+            "tries the system lists. Which one was used is recorded, because it is part of "
+            "the selection rule"
+        ),
+    )
+    rare.add_argument(
         "--boosts",
         default=",".join("bare" if b is None else f"{b:g}" for b in rare_terms.DEFAULT_BOOSTS),
         help="comma-separated weights to sweep; 'bare' sends no phrase list at all",
@@ -899,19 +923,35 @@ def _rare_terms(args: argparse.Namespace) -> int:
         if args.terms is not None:
             term_set = rare_terms.load_term_set(args.terms)
         else:
+            dictionary = dictionary_path = None
+            if args.term_rule == "unseen":
+                dictionary, dictionary_path = rare_terms.load_dictionary(args.dictionary)
             derived = rare_terms.derive_terms(
                 [clip.text for clip in clips],
                 min_chars=args.min_term_chars,
                 max_document_frequency=args.max_document_frequency,
+                dictionary=dictionary,
             )
             if not derived:
                 raise rare_terms.TermSetError(
-                    "no term met the rarity rule: loosen --min-term-chars or "
+                    f"no term met the {args.term_rule!r} rule: loosen --min-term-chars or "
                     "--max-document-frequency, or pass --terms"
                 )
             term_set = rare_terms.TermSet(
-                name=f"derived-df{args.max_document_frequency}-c{args.min_term_chars}",
+                name=(
+                    f"derived-{args.term_rule}"
+                    f"-df{args.max_document_frequency}-c{args.min_term_chars}"
+                ),
                 terms=derived,
+                # The rule travels with the set: a term set nobody can rebuild is not a
+                # measurement anyone can repeat.
+                rule={
+                    "kind": args.term_rule,
+                    "min_chars": args.min_term_chars,
+                    "max_document_frequency": args.max_document_frequency,
+                    "dictionary": dictionary_path,
+                    "corpus_utterances": len(clips),
+                },
             )
     except (rare_terms.TermSetError, ArmContradiction, ValueError) as exc:
         print(f"refused: {exc}")

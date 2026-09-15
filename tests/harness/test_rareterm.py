@@ -36,7 +36,9 @@ from verbatim_bench.rareterm import (
     TermSetError,
     _alignment_ops,
     classify_misses,
+    classify_misses_by_term,
     derive_terms,
+    load_dictionary,
     load_term_set,
     occurrences,
     run_rare_terms,
@@ -480,3 +482,68 @@ def test_the_kinds_always_account_for_every_miss_exhaustively() -> None:
                         )
                         checked += 1
     assert checked > 5000, checked
+
+
+# --- the names the model may never have seen ---------------------------------------
+
+
+def test_the_unseen_rule_keeps_names_and_drops_ordinary_rare_words() -> None:
+    """The distinction the whole feature is aimed at, and rarity alone does not make it.
+
+    Of 256 terms derived by rarity from LibriSpeech test-other on 2026-09-15, 245 were
+    ordinary vocabulary -- `obliged`, `frightened`, `morning` -- which the model already
+    knows: boosting moved recall there 0.925 to 0.950. Over the 11 that were not in an
+    English word list -- `bassorah`, `comorin`, `shahrazad` -- it moved 0.583 to 0.833.
+    A term set that mixes them reports the first and hides the second.
+    """
+    references = ["sir risdon graeme has smuggled goods", "the frightened officer obliged"]
+    dictionary = frozenset({"smuggled", "frightened", "officer", "obliged", "goods"})
+    rare = derive_terms(references, min_chars=6, max_document_frequency=1)
+    unseen = derive_terms(references, min_chars=6, max_document_frequency=1, dictionary=dictionary)
+    assert "smuggled" in rare and "obliged" in rare
+    assert set(unseen) == {"risdon", "graeme"}
+    assert set(unseen) < set(rare)  # the rule only ever narrows
+
+
+def test_a_term_set_records_the_rule_that_built_it() -> None:
+    """A term set nobody can rebuild is not a measurement anyone can repeat."""
+    rule = {"kind": "unseen", "min_chars": 7, "dictionary": "/usr/share/dict/words"}
+    document = TermSet(name="t", terms=("bassorah",), rule=rule).to_json_dict()
+    assert document["rule"] == rule
+    # The rule does not enter the digest: two runs of the same terms are the same terms.
+    assert (
+        TermSet(name="t", terms=("bassorah",)).digest
+        == TermSet(name="t", terms=("bassorah",), rule=rule).digest
+    )
+
+
+def test_the_miss_split_is_available_per_term_not_only_pooled() -> None:
+    """Whether a residual is reachable at any weight matters most for the unseen names,
+    and a pooled count over a mostly-ordinary term set cannot be asked about them."""
+    reference = "the weevilly biscuit and risdon graeme"
+    transcript = "the biscuit and risdongram"
+    per_term = classify_misses_by_term(reference, transcript, ("weevilly", "risdon"))
+    assert per_term["weevilly"][MissKind.DELETION.value] == 1
+    assert per_term["risdon"][MissKind.DELETION.value] == 1
+    # The pooled view is the same numbers added up, so neither can drift from the other.
+    pooled = classify_misses(reference, transcript, ("weevilly", "risdon"))
+    assert pooled[MissKind.DELETION.value] == 2
+
+
+@pytest.mark.asyncio
+async def test_the_record_carries_the_miss_split_per_term() -> None:
+    term_set = TermSet(name="t", terms=("appellant", "hydrochlorothiazide"))
+    async with _server() as endpoint:
+        report = await run_rare_terms(
+            endpoint, _clips(), term_set, chunk=BenchChunk(CHUNK_MS), boosts=(None, 2.0)
+        )
+    entries = report.to_json_dict()["arms"][0]["per_term"]
+    assert entries
+    for entry in entries.values():
+        assert set(entry["miss_kinds"]) >= {MissKind.SUBSTITUTION.value, MissKind.DELETION.value}
+        assert sum(entry["miss_kinds"].values()) == entry["misses"]
+
+
+def test_a_missing_word_list_is_refused_rather_than_guessed(tmp_path: Path) -> None:
+    with pytest.raises(TermSetError, match="no usable word list"):
+        load_dictionary(tmp_path / "absent")
