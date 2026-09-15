@@ -41,11 +41,15 @@
 > of the server.** The ladder scored a rung whose warm-up never settled — one that opened no measurement
 > window and evaluated no criterion — as a rung the server had failed, and bisected downward from it.
 > Repeating such a rung instead (`docs/decisions/0016`) moved the B300's fixed arm from `S = 20` to
-> **124**, ending on a real criterion, with p95 256–285 ms against the 310 ms budget. The A6000 has not
-> been re-measured, so its 22 is withdrawn rather than corrected: no number replaces it here until one
-> is measured. **The "sobering ratio" below is therefore not a finding** — it divides NVIDIA's ceiling
-> by a number that was never capacity. The paragraphs stay because deleting them would hide what was
-> claimed and for how long.
+> **124**, ending on a real criterion, with p95 256–285 ms against the 310 ms budget.
+>
+> **The A6000's 22 is NOT withdrawn, and a first draft of this note wrongly said it was.** Every failing
+> rung of that run failed on `latency`, with a real percentile — 303.8 and 307.4 ms passing at 22, then
+> 311.7 to 323.8 ms failing at 23 through 26 against a 310 ms budget. That is a monotone latency ceiling
+> and it is what the ladder exists to find. What is wrong with it is what the paragraph below already
+> says: seed 16 crosses the boundary the wrong way, so the certification is `s: 0`. **The "sobering
+> ratio" stands as a reading of the A6000 and does not generalise**, because it divides that card's
+> number by that card's ceiling and the B300 answers differently.
 >
 > **The ratio that replaces it, on the B300, clears the bar.** NVIDIA's own file-driven script on that
 > card, same checkpoint and corpus, graphed, reaches a median **143.75** times real time

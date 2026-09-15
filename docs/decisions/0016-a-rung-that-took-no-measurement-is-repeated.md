@@ -104,10 +104,23 @@ seed variance, which is what sent the investigation in the wrong direction for t
 
 ## What this invalidates
 
-**Every `S` this project has produced is a measurement of where warm-up convergence first
-failed, not of capacity.** That includes S = 20 on the B300 and S = 22 on the A6000. None
-may be cited as a capacity number. The two canonical B300 arms are re-run under this
-procedure and the rows replaced.
+**The two canonical B300 arms.** Every failing rung of the fixed arm, and five of seven on
+the ragged arm, ended as `UNSTABLE` with no criterion evaluated, so neither S was a capacity
+number. Both are re-run under this procedure and the rows replaced.
+
+**Not the A6000, and an earlier draft of this record said otherwise.** Its
+2026-09-13 ladder is in `rows/exploratory/ladder-a6000-bf16-eager-2026-09-13-all-criteria.json`
+and every failing rung there failed on **`latency`**, with a real percentile: p95 303.8 and
+307.4 ms passing at n=22, then 311.7 to 323.8 ms failing at 23 through 26, against a 310 ms
+budget. That is a monotone latency ceiling and exactly what the ladder is for. This decision
+does not reach it and does not withdraw it.
+
+The A6000 run has a different problem, which this does not fix: seed 16 is non-monotonic
+across the boundary, failing at 22 with 312.5 ms and passing at 23 with 305.0, so the search
+reported `s: 0`. It also predates the warm-up reading series, so `warm_up_converged` is null
+on every rung and nobody can now ask whether any of them settled. A re-run under the current
+harness is worth having to put readings behind the number — but it is a confirmation, not a
+correction.
 
 It does not touch the invariance results, which do not use the ladder, or the ceiling
 measurements, which do not either.
