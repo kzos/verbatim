@@ -16,6 +16,7 @@ a consequence of the selection rather than of the phrase list.
 
 from __future__ import annotations
 
+import itertools
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -448,3 +449,34 @@ def test_every_missed_occurrence_gets_exactly_one_kind() -> None:
         missed = sum(c.misses for c in counts.values())
         assert missed == expected_missed, (reference, transcript)
         assert sum(kinds.values()) == missed, (reference, transcript, kinds)
+
+
+def test_the_kinds_always_account_for_every_miss_exhaustively() -> None:
+    """The invariant behind removing the reconciliation branch, checked rather than argued.
+
+    `classify_misses` drops a missed occurrence silently if the aligner and the occurrence
+    counter ever disagree about how many there were. The branch that would have caught that
+    was removed because a mutation proved it unreachable, and the argument for why was
+    prose. This exhausts every (reference, hypothesis, term) over a three-letter alphabet
+    up to length four, which is where a disagreement between a greedy non-overlapping count
+    and an optimal edit alignment would show if it showed anywhere.
+    """
+    alphabet = "abc"
+    checked = 0
+    for reference_length in range(1, 5):
+        for hypothesis_length in range(0, 5):
+            for reference in itertools.product(alphabet, repeat=reference_length):
+                for hypothesis in itertools.product(alphabet, repeat=hypothesis_length):
+                    reference_text = " ".join(reference)
+                    hypothesis_text = " ".join(hypothesis)
+                    for term in set(reference):
+                        counts = score_transcript(reference_text, hypothesis_text, (term,))
+                        kinds = classify_misses(reference_text, hypothesis_text, (term,))
+                        assert sum(kinds.values()) == counts[term].misses, (
+                            reference_text,
+                            hypothesis_text,
+                            term,
+                            kinds,
+                        )
+                        checked += 1
+    assert checked > 5000, checked
