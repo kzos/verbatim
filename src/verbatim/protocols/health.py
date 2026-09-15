@@ -55,6 +55,18 @@ class ServiceFacts:
     #: comparable with one from a server without it, and a harness that could not read
     #: this would file both under the same arm.
     biasing: bool = False
+    #: The runtime this server is actually running on, reported so a row can be attributed
+    #: to it. None where there is nothing to report, which is the fake pipeline.
+    #:
+    #: It is on ``/readyz`` rather than only in the startup banner because a banner is read
+    #: by whoever was watching. On 2026-09-15 two A6000 ladders on the same card, the same
+    #: checkpoint and the same bucket gave boundaries of 22 and 17, and neither record
+    #: carried a NeMo version, so the two could not be compared and the difference could
+    #: not be attributed to anything. A capacity number without the runtime that produced
+    #: it is not a measurement of a server, it is a measurement of an afternoon.
+    nemo_version: str | None = None
+    torch_version: str | None = None
+    device_name: str | None = None
 
     def labels(self) -> dict[str, str]:
         return {
@@ -117,6 +129,9 @@ class HealthReporter:
                     "precision": self._facts.precision,
                     "execution": self._facts.execution,
                     "biasing": self._facts.biasing,
+                    "nemo_version": self._facts.nemo_version,
+                    "torch_version": self._facts.torch_version,
+                    "device_name": self._facts.device_name,
                     "tick_id": snapshot.tick_id,
                 },
             )

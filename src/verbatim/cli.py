@@ -272,7 +272,9 @@ def _settings(args: argparse.Namespace) -> ServeSettings:
         raise _Refused(EXIT_CONFIG, str(exc)) from exc
 
 
-def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapter, list[str], str]:
+def _build_adapter(
+    settings: ServeSettings, hooks: Hooks
+) -> tuple[PipelineAdapter, list[str], str, dict[str, str | None]]:
     """The pipeline adapter for these settings, the banner lines that describe it, and
     how the encoder step runs ("fake", "eager" or "graph path") for the health endpoints.
 
@@ -293,6 +295,9 @@ def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapt
                 "and harness checks only",
             ],
             "fake",
+            # The fake runs no model, so there is no runtime to attribute a row to. Empty
+            # rather than the versions of whatever happens to be installed beside it.
+            {},
         )
 
     report = hooks.inspect_runtime()
@@ -379,6 +384,13 @@ def _build_adapter(settings: ServeSettings, hooks: Hooks) -> tuple[PipelineAdapt
             *_language_lines(decoding, settings.language_code),
         ],
         "graph path" if use_graphs else "eager",
+        # What the runtime turned out to be, probed above to decide the graph path and
+        # carried onward so a row can be attributed to it rather than to an afternoon.
+        {
+            "nemo": report.nemo_version,
+            "torch": report.torch_version,
+            "device": report.device_name,
+        },
     )
 
 
@@ -479,7 +491,7 @@ def _banner(settings: ServeSettings, adapter_lines: list[str]) -> list[str]:
 
 def _serve(args: argparse.Namespace, hooks: Hooks) -> int:
     settings = _settings(args)
-    adapter, adapter_lines, execution = _build_adapter(settings, hooks)
+    adapter, adapter_lines, execution, runtime = _build_adapter(settings, hooks)
     for line in _banner(settings, adapter_lines):
         print(f"[verbatim] {line}", file=hooks.stdout, flush=True)
 
@@ -498,7 +510,12 @@ def _serve(args: argparse.Namespace, hooks: Hooks) -> int:
                 hooks.on_ready(endpoints, lambda: loop.call_soon_threadsafe(shutdown.set))
 
         await hooks.run_server(
-            settings, adapter, shutdown=shutdown, on_ready=ready, execution=execution
+            settings,
+            adapter,
+            shutdown=shutdown,
+            on_ready=ready,
+            execution=execution,
+            runtime=runtime,
         )
         print("[verbatim] stopped", file=hooks.stdout, flush=True)
 

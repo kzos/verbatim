@@ -50,6 +50,14 @@ class ServerFacts:
     #: Whether the server serves per-session phrase lists. None from a server too old
     #: to report it, which is a different situation from one reporting False.
     biasing: bool | None = None
+    #: The runtime the server is running on. None from a server too old to report it.
+    #: A row without this cannot be compared with another row on the same card: on
+    #: 2026-09-15 two A6000 ladders of the same checkpoint at the same bucket gave
+    #: boundaries of 22 and 17, and neither record named a NeMo version, so the
+    #: difference could be attributed to nothing.
+    nemo_version: str | None = None
+    torch_version: str | None = None
+    device_name: str | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -60,6 +68,9 @@ class ServerFacts:
             "precision": self.precision,
             "execution": self.execution,
             "biasing": self.biasing,
+            "nemo_version": self.nemo_version,
+            "torch_version": self.torch_version,
+            "device_name": self.device_name,
             "tick_id": self.tick_id,
         }
 
@@ -105,6 +116,9 @@ def read_server_facts(endpoint: str, *, fetch: Fetcher | None = None) -> ServerF
         precision=body.get("precision"),
         execution=body.get("execution"),
         biasing=None if body.get("biasing") is None else bool(body.get("biasing")),
+        nemo_version=body.get("nemo_version"),
+        torch_version=body.get("torch_version"),
+        device_name=body.get("device_name"),
         tick_id=body.get("tick_id"),
     )
 

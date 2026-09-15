@@ -19,7 +19,7 @@ apart and decide whether to retry. That is the engine's rule, not this module's.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from verbatim.config import ChunkMode, EngineConfig
@@ -144,12 +144,18 @@ async def run_server(
     shutdown: asyncio.Event,
     on_ready: Callable[[Endpoints], None] | None = None,
     execution: str | None = None,
+    runtime: Mapping[str, str | None] | None = None,
 ) -> None:
     """Serve until ``shutdown`` is set. Listeners close before the engine stops.
 
     ``execution`` names how the encoder step runs, "eager", "graph path" or "fake",
     for the health endpoints and the metrics labels; the CLI knows it exactly and
     passes it, and the default only derives it from the settings.
+
+    ``runtime`` is what the installed stack turned out to be -- ``nemo``, ``torch`` and
+    ``device`` -- which the CLI has already probed to decide the graph path. It reaches
+    ``/readyz`` so a harness can put it on the row: two ladders of the same checkpoint on
+    the same card are not comparable without it.
     """
     engine = Engine(engine_config(settings), adapter)
     if execution is None:
@@ -169,6 +175,9 @@ async def run_server(
         # the built decoder actually carried the biasing arena, so this is what the
         # server can do rather than what was asked of it.
         biasing=bool(getattr(adapter, "biasing", False)),
+        nemo_version=(runtime or {}).get("nemo"),
+        torch_version=(runtime or {}).get("torch"),
+        device_name=(runtime or {}).get("device"),
     )
     riva = RivaServer(
         engine,

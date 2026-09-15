@@ -77,6 +77,9 @@ class _Captured:
         self.settings: ServeSettings | None = None
         self.adapter: Any = None
         self.specs: list[NeMoPipelineSpec] = []
+        #: The runtime the CLI probed and handed to the server, so a test can check the
+        #: versions on a row came from the probe rather than from a default.
+        self.runtime: Any = None
         self.stdout = io.StringIO()
         self.stderr = io.StringIO()
 
@@ -98,10 +101,17 @@ def _hooks(
     on_ready: Callable[[Endpoints, Callable[[], None]], None] | None = None,
 ) -> Hooks:
     async def no_server(
-        settings: ServeSettings, adapter: Any, *, shutdown: Any, on_ready: Any, **_: Any
+        settings: ServeSettings,
+        adapter: Any,
+        *,
+        shutdown: Any,
+        on_ready: Any,
+        runtime: Any = None,
+        **_: Any,
     ) -> None:
         captured.settings = settings
         captured.adapter = adapter
+        captured.runtime = runtime
 
     def default_build(spec: NeMoPipelineSpec) -> Any:
         captured.specs.append(spec)
@@ -543,3 +553,29 @@ def test_serve_says_loudly_when_it_is_running_the_ragged_control_arm() -> None:
     quiet = _Captured()
     assert main([*NEMO, "--eager"], hooks=_hooks(quiet, report=RELEASED_REPORT)) == EXIT_OK
     assert "RAGGED" not in quiet.out
+
+
+def test_serve_hands_the_server_the_runtime_it_probed() -> None:
+    """The versions on a row have to come from the probe, not from a default.
+
+    The CLI already inspects the runtime to decide whether the graph path exists. That
+    same answer reaches `/readyz`, so a harness can attribute a capacity number to the
+    stack that produced it. On 2026-09-15 two A6000 ladders of the same checkpoint at
+    the same bucket gave boundaries of 22 and 17 and neither record named a NeMo
+    version, so the difference could be attributed to nothing at all.
+    """
+    captured = _Captured()
+    assert main([*NEMO, "--eager"], hooks=_hooks(captured, report=RELEASED_REPORT)) == EXIT_OK
+    assert captured.runtime == {
+        "nemo": RELEASED_REPORT.nemo_version,
+        "torch": RELEASED_REPORT.torch_version,
+        "device": RELEASED_REPORT.device_name,
+    }
+
+
+def test_the_fake_pipeline_hands_over_no_runtime_at_all() -> None:
+    """It runs no model, so there is nothing to attribute a row to. Reporting whatever
+    NeMo happens to be installed beside it would name a stack that transcribed nothing."""
+    captured = _Captured()
+    assert main(FAKE, hooks=_hooks(captured)) == EXIT_OK
+    assert captured.runtime == {}

@@ -115,3 +115,40 @@ def test_an_arm_that_agrees_with_the_server_passes() -> None:
         declared_dtype="bfloat16",
         declared_chunk_ms=160,
     )
+
+
+def test_the_runtime_travels_from_readyz_onto_the_row() -> None:
+    """A capacity number without the runtime that produced it cannot be compared with
+    another on the same card. Two A6000 ladders on 2026-09-15, same checkpoint and same
+    bucket, gave boundaries of 22 and 17; neither record named a NeMo version, so the
+    difference could be attributed to nothing at all."""
+    body = json.dumps(
+        {
+            "ready": True,
+            "model": "m",
+            "pipeline": "cache_aware_rnnt",
+            "chunk_ms": 160,
+            "precision": "bfloat16",
+            "execution": "eager",
+            "biasing": False,
+            "nemo_version": "3.0.0",
+            "torch_version": "2.11.0+cu128",
+            "device_name": "NVIDIA RTX A6000",
+            "tick_id": 7,
+        }
+    )
+    facts = read_server_facts("ws://host:1/v1/stream", fetch=lambda _url: body)
+    assert facts is not None
+    assert facts.nemo_version == "3.0.0"
+    assert facts.torch_version == "2.11.0+cu128"
+    assert facts.device_name == "NVIDIA RTX A6000"
+    assert facts.to_json_dict()["nemo_version"] == "3.0.0"
+
+
+def test_a_server_too_old_to_report_a_runtime_reports_none_not_a_guess() -> None:
+    body = json.dumps({"ready": True, "model": "m", "execution": "eager"})
+    facts = read_server_facts("ws://host:1/v1/stream", fetch=lambda _url: body)
+    assert facts is not None
+    assert facts.nemo_version is None
+    assert facts.torch_version is None
+    assert facts.device_name is None
