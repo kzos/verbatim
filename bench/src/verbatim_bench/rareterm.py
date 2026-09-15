@@ -37,6 +37,7 @@ import json
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final
 
@@ -50,10 +51,12 @@ __all__ = [
     "DEFAULT_MAX_DOCUMENT_FREQUENCY",
     "DEFAULT_MIN_TERM_CHARS",
     "ArmReading",
+    "MissKind",
     "RareTermReport",
     "TermCount",
     "TermSet",
     "TermSetError",
+    "classify_misses",
     "derive_terms",
     "load_term_set",
     "occurrences",
@@ -169,6 +172,110 @@ def derive_terms(
     return tuple(order)
 
 
+class MissKind(StrEnum):
+    """How a reference word failed to come back.
+
+    The distinction decides an architectural question rather than a tuning one. Greedy
+    boosting takes the blank-versus-emit decision from the *unbiased* argmax, so it can
+    respell a token the model already chose to emit and can never turn a blank into an
+    emission. A residual miss that is a SUBSTITUTION is therefore something a weight can
+    still reach; one that is a DELETION is not, at any weight, and only a beam search
+    would recover it. A harness that reported "16 occurrences still missed" without
+    saying which kind would leave that decision unanswerable.
+    """
+
+    SUBSTITUTION = "substitution"
+    DELETION = "deletion"
+
+
+def _alignment_ops(reference: Sequence[str], hypothesis: Sequence[str]) -> list[str]:
+    """One edit op per reference word: "match", "substitution" or "deletion".
+
+    A full matrix with a backtrace, unlike ``wer.edit_distance``, which keeps two rows
+    because it only needs the count. Utterances are short, so the quadratic term is over
+    one utterance at a time either way. Insertions consume a hypothesis word and no
+    reference word, so they appear in no entry of the returned list, which is exactly one
+    entry per reference word.
+
+    Ties are resolved substitution, then deletion, then insertion. The order matters only
+    for how a miss is labelled, and preferring substitution is the conservative direction
+    for the question being asked: it under-reports deletions, so it cannot manufacture
+    the evidence that a weight has run out of room.
+    """
+    rows, columns = len(reference), len(hypothesis)
+    cost = [[0] * (columns + 1) for _ in range(rows + 1)]
+    for i in range(rows + 1):
+        cost[i][0] = i
+    for j in range(columns + 1):
+        cost[0][j] = j
+    for i in range(1, rows + 1):
+        for j in range(1, columns + 1):
+            same = reference[i - 1] == hypothesis[j - 1]
+            cost[i][j] = min(
+                cost[i - 1][j - 1] + (0 if same else 1),
+                cost[i - 1][j] + 1,
+                cost[i][j - 1] + 1,
+            )
+    ops: list[str] = []
+    i, j = rows, columns
+    while i > 0:
+        same = j > 0 and reference[i - 1] == hypothesis[j - 1]
+        if j > 0 and cost[i][j] == cost[i - 1][j - 1] + (0 if same else 1):
+            ops.append("match" if same else MissKind.SUBSTITUTION.value)
+            i, j = i - 1, j - 1
+        elif cost[i][j] == cost[i - 1][j] + 1:
+            ops.append(MissKind.DELETION.value)
+            i -= 1
+        else:
+            j -= 1  # an insertion: it consumes no reference word
+    ops.reverse()
+    return ops
+
+
+def classify_misses(reference: str, transcript: str, terms: Sequence[str]) -> dict[str, int]:
+    """How the term occurrences this transcript missed were lost: by kind.
+
+    Only single-word terms are classified. A multi-word term can be part substituted and
+    part deleted, and forcing it into one bucket would invent a fact; those are counted
+    under ``"unclassified"`` so the totals still add up and nobody reads a partial count
+    as a complete one.
+    """
+    reference_words = _words(reference)
+    hypothesis_words = _words(transcript)
+    ops = _alignment_ops(reference_words, hypothesis_words)
+    out: dict[str, int] = {
+        MissKind.SUBSTITUTION.value: 0,
+        MissKind.DELETION.value: 0,
+        "unclassified": 0,
+    }
+    for term in terms:
+        needle = _words(term)
+        expected = occurrences(reference_words, needle)
+        produced = occurrences(hypothesis_words, needle)
+        missed = expected - min(expected, produced)
+        if missed <= 0:
+            continue
+        if len(needle) != 1:
+            out["unclassified"] += missed
+            continue
+        # The positions this term sits at in the reference, in order; the first `missed`
+        # of them that are not matches are the ones that did not come back.
+        lost = [
+            ops[index]
+            for index, word in enumerate(reference_words)
+            if word == needle[0] and ops[index] != "match"
+        ]
+        # `len(lost) >= missed` always, so there is no residue to bucket and no guard
+        # here: `missed` is positive only when the hypothesis holds strictly fewer of the
+        # word than the reference does, and every reference position that could not be
+        # paired with one is a non-match, so `lost` has at least that many entries. A
+        # reconciliation branch stood here until a mutation showed nothing could reach it
+        # -- and an unreachable guard is the shape this project keeps finding.
+        for kind in lost[:missed]:
+            out[kind] = out.get(kind, 0) + 1
+    return out
+
+
 def occurrences(haystack_words: Sequence[str], needle_words: Sequence[str]) -> int:
     """Non-overlapping occurrences of one normalised word sequence inside another."""
     if not needle_words or len(needle_words) > len(haystack_words):
@@ -271,6 +378,10 @@ class ArmReading:
     #: what a server that ignored it looks like, and is indistinguishable from a weight
     #: too low to act unless it is named.
     changed_streams: tuple[str, ...] = ()
+    #: How this arm's residual misses were lost, by kind. A substitution is still within
+    #: a weight's reach; a deletion is not, at any weight, because greedy boosting takes
+    #: the blank-versus-emit decision from the unbiased argmax. See ``MissKind``.
+    misses_by_kind: dict[str, int] = field(default_factory=dict)
 
     @property
     def label(self) -> str:
@@ -287,6 +398,7 @@ class ArmReading:
             "boost": self.boost,
             "terms": self.counts.to_json_dict(),
             "changed_streams": len(self.changed_streams),
+            "misses_by_kind": dict(self.misses_by_kind),
             "wer": self.wer.wer,
             "wer_reference_words": self.wer.reference_words,
             "wer_errors": self.wer.errors,
@@ -391,6 +503,21 @@ class RareTermReport:
                     f"{cost:+d} false accepts against bare"
                 )
         for arm in self.arms:
+            if not arm.misses_by_kind:
+                continue
+            deletions = arm.misses_by_kind.get(MissKind.DELETION.value, 0)
+            substitutions = arm.misses_by_kind.get(MissKind.SUBSTITUTION.value, 0)
+            unclassified = arm.misses_by_kind.get("unclassified", 0)
+            lines.append(
+                f"  {arm.label} residual misses: {deletions} deletion(s), "
+                f"{substitutions} substitution(s), {unclassified} unclassified"
+            )
+        lines.append(
+            "  a deletion is out of reach of any weight -- greedy boosting takes the "
+            "blank-versus-emit decision from the unbiased argmax -- so a residual "
+            "dominated by deletions is the beam-search question, not a tuning one"
+        )
+        for arm in self.arms:
             if arm.errors:
                 lines.append(
                     f"*** {arm.label}: {len(arm.errors)} errored session(s), first: "
@@ -484,6 +611,7 @@ async def run_rare_terms(
         results = await asyncio.gather(*(one(i, clip) for i, clip in enumerate(clips)))
         reading = ArmReading(boost=boost, wall_clock_s=clock() - arm_started)
         totals: dict[str, TermCount] = {term: TermCount() for term in term_set.terms}
+        by_kind: dict[str, int] = {}
         transcripts: dict[str, str] = {}
         for clip, result in zip(clips, results, strict=True):
             if result.error is not None:
@@ -494,8 +622,11 @@ async def run_rare_terms(
                 clip.text, result.final_text, term_set.terms
             ).items():
                 totals[term] = totals[term] + count
+            for kind, n in classify_misses(clip.text, result.final_text, term_set.terms).items():
+                by_kind[kind] = by_kind.get(kind, 0) + n
             reading.wer = reading.wer + stream_wer_count(clip.text, result.final_text)
         reading.per_term = totals
+        reading.misses_by_kind = by_kind
         for count in totals.values():
             reading.counts = reading.counts + count
         if boost is None:

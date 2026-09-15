@@ -28,10 +28,13 @@ from verbatim_bench.invariance import Clip
 from verbatim_bench.rareterm import (
     DEFAULT_BOOSTS,
     ArmReading,
+    MissKind,
     RareTermReport,
     TermCount,
     TermSet,
     TermSetError,
+    _alignment_ops,
+    classify_misses,
     derive_terms,
     load_term_set,
     occurrences,
@@ -355,3 +358,93 @@ def test_a_report_whose_weights_moved_nothing_is_flagged_even_with_terms_present
     report = _report(bare, boosted)
     assert report.reached_the_decoder is False
     assert report.usable is False
+
+
+# --- how a residual miss was lost, which is an architecture question -----------------
+
+
+def test_a_respelled_word_is_a_substitution() -> None:
+    """Still within a weight's reach: the model chose to emit something there."""
+    assert classify_misses("sir risdon graeme has", "sir risdongram has", ("graeme",)) == {
+        MissKind.SUBSTITUTION.value: 1,
+        MissKind.DELETION.value: 0,
+        "unclassified": 0,
+    }
+
+
+def test_a_word_that_never_came_back_is_a_deletion() -> None:
+    """Out of reach of any weight. Greedy boosting takes the blank-versus-emit decision
+    from the unbiased argmax, so it can respell an emitted token and can never turn a
+    blank into an emission; only a beam search recovers these."""
+    assert classify_misses("the weevilly biscuit", "the biscuit", ("weevilly",)) == {
+        MissKind.SUBSTITUTION.value: 0,
+        MissKind.DELETION.value: 1,
+        "unclassified": 0,
+    }
+
+
+def test_a_multi_word_term_is_left_unclassified_rather_than_guessed() -> None:
+    """It can be part substituted and part deleted, and forcing it into one bucket would
+    invent a fact. The totals still add up, so a partial count is never read as complete."""
+    assert classify_misses("sir risdon graeme has", "sir risdongram has", ("risdon graeme",)) == {
+        MissKind.SUBSTITUTION.value: 0,
+        MissKind.DELETION.value: 0,
+        "unclassified": 1,
+    }
+
+
+def test_a_term_that_came_back_is_classified_as_nothing() -> None:
+    counts = classify_misses("the biscuit", "the biscuit", ("biscuit",))
+    assert sum(counts.values()) == 0
+
+
+def test_an_insertion_consumes_no_reference_word() -> None:
+    """One op per reference word, whatever the hypothesis did around it."""
+    ops = _alignment_ops(["a", "b"], ["a", "x", "b"])
+    assert len(ops) == 2
+    assert ops == ["match", "match"]
+
+
+def test_ties_resolve_to_substitution_which_under_reports_deletions() -> None:
+    """The conservative direction for the question being asked: it cannot manufacture
+    the evidence that a weight has run out of room."""
+    ops = _alignment_ops(["a"], ["z"])
+    assert ops == [MissKind.SUBSTITUTION.value]
+
+
+@pytest.mark.asyncio
+async def test_the_record_carries_how_each_arm_lost_what_it_missed() -> None:
+    term_set = TermSet(name="t", terms=("appellant", "hydrochlorothiazide"))
+    async with _server() as endpoint:
+        report = await run_rare_terms(
+            endpoint, _clips(), term_set, chunk=BenchChunk(CHUNK_MS), boosts=(None, 2.0)
+        )
+    for arm in report.arms:
+        assert set(arm.misses_by_kind) >= {
+            MissKind.SUBSTITUTION.value,
+            MissKind.DELETION.value,
+        }
+        # Every missed occurrence is accounted for under exactly one kind.
+        assert sum(arm.misses_by_kind.values()) == arm.counts.misses
+    assert "residual misses" in report.render()
+    assert "beam-search question" in report.render()
+    assert "misses_by_kind" in report.to_json_dict()["arms"][0]
+
+
+def test_every_missed_occurrence_gets_exactly_one_kind() -> None:
+    """The invariant is structural rather than guarded: `missed` is positive only when
+    the hypothesis holds strictly fewer of the word than the reference does, so every
+    unmatched reference position is available to explain one. A reconciliation branch
+    stood here until a mutation proved nothing could reach it."""
+    cases = [
+        ("weevilly a weevilly b", "a b", ("weevilly",), 2),
+        ("weevilly a weevilly b", "weevilly a b", ("weevilly",), 1),
+        ("a weevilly b", "a woollen b", ("weevilly",), 1),
+        ("a b", "a b", ("weevilly",), 0),
+    ]
+    for reference, transcript, terms, expected_missed in cases:
+        counts = score_transcript(reference, transcript, terms)
+        kinds = classify_misses(reference, transcript, terms)
+        missed = sum(c.misses for c in counts.values())
+        assert missed == expected_missed, (reference, transcript)
+        assert sum(kinds.values()) == missed, (reference, transcript, kinds)

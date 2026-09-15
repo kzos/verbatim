@@ -37,6 +37,27 @@
 > thing. The ceiling to expect instead is the step: a fixed-shape bucket-32 step on that card costs
 > **53 to 123 ms of the 160 ms tick budget** whether six streams or thirty sit on it.
 >
+> **WITHDRAWN 2026-09-15. Everything in the next two paragraphs is a measurement of the harness, not
+> of the server.** The ladder scored a rung whose warm-up never settled — one that opened no measurement
+> window and evaluated no criterion — as a rung the server had failed, and bisected downward from it.
+> Repeating such a rung instead (`docs/decisions/0016`) moved the B300's fixed arm from `S = 20` to
+> **124**, ending on a real criterion, with p95 256–285 ms against the 310 ms budget. The A6000 has not
+> been re-measured, so its 22 is withdrawn rather than corrected: no number replaces it here until one
+> is measured. **The "sobering ratio" below is therefore not a finding** — it divides NVIDIA's ceiling
+> by a number that was never capacity. The paragraphs stay because deleting them would hide what was
+> claimed and for how long.
+>
+> **The ratio that replaces it, on the B300, clears the bar.** NVIDIA's own file-driven script on that
+> card, same checkpoint and corpus, graphed, reaches a median **143.75** times real time
+> (`rows/exploratory/nemo-ceiling-b300-bf16-2026-09-13.json`). The MVP bar is eight tenths of that, so
+> **115 sustained streams**; the fixed arm sustains **at least 124**, a ratio of **0.863** — an eager
+> server measured against a *graphed* denominator, which is the harder comparison. It survives the
+> denominator's own spread: even at the ceiling's highest run of 148.97 the bar is 119.2, still under
+> 124. Two things keep this from being a verdict. The bar's verdict die is the A6000, where the
+> denominator cannot be measured at all because no released wheel carries the graph path (DR-0002), so
+> this is the confirmation die standing in for it. And 124 is bounded by the configured bucket rather
+> than by the GPU, so the true ratio is higher by an unknown amount.
+>
 > **On 2026-09-13 a search ran in which every rung evaluated all four criteria for the first time.**
 > A6000, bfloat16, eager, bucket 32, 160 ms chunk, with a batch-1 word-error reference and the machine
 > record collected across each window. Two seeds of three put the boundary at **22 concurrent streams**,
