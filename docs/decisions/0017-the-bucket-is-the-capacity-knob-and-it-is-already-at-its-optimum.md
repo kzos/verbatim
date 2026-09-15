@@ -50,6 +50,48 @@ bucket.** At 128 the server sustains 124 — within three per cent of its own bu
 rather than a lower bound.** The caveat that the true number is "higher by an unknown
 amount" is withdrawn.
 
+## What the per-row cost actually is, and it is not the encoder
+
+Derived from `rows/exploratory/nemo-ceiling-b300-bf16-2026-09-13.json` rather than measured
+on the server, so treat it as scaling and not as a profile. One row consumes one 160 ms
+chunk per step, so a step's wall clock is `B x 0.16 / RTFx`:
+
+| batch | eager | graphed |
+|---|---|---|
+| 32 | 55.4 ms | 42.9 ms |
+| 128 | 137.0 ms | 142.5 ms |
+
+Fitting a line through the two eager points: **`cost(B) = 28.2 ms + 0.850 ms per row`**. That
+single number predicts everything this record is about. 99 rows fit the 70 % budget, 155 fit
+the whole tick period, and the server's measured fixed point sits at 124, between them.
+
+**The marginal cost is not GPU compute.** Four times the rows cost 2.47 times the time, so
+the step is not launch-bound — and the encoder's own arithmetic is nowhere near 0.85 ms a
+row: with `att_context [70, 1]` a chunk is two post-subsampling frames, and re-projecting 72
+cached frames across 17 layers is on the order of a GFLOP per row, sub-millisecond for the
+whole batch on this die. What scales with `B` is the per-row host-side work NeMo's
+`BasePipeline.transcribe_step` does around the encoder: a `get_state` and a
+`cleanup_after_response` per row, a context-manager dictionary walk per row, a greedy decode
+per row, a tokenizer `ids_to_text` per row per tick, and the label-looping decoder's
+`while active_mask.any()` host synchronisations, whose count is the maximum over rows.
+**Pad rows pay all of it.**
+
+The graphed column is the same story from the other side: capturing the encoder step removes
+about 18 ms of *fixed* cost and leaves the per-row slope alone (1.037 ms). That is exactly
+why the graph path measured x1.29 at batch 32, where the fixed term dominates, and nothing at
+batch 128, where the per-row term does. Two independent measurements, one mechanism.
+
+The consequence for what to do next is large enough to state here: **capacity on this server
+is bounded by per-row host work, not by the GPU.** A faster encoder buys little; removing
+per-row Python and host synchronisations buys a lot. The first thing to try is the decoder
+graph path, which `pipeline_config` currently pins off (`use_cuda_graph_decoder: False`),
+because that flag is what forces the label-looping decoder onto its synchronising branch.
+
+None of this is profiled. `step_ms` in `cache_aware.py` times NeMo's whole `transcribe_step`
+as one block and nothing in the repo splits it, so the attribution above is arithmetic and
+reading, not a measurement. Splitting it is the one-day job that decides the next year of
+optimisation work, and it should happen before anything is rewritten.
+
 ## What was rejected
 
 **Raising the bucket to find a higher ceiling.** Measured, and it costs 78 streams.

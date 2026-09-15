@@ -156,6 +156,17 @@ def main() -> int:
     ragged_repeat = a.load("ladder-b300-ragged-repeat-2026-09-15.json")
     a.claim("DR-0017 the ragged arm did not reproduce", ragged_repeat["s"], 0)
 
+    # --- DR-0017 addendum: the per-row cost, derived from the ceiling row ----------
+    ceil_arms = a.load("nemo-ceiling-b300-bf16-2026-09-13.json")["arms"]
+    step_ms = {b: b * 0.16 / ceil_arms[f"batch{b}_eager"]["rtfx_median"] * 1000 for b in (32, 128)}
+    a.claim("DR-0017 step at batch 32, eager", round(step_ms[32], 1), 55.4, 0.05)
+    a.claim("DR-0017 step at batch 128, eager", round(step_ms[128], 1), 137.0, 0.05)
+    slope = (step_ms[128] - step_ms[32]) / (128 - 32)
+    a.claim("DR-0017 marginal cost per row", round(slope, 3), 0.850, 0.0005)
+    a.claim("DR-0017 fixed term", round(step_ms[32] - slope * 32, 1), 28.2, 0.05)
+    # The whole argument: that slope predicts the measured fixed point.
+    a.claim("DR-0017 rows fitting the tick period", round((160 - 28.2) / slope), 155)
+
     # --- DR-0016 and the README: the A6000 is NOT withdrawn ------------------------
     a6000 = a.load("ladder-a6000-bf16-eager-2026-09-13-all-criteria.json")
     a.claim(
