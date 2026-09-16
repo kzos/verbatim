@@ -13,8 +13,10 @@ divergence, which is what this experiment measures.
 
 Exploratory evidence. NOT a harness row.
 """
+
 import io
 import os, json, time, warnings, difflib
+
 warnings.filterwarnings("ignore")
 import numpy as np, torch, soundfile as sf
 from datasets import load_dataset, Audio
@@ -40,8 +42,11 @@ def word_errors(ref, hyp):
     rw, hw = ref.split(), hyp.split()
     sm = difflib.SequenceMatcher(None, rw, hw)
     err = sum(max(i2 - i1, j2 - j1) for t, i1, i2, j1, j2 in sm.get_opcodes() if t != "equal")
-    ops = [{"op": t, "ref": " ".join(rw[i1:i2]), "hyp": " ".join(hw[j1:j2])}
-           for t, i1, i2, j1, j2 in sm.get_opcodes() if t != "equal"]
+    ops = [
+        {"op": t, "ref": " ".join(rw[i1:i2]), "hyp": " ".join(hw[j1:j2])}
+        for t, i1, i2, j1, j2 in sm.get_opcodes()
+        if t != "equal"
+    ]
     return err, len(rw), ops
 
 
@@ -56,6 +61,7 @@ def pcm_of(rec):
 
 
 from nemo.collections.asr.models import ASRModel
+
 print(f"[model] loading {MODEL}", flush=True)
 m = ASRModel.from_pretrained(MODEL, map_location="cpu").to(dev).eval()
 print("[model] ready", flush=True)
@@ -65,7 +71,7 @@ def texts(rows, L):
     padded = []
     for r in rows:
         a = np.zeros(L, dtype=np.float32)
-        a[:len(r)] = r
+        a[: len(r)] = r
         padded.append(a)
     with torch.no_grad():
         hyps = m.transcribe(padded, batch_size=len(padded), verbose=False)
@@ -76,12 +82,19 @@ print("[data] streaming google/fleurs en_us test", flush=True)
 ds = load_dataset("google/fleurs", "en_us", split="test", streaming=True)
 ds = ds.cast_column("audio", Audio(decode=False))
 
-state = {"model": MODEL, "corpus": "google/fleurs en_us test", "batch_size": BATCH,
-         "machine": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
-         "torch": torch.__version__, "cuda": torch.version.cuda,
-         "nemo": __import__("nemo").__version__,
-         "reference_field": "transcription", "control": "all rows padded to one common length",
-         "checked": 0, "divergences": []}
+state = {
+    "model": MODEL,
+    "corpus": "google/fleurs en_us test",
+    "batch_size": BATCH,
+    "machine": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+    "torch": torch.__version__,
+    "cuda": torch.version.cuda,
+    "nemo": __import__("nemo").__version__,
+    "reference_field": "transcription",
+    "control": "all rows padded to one common length",
+    "checked": 0,
+    "divergences": [],
+}
 buf, meta, t0 = [], [], time.time()
 
 
@@ -95,15 +108,35 @@ def flush(group):
             ref = meta[j]["reference"]
             ea, na, oa = word_errors(ref, alone)
             eb, nb, ob = word_errors(ref, batched[j])
-            state["divergences"].append({
-                "n": state["checked"], "fleurs_id": meta[j]["id"], "reference": ref,
-                "alone": alone, "in_batch": batched[j], "ref_words": na,
-                "alone_word_errors": ea, "in_batch_word_errors": eb,
-                "alone_ops": oa, "in_batch_ops": ob,
-                "changed_tokens": [{"reference": x["ref"], "alone": x["hyp"], "in_batch": y["hyp"],
-                                    "lev_alone": lev(x["ref"], x["hyp"]), "lev_in_batch": lev(y["ref"], y["hyp"])}
-                                   for x, y in zip(oa, ob) if x["hyp"] != y["hyp"]]})
-            print(f"  *** DIVERGENCE #{len(state['divergences'])} n={state['checked']} id={meta[j]['id']}", flush=True)
+            state["divergences"].append(
+                {
+                    "n": state["checked"],
+                    "fleurs_id": meta[j]["id"],
+                    "reference": ref,
+                    "alone": alone,
+                    "in_batch": batched[j],
+                    "ref_words": na,
+                    "alone_word_errors": ea,
+                    "in_batch_word_errors": eb,
+                    "alone_ops": oa,
+                    "in_batch_ops": ob,
+                    "changed_tokens": [
+                        {
+                            "reference": x["ref"],
+                            "alone": x["hyp"],
+                            "in_batch": y["hyp"],
+                            "lev_alone": lev(x["ref"], x["hyp"]),
+                            "lev_in_batch": lev(y["ref"], y["hyp"]),
+                        }
+                        for x, y in zip(oa, ob)
+                        if x["hyp"] != y["hyp"]
+                    ],
+                }
+            )
+            print(
+                f"  *** DIVERGENCE #{len(state['divergences'])} n={state['checked']} id={meta[j]['id']}",
+                flush=True,
+            )
             print(f"      ref     : {ref}", flush=True)
             print(f"      alone   : {alone}   ({ea}/{na})", flush=True)
             print(f"      batch32 : {batched[j]}   ({eb}/{nb})", flush=True)
@@ -117,7 +150,10 @@ for rec in ds:
     flush(buf)
     buf, meta = [], []
     if state["checked"] % 320 == 0:
-        print(f"  {state['checked']} checked, {len(state['divergences'])} divergent, {time.time()-t0:.0f}s", flush=True)
+        print(
+            f"  {state['checked']} checked, {len(state['divergences'])} divergent, {time.time() - t0:.0f}s",
+            flush=True,
+        )
         json.dump(state, open(OUT, "w"), indent=1)
 if buf:
     state["tail_group_size"] = len(buf)
@@ -125,8 +161,14 @@ if buf:
 
 state["seconds"] = round(time.time() - t0, 1)
 json.dump(state, open(OUT, "w"), indent=1)
-print(f"\n=== {len(state['divergences'])} divergences in {state['checked']} FLEURS en_us utterances "
-      f"(batch 1 vs batch {BATCH}), {state['seconds']}s ===", flush=True)
+print(
+    f"\n=== {len(state['divergences'])} divergences in {state['checked']} FLEURS en_us utterances "
+    f"(batch 1 vs batch {BATCH}), {state['seconds']}s ===",
+    flush=True,
+)
 for d in state["divergences"]:
-    print(f"  {d['fleurs_id']}: alone {d['alone_word_errors']}/{d['ref_words']}, "
-          f"batch {d['in_batch_word_errors']}/{d['ref_words']}", flush=True)
+    print(
+        f"  {d['fleurs_id']}: alone {d['alone_word_errors']}/{d['ref_words']}, "
+        f"batch {d['in_batch_word_errors']}/{d['ref_words']}",
+        flush=True,
+    )

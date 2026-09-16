@@ -194,6 +194,35 @@ def main() -> int:
         True,
     )
 
+    # --- DR-0017: CUDA graphs buy fixed cost, in the decoder as in the encoder -----
+    dg = a.load("step-phase-speech-decgraph-b300-2026-09-16.json")
+    dg_batch = {arm["batch"]: arm for arm in dg["arms"]}
+    a.claim("DR-0017 decoder-graph run declares the flag", dg["decoder_graphs"], True)
+    for batch, off, on in ((32, 7.0, 3.7), (128, 12.3, 9.5), (256, 18.0, 16.4)):
+        a.claim(
+            f"DR-0017 decoder off at batch {batch}",
+            round(by_batch[batch]["decoder"]["median_ms"], 1),
+            off,
+            0.05,
+        )
+        a.claim(
+            f"DR-0017 decoder on at batch {batch}",
+            round(dg_batch[batch]["decoder"]["median_ms"], 1),
+            on,
+            0.05,
+        )
+    # The finding: the saving is roughly constant, so it is launch overhead and not per-row.
+    savings = [
+        by_batch[b]["decoder"]["median_ms"] - dg_batch[b]["decoder"]["median_ms"]
+        for b in (32, 128, 256)
+    ]
+    a.claim("DR-0017 the decoder-graph saving does not grow with batch", max(savings) < 4.0, True)
+    a.claim(
+        "DR-0017 invariance survives decoder graphs",
+        a.load("invariance-decgraph-b300-2026-09-16.json")["verdict"],
+        "invariant",
+    )
+
     # --- DR-0016 and the README: the A6000 is NOT withdrawn ------------------------
     a6000 = a.load("ladder-a6000-bf16-eager-2026-09-13-all-criteria.json")
     a.claim(

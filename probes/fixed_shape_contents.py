@@ -39,7 +39,11 @@ import torch
 from datasets import Audio, load_dataset
 
 os.makedirs("probe-output", exist_ok=True)
-OUT = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("PROBE_OUT", "probe-output/fixed_shape_contents.json")
+OUT = (
+    sys.argv[2]
+    if len(sys.argv) > 2
+    else os.environ.get("PROBE_OUT", "probe-output/fixed_shape_contents.json")
+)
 MODEL = "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi"
 BATCH = 32
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 1024
@@ -150,7 +154,11 @@ print(f"  target's WORD TIMING differed {state['timing_differs']}")
 print("=" * 72)
 if state["text_differs"] == 0 and state["timing_differs"] == 0:
     print("Fixed shape is sufficient: batch contents did not reach the target's output.")
-    print("This is the mechanism the server is built on, tested past the encoder for the first time.")
+    print(
+        "This is the mechanism the server is built on, tested past the encoder for the first time."
+    )
 else:
-    print("FIXED SHAPE IS NOT SUFFICIENT. Contents reached the output with the shape held constant.")
+    print(
+        "FIXED SHAPE IS NOT SUFFICIENT. Contents reached the output with the shape held constant."
+    )
     print("The project's central claim needs changing, not rewording.")

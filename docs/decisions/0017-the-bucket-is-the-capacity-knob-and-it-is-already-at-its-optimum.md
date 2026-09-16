@@ -107,6 +107,43 @@ marginal by a fifth (0.108 against 0.134 ms per row), because noise decodes to a
 and the greedy loop, the endpointer and `ids_to_text` all do their cheapest possible work. Both
 records are kept.
 
+### CUDA graphs buy fixed cost, in the decoder exactly as in the encoder
+
+`--decoder-graphs` lets NeMo's label-looping decoder capture graphs instead of running the
+torch branch, whose `while active_mask.any()` loop synchronises the host every iteration. The
+same probe, same audio, both ways
+(`rows/exploratory/step-phase-speech-decgraph-b300-2026-09-16.json`):
+
+| batch | decoder off | decoder on | removed |
+|---|---|---|---|
+| 32 | 7.0 ms | 3.7 ms | **48 %** |
+| 128 | 12.3 ms | 9.5 ms | 22 % |
+| 256 | 18.0 ms | 16.4 ms | 9 % |
+
+The saving is a roughly constant 3 ms that does not grow with the batch — the marginal per-row
+decoder cost is if anything slightly worse (0.057 against 0.049 ms). **Graphs remove launch
+overhead, not per-row work**, which is the same shape as the encoder result of 2026-09-13:
+x1.29 at batch 32, nothing at batch 128. Two independent measurements of two different graphs,
+one mechanism.
+
+For this server that is about 3 ms off a 40 ms step at bucket 128, or 7 %. Real, worth having,
+and not a capacity lever — capacity at that bucket is bound by admission, not by the step.
+
+**Invariance survives it**, which is the part that had to be checked before the flag could
+ship: one digest across concurrency 1 / 32 / 32 / 42 under churn, zero divergences
+(`rows/exploratory/invariance-decgraph-b300-2026-09-16.json`). The digest is `44bea7df3ec7…`
+where the same server without decoder graphs gives `f68cbccfa089…` — a different decode path
+gives different transcripts, exactly as the flag's own help says, which is why it is a separate
+arm.
+
+**The ladder could not answer this question and should not have been asked it.** The arm was
+run at bucket 256 on the reasoning that latency binds there, and it returned S = 22 against a
+baseline of 19, with per-seed highest passing rungs of 22 / 68 / 22 against 46 / 46 / 19 — and
+a rung that failed on latency at n=46 with p95 419 ms while n=68 passed at 309 ms. A
+non-monotonicity that large is not a capacity ceiling. Bucket 256 sits far past the fixed point
+this record is about, and its variance swamps a 7 % effect. A 3 ms difference wants a profile,
+not a capacity search.
+
 ## What was rejected
 
 **Raising the bucket to find a higher ceiling.** Measured, and it costs 78 streams.

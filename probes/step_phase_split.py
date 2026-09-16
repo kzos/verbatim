@@ -116,6 +116,13 @@ def main() -> int:
     parser.add_argument("--att-context-left", type=int, default=70)
     parser.add_argument("--steps", type=int, default=24, help="steps per batch size")
     parser.add_argument("--warmup", type=int, default=6, help="leading steps discarded")
+    parser.add_argument(
+        "--decoder-graphs",
+        action="store_true",
+        help="build with NeMo's label-looping decoder capturing CUDA graphs. Run it both "
+        "ways to get the per-row delta directly: a ladder answers the same question through "
+        "a capacity search whose variance at a bucket past its fixed point swamps the effect",
+    )
     parser.add_argument("--compute-dtype", default="bfloat16")
     parser.add_argument("--device-id", type=int, default=0)
     parser.add_argument(
@@ -154,6 +161,7 @@ def main() -> int:
             batch_size=batch,
             decoding="rnnt",
             use_cuda_graphs=False,
+            use_cuda_graph_decoder=args.decoder_graphs,
             compute_dtype=args.compute_dtype,
             device_id=args.device_id,
         )
@@ -237,6 +245,7 @@ def main() -> int:
         "model": args.model,
         "chunk_ms": args.chunk_ms,
         "compute_dtype": args.compute_dtype,
+        "decoder_graphs": bool(args.decoder_graphs),
         "steps_per_batch": args.steps,
         "warmup_discarded": args.warmup,
         "note": (
