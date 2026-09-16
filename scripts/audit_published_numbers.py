@@ -156,16 +156,43 @@ def main() -> int:
     ragged_repeat = a.load("ladder-b300-ragged-repeat-2026-09-15.json")
     a.claim("DR-0017 the ragged arm did not reproduce", ragged_repeat["s"], 0)
 
-    # --- DR-0017 addendum: the per-row cost, derived from the ceiling row ----------
-    ceil_arms = a.load("nemo-ceiling-b300-bf16-2026-09-13.json")["arms"]
-    step_ms = {b: b * 0.16 / ceil_arms[f"batch{b}_eager"]["rtfx_median"] * 1000 for b in (32, 128)}
-    a.claim("DR-0017 step at batch 32, eager", round(step_ms[32], 1), 55.4, 0.05)
-    a.claim("DR-0017 step at batch 128, eager", round(step_ms[128], 1), 137.0, 0.05)
-    slope = (step_ms[128] - step_ms[32]) / (128 - 32)
-    a.claim("DR-0017 marginal cost per row", round(slope, 3), 0.850, 0.0005)
-    a.claim("DR-0017 fixed term", round(step_ms[32] - slope * 32, 1), 28.2, 0.05)
-    # The whole argument: that slope predicts the measured fixed point.
-    a.claim("DR-0017 rows fitting the tick period", round((160 - 28.2) / slope), 155)
+    # --- DR-0017: where the step's time goes, PROFILED (the derived figure is withdrawn)
+    phase = a.load("step-phase-speech-b300-2026-09-16.json")
+    by_batch = {arm["batch"]: arm for arm in phase["arms"]}
+    for batch, step, enc, dec, rest in (
+        (32, 26.2, 14.5, 7.0, 4.7),
+        (128, 40.2, 15.1, 12.3, 12.8),
+        (256, 56.2, 14.6, 18.0, 23.6),
+    ):
+        arm = by_batch[batch]
+        a.claim(f"DR-0017 step at batch {batch}", round(arm["step_median_ms"], 1), step, 0.05)
+        a.claim(
+            f"DR-0017 encoder at batch {batch}", round(arm["encoder"]["median_ms"], 1), enc, 0.05
+        )
+        a.claim(
+            f"DR-0017 decoder at batch {batch}", round(arm["decoder"]["median_ms"], 1), dec, 0.05
+        )
+        a.claim(f"DR-0017 rest at batch {batch}", round(arm["rest_ms"], 1), rest, 0.05)
+
+    span = 256 - 32
+
+    def marginal(key: str) -> float:
+        lo, hi = by_batch[32], by_batch[256]
+        if key in ("encoder", "decoder"):
+            return (hi[key]["median_ms"] - lo[key]["median_ms"]) / span
+        return (hi[key] - lo[key]) / span
+
+    a.claim("DR-0017 marginal step", round(marginal("step_median_ms"), 3), 0.134, 0.0005)
+    # The finding: the encoder does not scale with occupancy at all.
+    a.claim("DR-0017 marginal encoder", round(marginal("encoder"), 3), 0.001, 0.0005)
+    a.claim("DR-0017 marginal decoder", round(marginal("decoder"), 3), 0.049, 0.0005)
+    a.claim("DR-0017 marginal rest", round(marginal("rest_ms"), 3), 0.084, 0.0005)
+    # And the step cost does not explain the 124 cap: 40 ms against a 112 ms budget.
+    a.claim(
+        "DR-0017 bucket-128 step is well inside the budget",
+        round(by_batch[128]["step_median_ms"], 1) < 112.0,
+        True,
+    )
 
     # --- DR-0016 and the README: the A6000 is NOT withdrawn ------------------------
     a6000 = a.load("ladder-a6000-bf16-eager-2026-09-13-all-criteria.json")

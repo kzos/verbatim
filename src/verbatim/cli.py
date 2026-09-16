@@ -218,6 +218,16 @@ def _parser() -> argparse.ArgumentParser:
         "and its transcript digests do not compare with a run without it",
     )
     serve.add_argument(
+        "--decoder-graphs",
+        action="store_true",
+        help="let NeMo's label-looping RNNT decoder capture CUDA graphs. Off by default: "
+        "without it the decoder runs its torch branch, whose `while active_mask.any()` loop "
+        "synchronises the host every iteration, and that is per-row cost. Measured on a "
+        "B300, the decoder is 0.049 ms per row where the encoder is 0.001. It is a SEPARATE "
+        "ARM: a different decode path may produce different transcripts, so digests do not "
+        "carry over and the invariance gate must be re-run",
+    )
+    serve.add_argument(
         "--att-context-left",
         type=int,
         metavar="N",
@@ -263,6 +273,7 @@ def _settings(args: argparse.Namespace) -> ServeSettings:
             eager=args.eager,
             padding=args.padding,
             biasing=args.biasing,
+            decoder_graphs=args.decoder_graphs,
             att_context_left=args.att_context_left,
             language_code=args.language_code,
             compute_dtype=args.compute_dtype,
@@ -332,6 +343,7 @@ def _build_adapter(
             decoding=decoding,
             stop_history_eou_ms=settings.stop_history_eou_ms,
             enable_per_stream_biasing=settings.biasing,
+            use_cuda_graph_decoder=settings.decoder_graphs,
             use_cuda_graphs=use_graphs,
             compute_dtype=settings.compute_dtype,
             device_id=settings.device_id,
@@ -381,6 +393,15 @@ def _build_adapter(
                 else []
             ),
             *_biasing_lines(adapter, settings),
+            *(
+                [
+                    "decoder      CUDA graphs ON for the RNNT decoder. A SEPARATE ARM: the "
+                    "decode path differs,",
+                    "             so transcript digests do not compare with a run without it.",
+                ]
+                if settings.decoder_graphs
+                else []
+            ),
             *_language_lines(decoding, settings.language_code),
         ],
         "graph path" if use_graphs else "eager",

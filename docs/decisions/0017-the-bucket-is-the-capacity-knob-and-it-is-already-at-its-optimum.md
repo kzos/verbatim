@@ -50,47 +50,62 @@ bucket.** At 128 the server sustains 124 — within three per cent of its own bu
 rather than a lower bound.** The caveat that the true number is "higher by an unknown
 amount" is withdrawn.
 
-## What the per-row cost actually is, and it is not the encoder
+## Where the step's time actually goes — profiled, 2026-09-16
 
-Derived from `rows/exploratory/nemo-ceiling-b300-bf16-2026-09-13.json` rather than measured
-on the server, so treat it as scaling and not as a profile. One row consumes one 160 ms
-chunk per step, so a step's wall clock is `B x 0.16 / RTFx`:
+An earlier version of this section derived a per-row cost of **0.850 ms** from the
+file-driven ceiling row by treating `B x 0.16 / RTFx` as a step time, and observed that it
+predicted the fixed point at 124. **That figure is withdrawn: it is wrong by a factor of six,
+and the prediction was a coincidence.** RTFx there measures a different pipeline — NeMo's own
+file-driven script, with its own I/O and batching — and converting it to "milliseconds per
+step" assumed this server's step structure.
 
-| batch | eager | graphed |
-|---|---|---|
-| 32 | 55.4 ms | 42.9 ms |
-| 128 | 137.0 ms | 142.5 ms |
+`probes/step_phase_split.py` measures it directly instead, wrapping
+`CacheAwareRNNTInferenceWrapper.encoder_step` and `rnnt_decoder_predictions_tensor` with
+device synchronisation on either side and attributing the remainder of NeMo's
+`transcribe_step` to "the rest". Real corpus audio, B300, bfloat16, eager encoder
+(`rows/exploratory/step-phase-speech-b300-2026-09-16.json`):
 
-Fitting a line through the two eager points: **`cost(B) = 28.2 ms + 0.850 ms per row`**. That
-single number predicts everything this record is about. 99 rows fit the 70 % budget, 155 fit
-the whole tick period, and the server's measured fixed point sits at 124, between them.
+| batch | step | encoder | decoder | the rest |
+|---|---|---|---|---|
+| 32 | 26.2 ms | 14.5 ms | 7.0 ms | 4.7 ms |
+| 128 | 40.2 ms | 15.1 ms | 12.3 ms | 12.8 ms |
+| 256 | 56.2 ms | 14.6 ms | 18.0 ms | 23.6 ms |
 
-**The marginal cost is not GPU compute.** Four times the rows cost 2.47 times the time, so
-the step is not launch-bound — and the encoder's own arithmetic is nowhere near 0.85 ms a
-row: with `att_context [70, 1]` a chunk is two post-subsampling frames, and re-projecting 72
-cached frames across 17 layers is on the order of a GFLOP per row, sub-millisecond for the
-whole batch on this die. What scales with `B` is the per-row host-side work NeMo's
-`BasePipeline.transcribe_step` does around the encoder: a `get_state` and a
-`cleanup_after_response` per row, a context-manager dictionary walk per row, a greedy decode
-per row, a tokenizer `ids_to_text` per row per tick, and the label-looping decoder's
-`while active_mask.any()` host synchronisations, whose count is the maximum over rows.
-**Pad rows pay all of it.**
+| marginal | per row |
+|---|---|
+| step | 0.134 ms |
+| **encoder** | **0.001 ms** |
+| decoder | 0.049 ms |
+| the rest | 0.084 ms |
 
-The graphed column is the same story from the other side: capturing the encoder step removes
-about 18 ms of *fixed* cost and leaves the per-row slope alone (1.037 ms). That is exactly
-why the graph path measured x1.29 at batch 32, where the fixed term dominates, and nothing at
-batch 128, where the per-row term does. Two independent measurements, one mechanism.
+**The encoder is flat.** 14.5, 15.1, 14.6 milliseconds for 32, 128 and 256 rows — eight times
+the work for one per cent more time. It is entirely fixed cost, which is consistent with the
+arithmetic: at `att_context [70, 1]` a chunk is two post-subsampling frames and re-projecting
+72 cached frames through 17 layers is about a GFLOP per row, nothing for this die. The whole
+marginal cost is host-side, split roughly one third decoder and two thirds the per-row Python
+around it — `get_state` and `cleanup_after_response` per row, a context-manager dictionary
+walk per row, a greedy decode per row, a tokenizer `ids_to_text` per row per tick. **Pad rows
+pay all of it.**
 
-The consequence for what to do next is large enough to state here: **capacity on this server
-is bounded by per-row host work, not by the GPU.** A faster encoder buys little; removing
-per-row Python and host synchronisations buys a lot. The first thing to try is the decoder
-graph path, which `pipeline_config` currently pins off (`use_cuda_graph_decoder: False`),
-because that flag is what forces the label-looping decoder onto its synchronising branch.
+Two consequences. **A faster or disaggregated encoder buys nothing**, because the encoder does
+not scale with occupancy in the first place; the thing to attack is per-row host work, and the
+first lever is the decoder graph path that `pipeline_config` pins off. And **the step cost
+does not explain the 124 cap**: at bucket 128 a step is 40 ms against a 112 ms budget, so that
+arm was never near a compute limit — it ended on `integrity:refused`, which is admission
+capping at the bucket, exactly as the criterion said.
 
-None of this is profiled. `step_ms` in `cache_aware.py` times NeMo's whole `transcribe_step`
-as one block and nothing in the repo splits it, so the attribution above is arithmetic and
-reading, not a measurement. Splitting it is the one-day job that decides the next year of
-optimisation work, and it should happen before anything is rewritten.
+**What is now open, and was not visible before.** At bucket 256 a step costs 56 ms, still well
+inside the budget, yet that arm failed on *latency* at 46 to 47 streams with p95 319 ms. The
+step alone does not account for that. The phase offset contributes up to one tick period
+(DR-0012) and the edge batches contribute more, but neither is measured against this. That gap
+between step cost and observed latency is the next thing to profile, and nothing here should
+be read as explaining it.
+
+The probe measures a synthetic drive of `transcribe_step`, not a live server: no admission, no
+edge batches, no session churn, no biasing. Uniform noise was tried first and understated the
+marginal by a fifth (0.108 against 0.134 ms per row), because noise decodes to almost nothing
+and the greedy loop, the endpointer and `ids_to_text` all do their cheapest possible work. Both
+records are kept.
 
 ## What was rejected
 
