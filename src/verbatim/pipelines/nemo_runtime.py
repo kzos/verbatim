@@ -118,6 +118,15 @@ class NeMoPipelineSpec:
     #: it on is a different configuration, and the transcript digests of a run with it
     #: off do not carry over.
     enable_per_stream_biasing: bool = False
+    #: Whether NeMo's label-looping RNNT decoder captures CUDA graphs. Off by default and
+    #: pinned rather than left to NeMo's own default of true, because it changes the
+    #: decode path: without it the decoder runs its torch branch, whose
+    #: ``while active_mask.any()`` loop synchronises the host every iteration. That is
+    #: per-row cost the encoder does not have -- measured flat at 14 ms from batch 32 to
+    #: 256 -- so this flag is the one with capacity upside. It is a separate arm for the
+    #: same reason ``--biasing`` is: a different decode path may produce different
+    #: transcripts, and the digests of a run without it do not carry over.
+    use_cuda_graph_decoder: bool = False
     use_cuda_graphs: bool = False
     compute_dtype: str = "bfloat16"
     device_id: int = 0
@@ -231,6 +240,7 @@ def pipeline_config(spec: NeMoPipelineSpec) -> dict[str, Any]:
         # A copy: the caller gets a configuration it may edit, not this module's state.
         decoding = copy.deepcopy(_RNNT_DECODING)
         decoding["greedy"]["enable_per_stream_biasing"] = spec.enable_per_stream_biasing
+        decoding["greedy"]["use_cuda_graph_decoder"] = spec.use_cuda_graph_decoder
         if spec.enable_per_stream_biasing and decoding["strategy"] != _BIASING_STRATEGY:
             raise ConfigError(
                 f"per-stream biasing needs strategy {_BIASING_STRATEGY!r}, got "
@@ -424,7 +434,8 @@ def build_pipeline(
         f"(att_context_size [{left}, {right}]), num_slots {spec.num_slots}, "
         f"batch_size {spec.batch_size}, {spec.compute_dtype} on cuda:{spec.device_id}, "
         f"{'CUDA graphs' if spec.use_cuda_graphs else 'eager encoder step'}, "
-        f"per-stream biasing {'on' if spec.enable_per_stream_biasing else 'off'}"
+        f"per-stream biasing {'on' if spec.enable_per_stream_biasing else 'off'}, "
+        f"decoder graphs {'on' if spec.use_cuda_graph_decoder else 'off'}"
     )
     try:
         omegaconf = import_module("omegaconf")

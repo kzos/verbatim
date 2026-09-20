@@ -11,7 +11,9 @@ R2  removing the model that sits at offset 0 leaves that model's own offset at -
 R3  after a removal the surviving models must score identically to before. This is the one that decides
     whether R1 and R2 are cosmetic or a correctness bug.
 """
+
 import warnings
+
 warnings.filterwarnings("ignore")
 import torch
 from nemo.collections.asr.parts.context_biasing.biasing_multi_model import GPUBiasingMultiModel
@@ -27,13 +29,20 @@ print(f"biasing_multi_model: {GPUBiasingMultiModel.__module__}")
 
 def tree(token_id_lists, score=2.0):
     g = ContextGraph(context_score=score, depth_scaling=1.0)
-    g.build(token_ids=token_id_lists,
-            phrases=[f"p{i}" for i in range(len(token_id_lists))],
-            scores=[score] * len(token_id_lists),
-            uniform_weights=False)
+    g.build(
+        token_ids=token_id_lists,
+        phrases=[f"p{i}" for i in range(len(token_id_lists))],
+        scores=[score] * len(token_id_lists),
+        uniform_weights=False,
+    )
     return GPUBoostingTreeModel.from_context_graph(
-        context_graph=g, vocab_size=V, unk_score=0.0, final_eos_score=0.0,
-        use_triton=True, uniform_weights=False)
+        context_graph=g,
+        vocab_size=V,
+        unk_score=0.0,
+        final_eos_score=0.0,
+        use_triton=True,
+        uniform_weights=False,
+    )
 
 
 fired = []
@@ -65,8 +74,10 @@ init = mm.get_init_states(batch_size=1, bos=True)
 start = int(init[0].item())
 probe_states = [start] * 4
 before_removal = score_of(ids[2], probe_states)
-print(f"\nmodel {ids[2]} scores before removal: nonzero entries "
-      f"{int((before_removal[0] != 0).sum())} / {V}")
+print(
+    f"\nmodel {ids[2]} scores before removal: nonzero entries "
+    f"{int((before_removal[0] != 0).sum())} / {V}"
+)
 
 # ---------------------------------------------------------------- R1 and R2
 n_before = len(fired)
@@ -93,7 +104,9 @@ print(f"  bit-identical: {same}")
 if not same:
     d = (before_removal - after_removal).abs()
     print(f"  max abs difference {d.max().item():.6g} over {int((d != 0).sum())} entries")
-print(f"  R3 {'PASSES - compaction is correct for live models' if same else 'FAILS - REAL CORRECTNESS BUG'}")
+print(
+    f"  R3 {'PASSES - compaction is correct for live models' if same else 'FAILS - REAL CORRECTNESS BUG'}"
+)
 
 print("\n=== summary ===")
 print(f"  R1 no-callback-on-remove : {'REPRODUCED' if len(fired) == n_before else 'no'}")
@@ -108,8 +121,9 @@ print("=" * 70)
 n_slots = mm.model2states_offset.shape[0]
 neg_slots = int((mm.model2states_offset < 0).sum())
 print(f"  reserved slots: {n_slots}, now holding a negative offset: {neg_slots}")
-print(f"  offset of the slot that a model_id of -1 indexes: "
-      f"{int(mm.model2states_offset[-1].item())}")
+print(
+    f"  offset of the slot that a model_id of -1 indexes: {int(mm.model2states_offset[-1].item())}"
+)
 
 mixed = torch.tensor([start, start, start, start], dtype=torch.long, device=dev)
 mids_mixed = torch.tensor([ids[2], -1, ids[1], -1], dtype=torch.long, device=dev)
@@ -142,5 +156,7 @@ print(f"  offsets now: {mm.model2states_offset[:6].tolist()}")
 s_new = score_of(new_id, probe_states)
 print(f"  new model scores: nonzero entries {int((s_new[0] != 0).sum())} / {V}")
 still = score_of(ids[2], probe_states)
-print(f"  older surviving model still bit-identical to its pre-removal scores: "
-      f"{torch.equal(still, before_removal)}")
+print(
+    f"  older surviving model still bit-identical to its pre-removal scores: "
+    f"{torch.equal(still, before_removal)}"
+)

@@ -20,15 +20,21 @@ variable. Alone versus a batch of 32.
 
 Exploratory. NOT a harness row.
 """
+
 import io
 import os, json, sys, time, warnings
+
 warnings.filterwarnings("ignore")
 import numpy as np, torch, soundfile as sf
 from datasets import load_dataset, Audio
 from omegaconf import OmegaConf, open_dict
 
 os.makedirs("probe-output", exist_ok=True)
-OUT = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("PROBE_OUT", "probe-output/deep_divergence.json")
+OUT = (
+    sys.argv[2]
+    if len(sys.argv) > 2
+    else os.environ.get("PROBE_OUT", "probe-output/deep_divergence.json")
+)
 MODEL = "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi"
 BATCH = 32
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 1024
@@ -36,7 +42,10 @@ dev = torch.device("cuda:0")
 
 from nemo.collections.asr.models import ASRModel
 
-print(f"[env] torch {torch.__version__} cuda {torch.version.cuda} | {torch.cuda.get_device_name(0)}", flush=True)
+print(
+    f"[env] torch {torch.__version__} cuda {torch.version.cuda} | {torch.cuda.get_device_name(0)}",
+    flush=True,
+)
 m = ASRModel.from_pretrained(MODEL, map_location="cpu").to(dev).eval()
 
 # ---- turn on everything the decoder is willing to hand back -------------------------------------
@@ -50,12 +59,14 @@ with open_dict(d):
         d.greedy = {}
     d.greedy.preserve_alignments = True
     d.greedy.preserve_frame_confidence = True
-    d.confidence_cfg = {"preserve_frame_confidence": True,
-                        "preserve_token_confidence": True,
-                        "preserve_word_confidence": True,
-                        "exclude_blank": True,
-                        "aggregation": "min",
-                        "method_cfg": {"name": "max_prob"}}
+    d.confidence_cfg = {
+        "preserve_frame_confidence": True,
+        "preserve_token_confidence": True,
+        "preserve_word_confidence": True,
+        "exclude_blank": True,
+        "aggregation": "min",
+        "method_cfg": {"name": "max_prob"},
+    }
 try:
     m.change_decoding_strategy(d, decoder_type="rnnt")
     enabled["requested"] = True
@@ -82,6 +93,7 @@ def hyps_of(rows, L):
 
 def snap(h):
     """Everything the hypothesis will give us, normalised to comparable python."""
+
     def listify(x):
         if x is None:
             return None
@@ -90,11 +102,14 @@ def snap(h):
         if isinstance(x, (list, tuple)):
             return [listify(i) for i in x] if x and isinstance(x[0], torch.Tensor) else list(x)
         return x
+
     return {
         "text": getattr(h, "text", None),
         "tokens": listify(getattr(h, "y_sequence", None)),
         "timestamp": listify(getattr(h, "timestamp", None)),
-        "score": float(getattr(h, "score", float("nan"))) if getattr(h, "score", None) is not None else None,
+        "score": float(getattr(h, "score", float("nan")))
+        if getattr(h, "score", None) is not None
+        else None,
         "token_confidence": listify(getattr(h, "token_confidence", None)),
         "word_confidence": listify(getattr(h, "word_confidence", None)),
     }
@@ -118,13 +133,20 @@ for rec in ds:
         break
 print(f"[data] {len(pool)} utterances", flush=True)
 
-state = {"machine": torch.cuda.get_device_name(0), "torch": torch.__version__, "nemo": __import__("nemo").__version__,
-         "model": MODEL, "batch": BATCH, "n": len(pool),
-         "control": "every row padded to one common length; batch size is the only variable",
-         "note": "text divergence is a LOWER BOUND; the finer channels are what this run adds",
-         "fields_available": None,
-         "counts": {"text": 0, "tokens": 0, "timestamp": 0, "score_exact": 0, "checked": 0},
-         "score_deltas": [], "examples": []}
+state = {
+    "machine": torch.cuda.get_device_name(0),
+    "torch": torch.__version__,
+    "nemo": __import__("nemo").__version__,
+    "model": MODEL,
+    "batch": BATCH,
+    "n": len(pool),
+    "control": "every row padded to one common length; batch size is the only variable",
+    "note": "text divergence is a LOWER BOUND; the finer channels are what this run adds",
+    "fields_available": None,
+    "counts": {"text": 0, "tokens": 0, "timestamp": 0, "score_exact": 0, "checked": 0},
+    "score_deltas": [],
+    "examples": [],
+}
 
 t0 = time.time()
 for start in range(0, len(pool) - BATCH + 1, BATCH):
@@ -141,35 +163,62 @@ for start in range(0, len(pool) - BATCH + 1, BATCH):
         diff_text = A["text"] != Bs["text"]
         diff_tok = A["tokens"] != Bs["tokens"]
         diff_ts = A["timestamp"] != Bs["timestamp"]
-        same_score = (A["score"] is not None and Bs["score"] is not None and A["score"] == Bs["score"])
+        same_score = (
+            A["score"] is not None and Bs["score"] is not None and A["score"] == Bs["score"]
+        )
         state["counts"]["text"] += diff_text
         state["counts"]["tokens"] += diff_tok
         state["counts"]["timestamp"] += diff_ts
-        state["counts"]["score_exact"] += (not same_score)
+        state["counts"]["score_exact"] += not same_score
         if A["score"] is not None and Bs["score"] is not None:
             state["score_deltas"].append(abs(A["score"] - Bs["score"]))
         if diff_text or diff_tok or diff_ts:
             mj = meta[start + j]
-            state["examples"].append({
-                "librispeech_id": mj["id"], "reference": mj["reference"],
-                "text_differs": diff_text, "tokens_differ": diff_tok, "timestamps_differ": diff_ts,
-                "alone_text": A["text"], "batch_text": Bs["text"],
-                "alone_tokens": A["tokens"], "batch_tokens": Bs["tokens"],
-                "alone_timestamp": A["timestamp"], "batch_timestamp": Bs["timestamp"],
-                "alone_score": A["score"], "batch_score": Bs["score"],
-                "alone_token_confidence": A["token_confidence"], "batch_token_confidence": Bs["token_confidence"],
-            })
-            kinds = [k for k, v in (("text", diff_text), ("tokens", diff_tok), ("timestamps", diff_ts)) if v]
+            state["examples"].append(
+                {
+                    "librispeech_id": mj["id"],
+                    "reference": mj["reference"],
+                    "text_differs": diff_text,
+                    "tokens_differ": diff_tok,
+                    "timestamps_differ": diff_ts,
+                    "alone_text": A["text"],
+                    "batch_text": Bs["text"],
+                    "alone_tokens": A["tokens"],
+                    "batch_tokens": Bs["tokens"],
+                    "alone_timestamp": A["timestamp"],
+                    "batch_timestamp": Bs["timestamp"],
+                    "alone_score": A["score"],
+                    "batch_score": Bs["score"],
+                    "alone_token_confidence": A["token_confidence"],
+                    "batch_token_confidence": Bs["token_confidence"],
+                }
+            )
+            kinds = [
+                k
+                for k, v in (("text", diff_text), ("tokens", diff_tok), ("timestamps", diff_ts))
+                if v
+            ]
             print(f"  *** {mj['id']} differs in: {', '.join(kinds)}", flush=True)
     if state["counts"]["checked"] % 320 == 0:
         c = state["counts"]
-        print(f"  {c['checked']}: text {c['text']}, tokens {c['tokens']}, timestamps {c['timestamp']}, "
-              f"score-not-exact {c['score_exact']}, {time.time()-t0:.0f}s", flush=True)
+        print(
+            f"  {c['checked']}: text {c['text']}, tokens {c['tokens']}, timestamps {c['timestamp']}, "
+            f"score-not-exact {c['score_exact']}, {time.time() - t0:.0f}s",
+            flush=True,
+        )
         json.dump(state, open(OUT, "w"), indent=1)
 
 sd = state["score_deltas"]
-state["score_delta_summary"] = ({"n": len(sd), "max": max(sd), "mean": sum(sd) / len(sd),
-                                "nonzero": sum(1 for x in sd if x != 0.0)} if sd else None)
+state["score_delta_summary"] = (
+    {
+        "n": len(sd),
+        "max": max(sd),
+        "mean": sum(sd) / len(sd),
+        "nonzero": sum(1 for x in sd if x != 0.0),
+    }
+    if sd
+    else None
+)
 state["seconds"] = round(time.time() - t0, 1)
 json.dump(state, open(OUT, "w"), indent=1)
 
@@ -182,5 +231,7 @@ print(f"differ in TIMESTAMPS             {c['timestamp']}   <- never measured be
 print(f"score not bit-identical          {c['score_exact']}")
 if state["score_delta_summary"]:
     s = state["score_delta_summary"]
-    print(f"score delta: max {s['max']:.6g}, mean {s['mean']:.6g}, nonzero in {s['nonzero']} of {s['n']}")
+    print(
+        f"score delta: max {s['max']:.6g}, mean {s['mean']:.6g}, nonzero in {s['nonzero']} of {s['n']}"
+    )
 print("=" * 66)

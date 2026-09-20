@@ -82,13 +82,19 @@ state = {
 
 for dtype in DTYPES:
     spec = NeMoPipelineSpec(
-        model=MODEL, chunk=chunk, att_context=tuple(att),
-        num_slots=max(256, BATCH * 4), batch_size=BATCH,
-        use_cuda_graphs=GRAPHS, compute_dtype=dtype, matmul_precision="highest",
+        model=MODEL,
+        chunk=chunk,
+        att_context=tuple(att),
+        num_slots=max(256, BATCH * 4),
+        batch_size=BATCH,
+        use_cuda_graphs=GRAPHS,
+        compute_dtype=dtype,
+        matmul_precision="highest",
     )
     print(f"\n[build] {dtype}, graphs={GRAPHS}", flush=True)
     pipeline = build_pipeline(spec)
     import nemo
+
     state["nemo"] = nemo.__version__
     N = int(round(float(pipeline.chunk_size_in_secs) * int(pipeline.sample_rate)))
     print(f"[build] chunk {pipeline.chunk_size_in_secs}s = {N} samples", flush=True)
@@ -98,11 +104,14 @@ for dtype in DTYPES:
         rows = []
         for a in audios:
             if pad_to is not None and len(a) < pad_to:
-                p = np.zeros(pad_to, dtype=np.float32); p[: len(a)] = a; a = p
+                p = np.zeros(pad_to, dtype=np.float32)
+                p[: len(a)] = a
+                a = p
             rows.append(np.asarray(a, dtype=np.float32))
         ids = []
         for _ in rows:
-            ids.append(nid[0]); nid[0] += 1
+            ids.append(nid[0])
+            nid[0] += 1
         steps = max(int(math.ceil(len(a) / N)) for a in rows)
         finals = {s: [] for s in ids}
         opts = ASRRequestOptions()
@@ -115,11 +124,19 @@ for dtype in DTYPES:
                 piece = a[step * N : step * N + N]
                 valid = len(piece)
                 if valid < N:
-                    b = np.zeros(N, dtype=np.float32); b[:valid] = piece; piece = b
-                frames.append(Frame(
-                    samples=torch.from_numpy(np.ascontiguousarray(piece)), stream_id=sid,
-                    is_first=(step == 0), is_last=(step == total - 1), length=valid,
-                    options=opts if step == 0 else None))
+                    b = np.zeros(N, dtype=np.float32)
+                    b[:valid] = piece
+                    piece = b
+                frames.append(
+                    Frame(
+                        samples=torch.from_numpy(np.ascontiguousarray(piece)),
+                        stream_id=sid,
+                        is_first=(step == 0),
+                        is_last=(step == total - 1),
+                        length=valid,
+                        options=opts if step == 0 else None,
+                    )
+                )
             if not frames:
                 break
             with torch.inference_mode():
@@ -135,7 +152,9 @@ for dtype in DTYPES:
     print(f"  [guard] hyp {probe[0][:70]}", flush=True)
     if not all(x.strip() for x in probe):
         raise SystemExit("[guard] FAILED: empty transcript; counts would be meaningless")
-    ov = len(set(meta[0]["reference"].split()) & set(probe[0].lower().split())) / max(1, len(set(meta[0]["reference"].split())))
+    ov = len(set(meta[0]["reference"].split()) & set(probe[0].lower().split())) / max(
+        1, len(set(meta[0]["reference"].split()))
+    )
     print(f"  [guard] overlap {ov:.2f}", flush=True)
     if ov < 0.5:
         raise SystemExit(f"[guard] FAILED: overlap {ov:.2f}")
@@ -152,11 +171,20 @@ for dtype in DTYPES:
             batched = stream([target] + nbrs, pad_to=common)[0]
             res["checked"] += 1
             if alone != batched:
-                res["divergences"].append({
-                    "n": i, "librispeech_id": meta[i]["id"], "reference": meta[i]["reference"],
-                    "alone": alone, "in_batch": batched})
+                res["divergences"].append(
+                    {
+                        "n": i,
+                        "librispeech_id": meta[i]["id"],
+                        "reference": meta[i]["reference"],
+                        "alone": alone,
+                        "in_batch": batched,
+                    }
+                )
             if (i + 1) % 16 == 0:
-                print(f"  {dtype}/{arm} {i+1}/{N_TARGETS}: {len(res['divergences'])} divergent, {time.time()-t0:.0f}s", flush=True)
+                print(
+                    f"  {dtype}/{arm} {i + 1}/{N_TARGETS}: {len(res['divergences'])} divergent, {time.time() - t0:.0f}s",
+                    flush=True,
+                )
                 state["runs"][dtype][arm] = res
                 json.dump(state, open(OUT, "w"), indent=1)
         state["runs"][dtype][arm] = res

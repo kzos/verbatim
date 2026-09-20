@@ -57,6 +57,7 @@ class ServeSettings:
     eager: bool = False
     padding: str = "fixed"
     biasing: bool = False
+    decoder_graphs: bool = False
     att_context_left: int | None = None
     language_code: str = "en-US"
     compute_dtype: str = "bfloat16"

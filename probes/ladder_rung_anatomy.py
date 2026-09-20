@@ -22,6 +22,7 @@ window a six-stream rung is 15.1 s and 106 samples, and four repeats of one
 identical rung give p95 values of 289.8, 320.3, 302.6 and 301.8 ms against the
 310 ms threshold.  With the window it is 188.6 s and 4,798 samples.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -114,9 +115,13 @@ async def main() -> int:
     )
     a = doc["after_three_chunks"]
     if a["mean_ms"] is not None:
-        print(f"  everything after:                   mean {a['mean_ms']:.1f} ms, p95 {a['p95_ms']:.1f} ms")
+        print(
+            f"  everything after:                   mean {a['mean_ms']:.1f} ms, p95 {a['p95_ms']:.1f} ms"
+        )
     early = sum(1 for x in above if x["index"] < 3)
-    print(f"  samples at or above p95: {len(above)}, of which {early} are in a session's first three chunks")
+    print(
+        f"  samples at or above p95: {len(above)}, of which {early} are in a session's first three chunks"
+    )
     return 0
 
 

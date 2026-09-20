@@ -1,0 +1,86 @@
+{
+  "record": "vb-step-phase/1",
+  "model": "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi",
+  "chunk_ms": 160,
+  "compute_dtype": "bfloat16",
+  "steps_per_batch": 40,
+  "warmup_discarded": 8,
+  "note": "encoder_step and rnnt_decoder_predictions_tensor are wrapped with device synchronisation on either side; 'rest' is the remainder of NeMo's transcribe_step, which is the per-row host work the two readings of DR-0017 disagree about",
+  "arms": [
+    {
+      "batch": 32,
+      "steps": 32,
+      "step_median_ms": 26.164285838603973,
+      "step_mean_ms": 26.351704691478517,
+      "encoder": {
+        "calls": 32,
+        "median_ms": 14.458412071689963,
+        "mean_ms": 14.549805193382781,
+        "min_ms": 14.289964223280549,
+        "max_ms": 16.246452927589417
+      },
+      "decoder": {
+        "calls": 32,
+        "median_ms": 7.007279549725354,
+        "mean_ms": 7.063963515975047,
+        "min_ms": 5.983835784718394,
+        "max_ms": 8.830734062939882
+      },
+      "rest_ms": 4.698594217188656,
+      "encoder_share": 0.5526010593553968,
+      "decoder_share": 0.2678184909364694,
+      "rest_share": 0.17958044970813372,
+      "audio": "manifest librispeech-test-other-256.jsonl"
+    },
+    {
+      "batch": 128,
+      "steps": 32,
+      "step_median_ms": 40.16376752406359,
+      "step_mean_ms": 42.001622496172786,
+      "encoder": {
+        "calls": 32,
+        "median_ms": 15.07003151345998,
+        "mean_ms": 15.554731638985686,
+        "min_ms": 14.536943985149264,
+        "max_ms": 19.045598106458783
+      },
+      "decoder": {
+        "calls": 32,
+        "median_ms": 12.258201488293707,
+        "mean_ms": 12.664310394029599,
+        "min_ms": 10.937518905848265,
+        "max_ms": 15.520985005423427
+      },
+      "rest_ms": 12.8355345223099,
+      "encoder_share": 0.37521458873177105,
+      "decoder_share": 0.3052054686092227,
+      "rest_share": 0.31957994265900624,
+      "audio": "manifest librispeech-test-other-256.jsonl"
+    },
+    {
+      "batch": 256,
+      "steps": 32,
+      "step_median_ms": 56.23328487854451,
+      "step_mean_ms": 57.041793515963946,
+      "encoder": {
+        "calls": 32,
+        "median_ms": 14.638667926192284,
+        "mean_ms": 14.942147019610275,
+        "min_ms": 14.499139972031116,
+        "max_ms": 16.855357214808464
+      },
+      "decoder": {
+        "calls": 32,
+        "median_ms": 17.984842881560326,
+        "mean_ms": 18.0967817796045,
+        "min_ms": 15.961815137416124,
+        "max_ms": 21.131744142621756
+      },
+      "rest_ms": 23.6097740707919,
+      "encoder_share": 0.26032034155233186,
+      "decoder_share": 0.31982557875473394,
+      "rest_share": 0.41985407969293426,
+      "audio": "manifest librispeech-test-other-256.jsonl"
+    }
+  ]
+}

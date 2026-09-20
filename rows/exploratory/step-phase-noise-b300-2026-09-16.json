@@ -1,0 +1,83 @@
+{
+  "record": "vb-step-phase/1",
+  "model": "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi",
+  "chunk_ms": 160,
+  "compute_dtype": "bfloat16",
+  "steps_per_batch": 24,
+  "warmup_discarded": 6,
+  "note": "encoder_step and rnnt_decoder_predictions_tensor are wrapped with device synchronisation on either side; 'rest' is the remainder of NeMo's transcribe_step, which is the per-row host work the two readings of DR-0017 disagree about",
+  "arms": [
+    {
+      "batch": 32,
+      "steps": 18,
+      "step_median_ms": 21.447786479257047,
+      "step_mean_ms": 21.43699810322788,
+      "encoder": {
+        "calls": 18,
+        "median_ms": 13.954327558167279,
+        "mean_ms": 13.948855624120268,
+        "min_ms": 13.869884889572859,
+        "max_ms": 14.083037851378322
+      },
+      "decoder": {
+        "calls": 18,
+        "median_ms": 3.345237346366048,
+        "mean_ms": 3.3531001277474894,
+        "min_ms": 3.3144140616059303,
+        "max_ms": 3.4086420200765133
+      },
+      "rest_ms": 4.1482215747237206,
+      "encoder_share": 0.6506185415293568,
+      "decoder_share": 0.15597121640507525,
+      "rest_share": 0.19341024206556792
+    },
+    {
+      "batch": 128,
+      "steps": 18,
+      "step_median_ms": 32.03509363811463,
+      "step_mean_ms": 32.58976891326407,
+      "encoder": {
+        "calls": 18,
+        "median_ms": 14.104668400250375,
+        "mean_ms": 14.327422262997263,
+        "min_ms": 13.975384179502726,
+        "max_ms": 15.857627848163247
+      },
+      "decoder": {
+        "calls": 18,
+        "median_ms": 6.6759075270965695,
+        "mean_ms": 6.772864765177171,
+        "min_ms": 6.517549976706505,
+        "max_ms": 7.504622917622328
+      },
+      "rest_ms": 11.254517710767686,
+      "encoder_share": 0.4402880341036044,
+      "decoder_share": 0.2083935699552233,
+      "rest_share": 0.3513183959411723
+    },
+    {
+      "batch": 256,
+      "steps": 18,
+      "step_median_ms": 45.684686629101634,
+      "step_mean_ms": 45.78421934921708,
+      "encoder": {
+        "calls": 18,
+        "median_ms": 14.161854982376099,
+        "mean_ms": 14.22581037816902,
+        "min_ms": 14.06144816428423,
+        "max_ms": 15.375381102785468
+      },
+      "decoder": {
+        "calls": 18,
+        "median_ms": 10.93066856265068,
+        "mean_ms": 10.993112189074358,
+        "min_ms": 10.730155045166612,
+        "max_ms": 11.417175875976682
+      },
+      "rest_ms": 20.592163084074855,
+      "encoder_share": 0.30999129089691174,
+      "decoder_share": 0.23926329300216165,
+      "rest_share": 0.4507454161009266
+    }
+  ]
+}

@@ -54,13 +54,24 @@
 > **The ratio that replaces it, on the B300, clears the bar.** NVIDIA's own file-driven script on that
 > card, same checkpoint and corpus, graphed, reaches a median **143.75** times real time
 > (`rows/exploratory/nemo-ceiling-b300-bf16-2026-09-13.json`). The MVP bar is eight tenths of that, so
-> **115 sustained streams**; the fixed arm sustains **at least 124**, a ratio of **0.863** — an eager
-> server measured against a *graphed* denominator, which is the harder comparison. It survives the
+> **115 sustained streams**; the fixed arm sustains **124**, a ratio of **0.863** — an eager server
+> measured against a *graphed* denominator, which is the harder comparison. It survives the
 > denominator's own spread: even at the ceiling's highest run of 148.97 the bar is 119.2, still under
-> 124. Two things keep this from being a verdict. The bar's verdict die is the A6000, where the
+> 124. And it is the tightest reading this project has taken: **124 / 126 / 124 across three seeds**,
+> where every earlier ladder spread by a factor of two or three.
+>
+> **124 is a ceiling, not a floor, and an earlier draft of this note had that backwards.** It said the
+> number was bounded by the configured bucket rather than by the GPU, so the true ratio was higher by
+> an unknown amount. The obvious experiment — raise the bucket — was run and went the other way:
+> doubling it to 256 **more than halved** capacity, to 46 / 46 / 19, with the criterion changing from
+> admission refusals to a blown latency budget. Fixed-shape padding pays the bucket in full on every
+> tick whatever the load, so capacity is bounded above by the bucket and falls as the padded step gets
+> dearer. The maximum is the fixed point where the two meet, and at 128 the server sustains 124 —
+> within three per cent of its own bucket. See `docs/decisions/0017`.
+>
+> One thing still keeps this from being a verdict: the bar's verdict die is the A6000, where the
 > denominator cannot be measured at all because no released wheel carries the graph path (DR-0002), so
-> this is the confirmation die standing in for it. And 124 is bounded by the configured bucket rather
-> than by the GPU, so the true ratio is higher by an unknown amount.
+> this is the confirmation die standing in for it.
 >
 > **On 2026-09-13 a search ran in which every rung evaluated all four criteria for the first time.**
 > A6000, bfloat16, eager, bucket 32, 160 ms chunk, with a batch-1 word-error reference and the machine

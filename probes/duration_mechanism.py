@@ -16,8 +16,10 @@ maximum. If divergence is unrelated to duration, the two distributions overlap.
 
 No GPU. No model. Pure arithmetic over the dataset and a run already on disk.
 """
+
 import io
 import os, json, warnings
+
 warnings.filterwarnings("ignore")
 import numpy as np, soundfile as sf, torch
 from datasets import load_dataset, Audio
@@ -56,28 +58,45 @@ for i in range(n):
 is_div = np.array([u in div_ids for u in ids])
 d_div, d_non = deficit[is_div], deficit[~is_div]
 
+
 def pct(x, q):
     return float(np.percentile(x, q))
+
 
 summary = {
     "machine": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
     "torch": torch.__version__,
     "cuda": torch.version.cuda,
     "nemo": __import__("nemo").__version__,
-    "n": int(n), "divergent": int(is_div.sum()),
-    "own_duration_s": {"divergent_median": float(np.median(dur[is_div])),
-                       "other_median": float(np.median(dur[~is_div]))},
+    "n": int(n),
+    "divergent": int(is_div.sum()),
+    "own_duration_s": {
+        "divergent_median": float(np.median(dur[is_div])),
+        "other_median": float(np.median(dur[~is_div])),
+    },
     "deficit_vs_group_max_s": {
-        "divergent": {"median": float(np.median(d_div)), "p25": pct(d_div, 25), "p75": pct(d_div, 75),
-                      "min": float(d_div.min()), "max": float(d_div.max())},
-        "other": {"median": float(np.median(d_non)), "p25": pct(d_non, 25), "p75": pct(d_non, 75),
-                  "min": float(d_non.min()), "max": float(d_non.max())},
+        "divergent": {
+            "median": float(np.median(d_div)),
+            "p25": pct(d_div, 25),
+            "p75": pct(d_div, 75),
+            "min": float(d_div.min()),
+            "max": float(d_div.max()),
+        },
+        "other": {
+            "median": float(np.median(d_non)),
+            "p25": pct(d_non, 25),
+            "p75": pct(d_non, 75),
+            "min": float(d_non.min()),
+            "max": float(d_non.max()),
+        },
     },
 }
 # how far up the deficit distribution does a typical divergent utterance sit?
 ranks = [float((d_non < x).mean()) for x in d_div]
 summary["divergent_percentile_within_others"] = {
-    "median": float(np.median(ranks)), "min": float(min(ranks)), "max": float(max(ranks)),
+    "median": float(np.median(ranks)),
+    "min": float(min(ranks)),
+    "max": float(max(ranks)),
     "above_90th": int(sum(1 for r in ranks if r >= 0.90)),
     "above_75th": int(sum(1 for r in ranks if r >= 0.75)),
 }
@@ -85,16 +104,24 @@ json.dump(summary, open(OUT, "w"), indent=1)
 
 print("\n" + "=" * 70)
 print("HOW MUCH SHORTER IS AN UTTERANCE THAN THE LONGEST IN ITS OWN BATCH GROUP?")
-print(f"  divergent  median {summary['deficit_vs_group_max_s']['divergent']['median']:.2f}s "
-      f"(p25 {summary['deficit_vs_group_max_s']['divergent']['p25']:.2f}, "
-      f"p75 {summary['deficit_vs_group_max_s']['divergent']['p75']:.2f})")
-print(f"  all others median {summary['deficit_vs_group_max_s']['other']['median']:.2f}s "
-      f"(p25 {summary['deficit_vs_group_max_s']['other']['p25']:.2f}, "
-      f"p75 {summary['deficit_vs_group_max_s']['other']['p75']:.2f})")
+print(
+    f"  divergent  median {summary['deficit_vs_group_max_s']['divergent']['median']:.2f}s "
+    f"(p25 {summary['deficit_vs_group_max_s']['divergent']['p25']:.2f}, "
+    f"p75 {summary['deficit_vs_group_max_s']['divergent']['p75']:.2f})"
+)
+print(
+    f"  all others median {summary['deficit_vs_group_max_s']['other']['median']:.2f}s "
+    f"(p25 {summary['deficit_vs_group_max_s']['other']['p25']:.2f}, "
+    f"p75 {summary['deficit_vs_group_max_s']['other']['p75']:.2f})"
+)
 r = summary["divergent_percentile_within_others"]
-print(f"\n  a divergent utterance sits at the {r['median']*100:.0f}th percentile of that deficit, typically")
+print(
+    f"\n  a divergent utterance sits at the {r['median'] * 100:.0f}th percentile of that deficit, typically"
+)
 print(f"  {r['above_75th']} of {summary['divergent']} are above the 75th percentile")
 print(f"  {r['above_90th']} of {summary['divergent']} are above the 90th percentile")
-print(f"\n  own duration: divergent median {summary['own_duration_s']['divergent_median']:.2f}s "
-      f"vs {summary['own_duration_s']['other_median']:.2f}s for the rest")
+print(
+    f"\n  own duration: divergent median {summary['own_duration_s']['divergent_median']:.2f}s "
+    f"vs {summary['own_duration_s']['other_median']:.2f}s for the rest"
+)
 print("=" * 70)

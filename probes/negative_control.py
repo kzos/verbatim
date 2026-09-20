@@ -21,6 +21,7 @@ rank among that tick's live streams, which changes as sessions come and go.
 
 Compares transcript text AND word start/end offsets, because the project promises both.
 """
+
 import io
 import os
 import json
@@ -118,7 +119,11 @@ for start in range(0, len(pool) - BATCH + 1, BATCH):
 
     for j in range(BATCH):
         alone = key(hyps([group[j]], L)[0])  # arm B
-        for arm, other in (("A_repeat", b2[j]), ("B_composition", alone), ("C_row_order", unperm[j])):
+        for arm, other in (
+            ("A_repeat", b2[j]),
+            ("B_composition", alone),
+            ("C_row_order", unperm[j]),
+        ):
             a = state["arms"][arm]
             a["checked"] += 1
             dt = b1[j][0] != other[0]
@@ -156,7 +161,11 @@ for arm, label in (
     print(f"{label:48s} text {a['text']:4d}   word-timing {a['timing']:4d}   of {a['checked']}")
 print("=" * 74)
 if state["arms"]["A_repeat"]["text"] or state["arms"]["A_repeat"]["timing"]:
-    print("ARM A IS NOT ZERO. The decode is not reproducible run to run, and every count this project")
+    print(
+        "ARM A IS NOT ZERO. The decode is not reproducible run to run, and every count this project"
+    )
     print("has published conflates batch composition with run-to-run nondeterminism.")
 else:
-    print("Arm A is clean: the decode is reproducible run to run, so arms B and C measure what they claim.")
+    print(
+        "Arm A is clean: the decode is reproducible run to run, so arms B and C measure what they claim."
+    )

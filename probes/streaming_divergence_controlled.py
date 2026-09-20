@@ -14,8 +14,10 @@ Everything else is held constant: same model, same weights, same att_context_siz
 
 If the transcripts differ, batch composition reached the transcript on the streaming path.
 """
+
 import io
 import os, json, sys, time, warnings
+
 warnings.filterwarnings("ignore")
 import numpy as np, torch
 import soundfile as sf
@@ -71,17 +73,19 @@ def stream(audios, pad_to=None):
     transcribed = None
     for step, (chunk_audio, chunk_lengths) in enumerate(iter(buf)):
         with torch.inference_mode(), torch.no_grad():
-            (pred_out, transcribed, cache_ch, cache_t, cache_len, prev_hyp) = m.conformer_stream_step(
-                processed_signal=chunk_audio,
-                processed_signal_length=chunk_lengths,
-                cache_last_channel=cache_ch,
-                cache_last_time=cache_t,
-                cache_last_channel_len=cache_len,
-                keep_all_outputs=buf.is_buffer_empty(),
-                previous_hypotheses=prev_hyp,
-                previous_pred_out=pred_out,
-                drop_extra_pre_encoded=drop_extra(step),
-                return_transcription=True,
+            (pred_out, transcribed, cache_ch, cache_t, cache_len, prev_hyp) = (
+                m.conformer_stream_step(
+                    processed_signal=chunk_audio,
+                    processed_signal_length=chunk_lengths,
+                    cache_last_channel=cache_ch,
+                    cache_last_time=cache_t,
+                    cache_last_channel_len=cache_len,
+                    keep_all_outputs=buf.is_buffer_empty(),
+                    previous_hypotheses=prev_hyp,
+                    previous_pred_out=pred_out,
+                    drop_extra_pre_encoded=drop_extra(step),
+                    return_transcription=True,
+                )
             )
     return texts_of(transcribed)
 
@@ -106,15 +110,20 @@ for rec in ds:
         break
 print(f"[data] {len(pool)} utterances held", flush=True)
 
-state = {"model": MODEL, "path": "cache-aware streaming, conformer_stream_step",
-         "machine": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
-         "torch": torch.__version__, "cuda": torch.version.cuda,
-         "nemo": __import__("nemo").__version__,
-         "att_context_size": list(att) if not isinstance(att, int) else att,
-         "batch": BATCH, "checked": 0,
-         "control": "every row zero-padded to one common length in BOTH arms, so chunk count and "
-                    "keep_all_outputs are identical; batch size is the only variable",
-         "divergences": []}
+state = {
+    "model": MODEL,
+    "path": "cache-aware streaming, conformer_stream_step",
+    "machine": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+    "torch": torch.__version__,
+    "cuda": torch.version.cuda,
+    "nemo": __import__("nemo").__version__,
+    "att_context_size": list(att) if not isinstance(att, int) else att,
+    "batch": BATCH,
+    "checked": 0,
+    "control": "every row zero-padded to one common length in BOTH arms, so chunk count and "
+    "keep_all_outputs are identical; batch size is the only variable",
+    "divergences": [],
+}
 t0 = time.time()
 
 for i in range(N_TARGETS):
@@ -125,18 +134,32 @@ for i in range(N_TARGETS):
     batched = stream([target] + neighbours, pad_to=common)[0]
     state["checked"] += 1
     if alone != batched:
-        d = {"n": i, "librispeech_id": meta[i]["id"], "reference": meta[i]["reference"],
-             "alone": alone, "in_batch": batched}
+        d = {
+            "n": i,
+            "librispeech_id": meta[i]["id"],
+            "reference": meta[i]["reference"],
+            "alone": alone,
+            "in_batch": batched,
+        }
         state["divergences"].append(d)
-        print(f"  *** STREAMING DIVERGENCE #{len(state['divergences'])} id={meta[i]['id']}", flush=True)
+        print(
+            f"  *** STREAMING DIVERGENCE #{len(state['divergences'])} id={meta[i]['id']}",
+            flush=True,
+        )
         print(f"      ref     : {d['reference']}", flush=True)
         print(f"      alone   : {alone}", flush=True)
         print(f"      batch{BATCH} : {batched}", flush=True)
     if (i + 1) % 16 == 0:
-        print(f"  {i+1}/{N_TARGETS} checked, {len(state['divergences'])} divergent, {time.time()-t0:.0f}s", flush=True)
+        print(
+            f"  {i + 1}/{N_TARGETS} checked, {len(state['divergences'])} divergent, {time.time() - t0:.0f}s",
+            flush=True,
+        )
         json.dump(state, open(OUT, "w"), indent=1)
 
 state["seconds"] = round(time.time() - t0, 1)
 json.dump(state, open(OUT, "w"), indent=1)
-print(f"\n=== {len(state['divergences'])} streaming divergences in {state['checked']} utterances "
-      f"(batch 1 vs batch {BATCH}), {state['seconds']}s ===", flush=True)
+print(
+    f"\n=== {len(state['divergences'])} streaming divergences in {state['checked']} utterances "
+    f"(batch 1 vs batch {BATCH}), {state['seconds']}s ===",
+    flush=True,
+)

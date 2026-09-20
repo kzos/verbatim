@@ -18,7 +18,11 @@ import soundfile as sf
 from datasets import Audio, load_dataset
 
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 256
-OUT = Path(os.environ.get("CORPUS_DIR", "/elm/optim/verbatim_orchestration/corpus/librispeech-test-other-256"))
+OUT = Path(
+    os.environ.get(
+        "CORPUS_DIR", "/elm/optim/verbatim_orchestration/corpus/librispeech-test-other-256"
+    )
+)
 DATASET, CONFIG, SPLIT = "openslr/librispeech_asr", "other", "test"
 WAV = OUT / "audio"
 WAV.mkdir(parents=True, exist_ok=True)
@@ -40,26 +44,32 @@ for rec in ds:
     digest = hashlib.sha256(data.tobytes()).hexdigest()
     dur = len(data) / sr
     total_s += dur
-    rows.append({
-        "audio_filepath": str(path),
-        "duration": round(dur, 4),
-        "text": rec["text"].lower(),
-        "stream_id": rec["id"],
-        "sha256": digest,
-    })
+    rows.append(
+        {
+            "audio_filepath": str(path),
+            "duration": round(dur, 4),
+            "text": rec["text"].lower(),
+            "stream_id": rec["id"],
+            "sha256": digest,
+        }
+    )
     if len(rows) >= N:
         break
 
-jsonl = OUT / "librispeech-test-other-256.jsonl"
+# The stem carries the count that was ACTUALLY written, not the one that was asked for.
+# A full-split build landing in files named "-256" would be a filename recording intent
+# instead of fact, which is the one mistake this project keeps making.
+STEM = f"librispeech-test-other-{len(rows)}"
+jsonl = OUT / f"{STEM}.jsonl"
 with jsonl.open("w", encoding="utf-8") as fh:
     for r in rows:
         fh.write(json.dumps(r, ensure_ascii=False) + "\n")
 corpus_id = "sha256:" + hashlib.sha256(jsonl.read_bytes()).hexdigest()
 
 refs = hashlib.sha256("\n".join(r["text"] for r in rows).encode()).hexdigest()
-(OUT / "librispeech-test-other-256.yaml").write_text(
+(OUT / f"{STEM}.yaml").write_text(
     f"""# Corpus record. Audio is on disk and never in git; this file plus the JSONL reproduce it.
-id: librispeech-test-other-256
+id: {STEM}
 corpus_id: {corpus_id}          # sha256 of the JSONL; stamped on every row
 dataset: {DATASET}
 config: {CONFIG}
@@ -74,9 +84,11 @@ selection: "first {len(rows)} in dataset order"
 selection_seed: null            # no sampling: order is the dataset's, unsorted
 sorted_by_duration: false       # deliberately NOT sorted; arrival order is part of the fixture
 reference_digest: {refs}
-""", encoding="utf-8")
+""",
+    encoding="utf-8",
+)
 
 print(f"utterances   {len(rows)}")
-print(f"total audio  {total_s/60:.1f} min")
+print(f"total audio  {total_s / 60:.1f} min")
 print(f"corpus_id    {corpus_id[:16]}...")
 print(f"manifest     {jsonl}")
