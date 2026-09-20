@@ -37,6 +37,31 @@
 > thing. The ceiling to expect instead is the step: a fixed-shape bucket-32 step on that card costs
 > **53 to 123 ms of the 160 ms tick budget** whether six streams or thirty sit on it.
 >
+> **WITHDRAWN 2026-09-15. Everything in the next two paragraphs is a measurement of the harness, not
+> of the server.** The ladder scored a rung whose warm-up never settled — one that opened no measurement
+> window and evaluated no criterion — as a rung the server had failed, and bisected downward from it.
+> Repeating such a rung instead (`docs/decisions/0016`) moved the B300's fixed arm from `S = 20` to
+> **124**, ending on a real criterion, with p95 256–285 ms against the 310 ms budget.
+>
+> **The A6000's 22 is NOT withdrawn, and a first draft of this note wrongly said it was.** Every failing
+> rung of that run failed on `latency`, with a real percentile — 303.8 and 307.4 ms passing at 22, then
+> 311.7 to 323.8 ms failing at 23 through 26 against a 310 ms budget. That is a monotone latency ceiling
+> and it is what the ladder exists to find. What is wrong with it is what the paragraph below already
+> says: seed 16 crosses the boundary the wrong way, so the certification is `s: 0`. **The "sobering
+> ratio" stands as a reading of the A6000 and does not generalise**, because it divides that card's
+> number by that card's ceiling and the B300 answers differently.
+>
+> **The ratio that replaces it, on the B300, clears the bar.** NVIDIA's own file-driven script on that
+> card, same checkpoint and corpus, graphed, reaches a median **143.75** times real time
+> (`rows/exploratory/nemo-ceiling-b300-bf16-2026-09-13.json`). The MVP bar is eight tenths of that, so
+> **115 sustained streams**; the fixed arm sustains **at least 124**, a ratio of **0.863** — an eager
+> server measured against a *graphed* denominator, which is the harder comparison. It survives the
+> denominator's own spread: even at the ceiling's highest run of 148.97 the bar is 119.2, still under
+> 124. Two things keep this from being a verdict. The bar's verdict die is the A6000, where the
+> denominator cannot be measured at all because no released wheel carries the graph path (DR-0002), so
+> this is the confirmation die standing in for it. And 124 is bounded by the configured bucket rather
+> than by the GPU, so the true ratio is higher by an unknown amount.
+>
 > **On 2026-09-13 a search ran in which every rung evaluated all four criteria for the first time.**
 > A6000, bfloat16, eager, bucket 32, 160 ms chunk, with a batch-1 word-error reference and the machine
 > record collected across each window. Two seeds of three put the boundary at **22 concurrent streams**,

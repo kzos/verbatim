@@ -11,10 +11,13 @@ from typing import TYPE_CHECKING
 
 from verbatim_bench import constants
 from verbatim_bench import invariance as invariance_gate
+from verbatim_bench import rareterm as rare_terms
 from verbatim_bench.client import ChunkMode
 from verbatim_bench.corpus import manifest_corpus_id
 from verbatim_bench.pace import DEFAULT_RAMP_S, LoadSpec, run_load
+from verbatim_bench.phrases import PhraseBookError, load_phrase_book
 from verbatim_bench.results import write_results
+from verbatim_bench.serverfacts import ArmContradiction, check_arm, read_server_facts
 from verbatim_bench.wer import Batch1Reference, ReferenceError, load_batch1_reference
 
 if TYPE_CHECKING:
@@ -241,7 +244,117 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     gate.add_argument("--lang", default="en-US")
     gate.add_argument(
+        "--phrases",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help=(
+            "a phrase book: run the gate with per-session phrase lists. Half the corpus "
+            "carries a list and half carries none, interleaved, and a stream keeps the "
+            "SAME list at every level so batch composition stays the only thing that "
+            "changed. Two controls run first at concurrency 1: a positive control that "
+            "must show a list changing a transcript (without it a server ignoring every "
+            "list would pass), and a negative control that records any word an unrelated "
+            "list inserted. Needs a server started with --biasing, and the record says so"
+        ),
+    )
+    gate.add_argument(
+        "--control-clips",
+        type=int,
+        default=invariance_gate.DEFAULT_CONTROL_CLIPS,
+        metavar="N",
+        help=(
+            "clips the positive control runs, each twice at concurrency 1 "
+            f"(default {invariance_gate.DEFAULT_CONTROL_CLIPS})"
+        ),
+    )
+    gate.add_argument(
         "--out", type=Path, default=None, help="write the vb-invariance/1 record here"
+    )
+
+    rare = sub.add_parser(
+        "rare-terms",
+        help=(
+            "what a phrase list buys and what it costs: term recall and false accepts "
+            "against the bare arm, swept over the boosting weight"
+        ),
+        description=(
+            "Run the corpus once per weight, every session carrying the whole term set, "
+            "and report recall on the terms the audio contains separately from the false "
+            "accepts on the ones it does not. Corpus word error rate is the wrong "
+            "instrument for biasing and rides along only as a guard. The term set is "
+            "chosen blind to the transcripts -- the corpus's own rare words by document "
+            "frequency -- because selecting terms the bare pass already failed would "
+            "guarantee the improvement and measure nothing. Needs a server with --biasing."
+        ),
+    )
+    rare.add_argument("--endpoint", required=True, help="ws://host:port/v1/stream")
+    rare.add_argument("--manifest", required=True, type=Path, help="NeMo-compatible JSONL")
+    rare.add_argument(
+        "--terms",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help=(
+            'a term set as {"name": ..., "terms": [...]}. Without it the terms are '
+            "derived from the corpus's own references by document frequency"
+        ),
+    )
+    rare.add_argument(
+        "--min-term-chars",
+        type=int,
+        default=rare_terms.DEFAULT_MIN_TERM_CHARS,
+        metavar="N",
+        help=f"shortest derived term (default {rare_terms.DEFAULT_MIN_TERM_CHARS})",
+    )
+    rare.add_argument(
+        "--max-document-frequency",
+        type=int,
+        default=rare_terms.DEFAULT_MAX_DOCUMENT_FREQUENCY,
+        metavar="N",
+        help=(
+            "a derived term appears in at most this many utterances (default "
+            f"{rare_terms.DEFAULT_MAX_DOCUMENT_FREQUENCY})"
+        ),
+    )
+    rare.add_argument(
+        "--term-rule",
+        choices=("rare", "unseen"),
+        default="rare",
+        help=(
+            "'rare' takes the corpus's rare words by document frequency; 'unseen' keeps "
+            "only those NOT in an English word list, which is the closest blind proxy here "
+            "for a name the model may never have been trained on. It matters: of 256 terms "
+            "derived by rarity alone on 2026-09-15, 245 were ordinary words like 'obliged' "
+            "and 'morning', where boosting moved recall 0.925 to 0.950; over the 11 that "
+            "were not in the word list it moved 0.583 to 0.833. Aggregating hides the second"
+        ),
+    )
+    rare.add_argument(
+        "--dictionary",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help=(
+            "the word list --term-rule unseen subtracts, one word per line; the default "
+            "tries the system lists. Which one was used is recorded, because it is part of "
+            "the selection rule"
+        ),
+    )
+    rare.add_argument(
+        "--boosts",
+        default=",".join("bare" if b is None else f"{b:g}" for b in rare_terms.DEFAULT_BOOSTS),
+        help="comma-separated weights to sweep; 'bare' sends no phrase list at all",
+    )
+    rare.add_argument("--concurrency", type=int, default=16)
+    rare.add_argument(
+        "--limit", type=int, default=None, metavar="N", help="use only the first N utterances"
+    )
+    rare.add_argument("--chunk", default="160ms")
+    rare.add_argument("--lang", default="en-US")
+    rare.add_argument("--seed", type=int, default=invariance_gate.DEFAULT_SEED)
+    rare.add_argument(
+        "--out", type=Path, default=None, help="write the vb-rare-terms/1 record here"
     )
     return parser
 
@@ -708,7 +821,20 @@ def _invariance(args: argparse.Namespace) -> int:
     import asyncio
 
     chunk = ChunkMode.parse(args.chunk)
+    book = None
     try:
+        if args.phrases is not None:
+            book = load_phrase_book(args.phrases)
+        # What the server says it is, before a byte is sent. Biasing changes the decode
+        # for every row, biased or not, so a run that sends phrase lists to a server
+        # without it -- or withholds them from a server with it -- is a different arm
+        # than the record would claim.
+        check_arm(
+            read_server_facts(args.endpoint),
+            arm="invariance",
+            declared_chunk_ms=chunk.ms,
+            declared_biasing=book is not None,
+        )
         if args.manifest is not None:
             clips = invariance_gate.manifest_corpus(args.manifest)
             corpus = {
@@ -729,12 +855,20 @@ def _invariance(args: argparse.Namespace) -> int:
             }
         levels = invariance_gate.default_levels(args.max, churn_period_s=args.churn_period_s)
         invariance_gate.check_levels(levels, len(clips))
-    except (invariance_gate.GateRefusal, ValueError) as exc:
+    except (invariance_gate.GateRefusal, ArmContradiction, PhraseBookError, ValueError) as exc:
         print(f"refused: {exc}")
         return invariance_gate.EXIT_NO_VERDICT
     report = asyncio.run(
         invariance_gate.run_gate(
-            args.endpoint, clips, levels, chunk=chunk, lang=args.lang, seed=args.seed, corpus=corpus
+            args.endpoint,
+            clips,
+            levels,
+            chunk=chunk,
+            lang=args.lang,
+            seed=args.seed,
+            corpus=corpus,
+            book=book,
+            control_clips=args.control_clips,
         )
     )
     print(report.render())
@@ -743,6 +877,109 @@ def _invariance(args: argparse.Namespace) -> int:
         args.out.write_text(json.dumps(report.to_json_dict(), indent=2) + "\n", encoding="utf-8")
         print(f"record: {args.out}")
     return report.exit_code
+
+
+def _parse_boosts(raw: str) -> tuple[float | None, ...]:
+    """`bare,1,2,4` into arms. `bare` sends no phrase list; every other entry is a weight."""
+    out: list[float | None] = []
+    for piece in raw.split(","):
+        token = piece.strip().lower()
+        if not token:
+            continue
+        if token in ("bare", "none", "off"):
+            out.append(None)
+            continue
+        try:
+            out.append(float(token))
+        except ValueError:
+            raise rare_terms.TermSetError(
+                f"invalid --boosts entry {piece!r}: expected a number or 'bare'"
+            ) from None
+    if not out:
+        raise rare_terms.TermSetError("--boosts named no arms")
+    return tuple(out)
+
+
+def _rare_terms(args: argparse.Namespace) -> int:
+    """Term recall against the bare arm, swept over the weight. 0 on a usable reading."""
+    import asyncio
+
+    chunk = ChunkMode.parse(args.chunk)
+    try:
+        boosts = _parse_boosts(args.boosts)
+        # The arms differ only in the weight, so the server has to be the same server for
+        # all of them, and it has to be one that serves phrase lists at all.
+        check_arm(
+            read_server_facts(args.endpoint),
+            arm="rare-terms",
+            declared_chunk_ms=chunk.ms,
+            declared_biasing=any(boost is not None for boost in boosts),
+        )
+        clips = invariance_gate.manifest_corpus(args.manifest)
+        if args.limit is not None:
+            clips = clips[: args.limit]
+        if not clips:
+            raise rare_terms.TermSetError("the corpus is empty")
+        if args.terms is not None:
+            term_set = rare_terms.load_term_set(args.terms)
+        else:
+            dictionary = dictionary_path = None
+            if args.term_rule == "unseen":
+                dictionary, dictionary_path = rare_terms.load_dictionary(args.dictionary)
+            derived = rare_terms.derive_terms(
+                [clip.text for clip in clips],
+                min_chars=args.min_term_chars,
+                max_document_frequency=args.max_document_frequency,
+                dictionary=dictionary,
+            )
+            if not derived:
+                raise rare_terms.TermSetError(
+                    f"no term met the {args.term_rule!r} rule: loosen --min-term-chars or "
+                    "--max-document-frequency, or pass --terms"
+                )
+            term_set = rare_terms.TermSet(
+                name=(
+                    f"derived-{args.term_rule}"
+                    f"-df{args.max_document_frequency}-c{args.min_term_chars}"
+                ),
+                terms=derived,
+                # The rule travels with the set: a term set nobody can rebuild is not a
+                # measurement anyone can repeat.
+                rule={
+                    "kind": args.term_rule,
+                    "min_chars": args.min_term_chars,
+                    "max_document_frequency": args.max_document_frequency,
+                    "dictionary": dictionary_path,
+                    "corpus_utterances": len(clips),
+                },
+            )
+    except (rare_terms.TermSetError, ArmContradiction, ValueError) as exc:
+        print(f"refused: {exc}")
+        return 2
+    report = asyncio.run(
+        rare_terms.run_rare_terms(
+            args.endpoint,
+            clips,
+            term_set,
+            chunk=chunk,
+            boosts=boosts,
+            concurrency=args.concurrency,
+            lang=args.lang,
+            seed=args.seed,
+            corpus={
+                "kind": "manifest",
+                "path": str(args.manifest),
+                "id": manifest_corpus_id(args.manifest),
+                "utterances": len(clips),
+            },
+        )
+    )
+    print(report.render())
+    if args.out is not None:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(report.to_json_dict(), indent=2) + "\n", encoding="utf-8")
+        print(f"record: {args.out}")
+    return 0 if report.usable else 2
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -766,6 +1003,8 @@ def main(argv: list[str] | None = None) -> int:
         return _ladder(args)
     if args.command == "invariance":
         return _invariance(args)
+    if args.command == "rare-terms":
+        return _rare_terms(args)
     parser.print_usage()
     return 1
 

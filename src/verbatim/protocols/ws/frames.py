@@ -22,7 +22,14 @@ from urllib.parse import parse_qsl
 from verbatim.audio.decoder import WIRE_ENCODINGS
 from verbatim.audio.resample import SUPPORTED_RATES
 from verbatim.core.errors import ErrorCode, InvalidArgument
-from verbatim.protocols.base import SAMPLE_RATE_HZ, VALID_CHUNK_MS, SessionOptions, Word
+from verbatim.protocols.base import (
+    MAX_PHRASES,
+    SAMPLE_RATE_HZ,
+    VALID_CHUNK_MS,
+    Phrase,
+    SessionOptions,
+    Word,
+)
 
 __all__ = [
     "ErrorFrame",
@@ -45,7 +52,10 @@ _SINGLETON_PARAMS: Final = (
     "interim_results",
     "encoding",
     "sample_rate_hz",
+    "boost",
 )
+#: ``phrase`` is deliberately NOT a singleton: a session's biasing list is sent as one
+#: ``phrase=`` per phrase, and the order on the wire is the order NeMo builds the tree in.
 _SUPPORTED_RATES_STR: Final = ", ".join(str(r) for r in SUPPORTED_RATES)
 _WIRE_ENCODINGS_STR: Final = ", ".join(e.lower() for e in WIRE_ENCODINGS)
 
@@ -156,9 +166,15 @@ def parse_query(raw_query: str) -> SessionOptions:
     Known parameters: ``chunk_ms`` (one of 80/160/560/1120), ``lang`` (a language
     code such as ``en-US``), ``words`` (``1`` asks for word timings on finals),
     ``interim_results`` (``0`` suppresses partials; the final is still sent),
-    ``encoding`` (``linear_pcm``, the default, ``mulaw`` or ``alaw``) and
+    ``encoding`` (``linear_pcm``, the default, ``mulaw`` or ``alaw``),
     ``sample_rate_hz`` (one of the served rates; the default is 16000, and any other
-    served rate is resampled to 16000 before the ring).
+    served rate is resampled to 16000 before the ring), ``phrase`` (repeated once per
+    biasing phrase, in the order the tree is built in) and ``boost`` (the session's
+    boosting weight for phrases, as NeMo's alpha).
+
+    ``phrase`` is the only repeatable parameter. Per-phrase weights are a Riva-only
+    capability here: ``SpeechContext`` carries one boost per group of phrases and this
+    query carries one per session.
     """
     query = raw_query[1:] if raw_query.startswith("?") else raw_query
     pairs = parse_qsl(query, keep_blank_values=True)
@@ -214,6 +230,35 @@ def parse_query(raw_query: str) -> SessionOptions:
             )
         wire_sample_rate_hz = int(raw)
 
+    boost: float | None = None
+    if "boost" in params:
+        raw = params["boost"]
+        try:
+            boost = float(raw)
+        except ValueError:
+            raise InvalidArgument(
+                f"invalid query parameter boost={raw!r}: expected a number"
+            ) from None
+
+    phrases: list[Phrase] = []
+    for key, value in pairs:
+        if key != "phrase":
+            continue
+        if not value.strip():
+            raise InvalidArgument(
+                f"invalid query parameter phrase={value!r}: a phrase needs at least one "
+                "non-space character"
+            )
+        try:
+            phrases.append(Phrase(text=value))
+        except InvalidArgument as exc:
+            raise InvalidArgument(f"invalid query parameter phrase: {exc}") from None
+    if len(phrases) > MAX_PHRASES:
+        raise InvalidArgument(
+            f"invalid query parameters: {len(phrases)} phrase values exceed the limit "
+            f"of {MAX_PHRASES} for one session"
+        )
+
     return SessionOptions(
         chunk_ms=chunk_ms,
         language_code=language_code,
@@ -221,4 +266,6 @@ def parse_query(raw_query: str) -> SessionOptions:
         word_timestamps=word_timestamps,
         wire_encoding=wire_encoding,
         wire_sample_rate_hz=wire_sample_rate_hz,
+        phrases=tuple(phrases),
+        boost=boost,
     )

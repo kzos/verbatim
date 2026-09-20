@@ -875,3 +875,84 @@ def test_a_rung_that_never_converged_records_the_series_that_did_not_converge() 
     assert rung.warm_up_readings == (310.0, 260.0, 305.0, 255.0)
     assert rung.warm_up_converged is False
     assert rung.warm_up_convergence == 0.1
+
+
+# --- a rung that took no measurement is repeated, not scored (DR-0016) ---
+
+
+def test_a_rung_that_converges_on_the_repeat_is_measured_not_scored() -> None:
+    """The regression this exists for. A single non-converging attempt used to fail the
+    rung, and the bisection read "no window opened" as "the server cannot sustain this
+    many streams" -- which on a B300 reported S of 20 / 24 / 46 across three seeds of one
+    unchanged server, every failing rung UNSTABLE with no criterion evaluated."""
+    flaked: set[int] = set()
+
+    def _run(plan: RungPlan) -> Rung:
+        if plan.n > 16:
+            return _rung(plan.n, plan.seed, passed=False, criterion=Criterion.LATENCY)
+        if plan.n == 6 and 6 not in flaked:
+            flaked.add(6)  # one transient reading, exactly as the real series showed
+            return _rung(plan.n, plan.seed, passed=False, criterion=Criterion.UNSTABLE)
+        return _rung(plan.n, plan.seed, passed=True)
+
+    outcome = run_ladder(_run, n0=6, seeds=(SEED,))
+    assert outcome.s == 16
+    assert outcome.ending_criterion is Criterion.LATENCY
+    # Both attempts at n=6 are in the record, in order: the repeat is shown, not hidden.
+    at_six = [rung for rung in outcome.rungs if rung.n == 6]
+    assert [rung.first_failing_criterion for rung in at_six] == [Criterion.UNSTABLE, None]
+
+
+def test_a_stream_count_that_never_converges_is_still_a_ceiling() -> None:
+    """The repeat must not turn a real failure into a pass. A load that cannot settle at
+    this stream count on any attempt is the server's answer, not a flake."""
+    attempts: list[int] = []
+
+    def _run(plan: RungPlan) -> Rung:
+        if plan.n <= 4:
+            return _rung(plan.n, plan.seed, passed=True)
+        attempts.append(plan.n)
+        return _rung(plan.n, plan.seed, passed=False, criterion=Criterion.UNSTABLE)
+
+    outcome = run_ladder(_run, n0=2, seeds=(SEED,))
+    assert outcome.ending_criterion is Criterion.UNSTABLE
+    assert outcome.s == 4
+    # Repeated, but bounded: each stream count above the ceiling is tried exactly
+    # LADDER_UNSTABLE_REPEATS times and no more.
+    for n in set(attempts):
+        assert attempts.count(n) == constants.LADDER_UNSTABLE_REPEATS
+
+
+def test_a_criterion_failure_is_never_repeated() -> None:
+    """Only a rung that took no measurement is repeated. A rung that measured a latency
+    and failed on it has an answer already, and re-running it would be a retry until the
+    server passes."""
+    calls: list[int] = []
+
+    def _run(plan: RungPlan) -> Rung:
+        calls.append(plan.n)
+        if plan.n <= 4:
+            return _rung(plan.n, plan.seed, passed=True)
+        return _rung(plan.n, plan.seed, passed=False, criterion=Criterion.LATENCY)
+
+    run_ladder(_run, n0=2, seeds=(SEED,))
+    for n in {n for n in calls if n > 4}:
+        assert calls.count(n) == 1
+
+
+def test_an_invalid_rung_is_still_repeated_and_still_aborts_the_run() -> None:
+    """The repeat for an unmeasured rung must not disturb the host-fitness path."""
+
+    def _run(plan: RungPlan) -> Rung:
+        return _rung(
+            plan.n,
+            plan.seed,
+            passed=False,
+            valid=False,
+            invalid_reason=InvalidReason.CGROUP_THROTTLED,
+        )
+
+    outcome = run_ladder(_run, n0=2, seeds=(SEED,))
+    assert outcome.aborted is True
+    assert outcome.abort_reason == "host unfit"
+    assert outcome.ending_criterion is Criterion.INVALID_HOST

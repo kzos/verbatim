@@ -17,7 +17,9 @@ scheduler cannot batch what it is not handed.
 from __future__ import annotations
 
 import abc
-from collections.abc import AsyncIterator
+import hashlib
+import math
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -27,17 +29,107 @@ from verbatim.core.errors import InvalidArgument
 from verbatim.core.types import Word
 
 __all__ = [
+    "MAX_BOOST",
+    "MAX_PHRASES",
+    "MAX_PHRASE_CHARS",
     "SAMPLE_RATE_HZ",
     "VALID_CHUNK_MS",
     "EngineHandle",
     "Hypothesis",
+    "Phrase",
     "SessionHandle",
     "SessionOptions",
     "Word",
+    "phrases_digest",
 ]
 
 SAMPLE_RATE_HZ: Final = 16000
 VALID_CHUNK_MS: Final = (80, 160, 560, 1120)
+
+#: The most biasing phrases one session may carry. NeMo compiles a boosting tree per
+#: session, and it compiles it on the tick thread inside a step, so the list length
+#: bounds how long one arriving session can hold a tick. A policy ceiling, not a
+#: measurement: what a list of this length costs a tick is measured by the gate.
+MAX_PHRASES: Final = 256
+#: The longest one phrase may be. NeMo divides a phrase's score by its character count,
+#: so a very long phrase scores to nothing; refusing beats silently doing so.
+MAX_PHRASE_CHARS: Final = 128
+#: The largest boosting weight this server applies, per phrase or per session.
+#:
+#: The value a client sends is used as NeMo's boosting alpha. Riva's ``SpeechContext.boost``
+#: is a different scale and nothing here has calibrated the two against each other, so a
+#: Riva client's 20 would be a NeMo alpha of 20 and would insert list words into audio
+#: that merely sounds like one. A ceiling is a policy choice and is stated as one; a
+#: number above it is refused, naming the field, rather than clamped into a transcript
+#: nobody can attribute to what was asked for.
+MAX_BOOST: Final = 10.0
+
+
+def _check_boost(field: str, value: float | None) -> None:
+    """Refuse a boost that is not a finite weight this server applies."""
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise InvalidArgument(f"invalid {field} {value!r}: expected a number")
+    if not math.isfinite(float(value)):
+        raise InvalidArgument(f"invalid {field} {value!r}: expected a finite number")
+    if not 0.0 <= float(value) <= MAX_BOOST:
+        raise InvalidArgument(
+            f"invalid {field} {value!r}: must be between 0 and {MAX_BOOST}. The value is "
+            "used as NeMo's boosting alpha, which is not Riva's boost scale; this server "
+            "refuses a weight above its ceiling rather than over-boosting a transcript"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Phrase:
+    """One biasing phrase and the weight asked for it.
+
+    ``boost`` is ``None`` for "use the session's weight, or the server's". It is carried
+    per phrase because Riva carries it per phrase: one ``RecognitionConfig`` may hold
+    several ``SpeechContext`` records, each with its own ``boost``, and NeMo takes a
+    per-phrase alpha (``PhraseItem.alpha``). Flattening them to one weight would change
+    what the client asked for without saying so.
+    """
+
+    text: str
+    boost: float | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.text, str):
+            raise InvalidArgument(f"invalid phrase {self.text!r}: expected a string")
+        if not self.text.strip():
+            raise InvalidArgument(
+                f"invalid phrase {self.text!r}: a phrase needs at least one non-space "
+                "character (NeMo divides a phrase's score by its character count)"
+            )
+        if len(self.text) > MAX_PHRASE_CHARS:
+            raise InvalidArgument(
+                f"invalid phrase of {len(self.text)} characters: the limit is {MAX_PHRASE_CHARS}"
+            )
+        _check_boost("phrase boost", self.boost)
+
+
+def phrases_digest(phrases: Sequence[Phrase], boost: float | None) -> str:
+    """A stable identity for what a session asked to be boosted, or ``""`` for nothing.
+
+    With biasing on, a transcript is a function of the audio, the checkpoint, the tree
+    and the weight. A row that records only the first two has quietly weakened its claim
+    from "same audio, same transcript" to "same audio, and whoever last edited the phrase
+    list". So the list gets a digest and the digest goes on the row.
+
+    Order is preserved rather than sorted: the list as sent is what NeMo builds the tree
+    from, and two orders are two inputs even when they are the same set.
+    """
+    if not phrases:
+        return ""
+    hasher = hashlib.sha256()
+    hasher.update(b"verbatim-phrases/1\n")
+    hasher.update(f"boost={'' if boost is None else float(boost)!r}\n".encode())
+    for phrase in phrases:
+        weight = "" if phrase.boost is None else repr(float(phrase.boost))
+        hasher.update(f"{len(phrase.text)}:{phrase.text}\t{weight}\n".encode())
+    return hasher.hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +162,15 @@ class SessionOptions:
     #: G.711 and a resample change the audio a transcript was made from.
     wire_encoding: str = "LINEAR_PCM"
     wire_sample_rate_hz: int = SAMPLE_RATE_HZ
+    #: Phrases this session asked to be boosted, in the order the client sent them.
+    #: Empty is the default and means no biasing model is built for the session at all.
+    #: A server started without biasing refuses a session that carries any, rather than
+    #: transcribing it unbiased and saying nothing: a client that asked for a vocabulary
+    #: and silently did not get one cannot tell from the transcript.
+    phrases: tuple[Phrase, ...] = ()
+    #: The session's boosting weight, used for every phrase that did not name its own.
+    #: None leaves NeMo's default in place.
+    boost: float | None = None
 
     def __post_init__(self) -> None:
         """Raise InvalidArgument for a chunk_ms outside VALID_CHUNK_MS, a wire encoding
@@ -98,6 +199,23 @@ class SessionOptions:
             raise InvalidArgument(
                 f"invalid stop_history_eou_ms {self.stop_history_eou_ms!r}: must be >= 0"
             )
+        object.__setattr__(self, "phrases", tuple(self.phrases))
+        if len(self.phrases) > MAX_PHRASES:
+            raise InvalidArgument(
+                f"invalid phrases: {len(self.phrases)} phrases exceeds the limit of "
+                f"{MAX_PHRASES} for one session"
+            )
+        for phrase in self.phrases:
+            if not isinstance(phrase, Phrase):
+                raise InvalidArgument(
+                    f"invalid phrase {phrase!r}: expected a Phrase, got {type(phrase).__name__}"
+                )
+        _check_boost("boost", self.boost)
+
+    @property
+    def biasing_digest(self) -> str:
+        """The identity of this session's phrase list, or ``""`` when it has none."""
+        return phrases_digest(self.phrases, self.boost)
 
     @property
     def chunk_samples(self) -> int:

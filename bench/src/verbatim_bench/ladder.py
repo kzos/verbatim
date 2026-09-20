@@ -480,16 +480,49 @@ def run_ladder(
     invalid_streak = 0
 
     def execute(plan: RungPlan) -> tuple[Rung | None, str | None]:
+        """Run one plan, repeating a rung that took no measurement rather than scoring it.
+
+        Two kinds of rung carry no number, and until now they were handled differently
+        for no reason that survives contact with the data. An invalid rung -- a throttled
+        cgroup, a generator that missed its schedule -- has always been re-run, because
+        the load it names is not the load that ran. A rung whose warm-up never settled
+        was scored as a failure instead, and the bisection then treated "no window
+        opened" as "the server cannot sustain this many streams". Those are different
+        statements, and the second does not follow from the first.
+
+        What the reading series showed, on a B300, 2026-09-14, across two canonical runs
+        and six seeds: every failing rung of the fixed arm ended as UNSTABLE with no
+        criterion evaluated, and the readings behind them are dominated by a single
+        transient -- `[208, 331, 199]`, `[339, 202, 334]`, `[1814, 335, 290]` -- rather
+        than by a load climbing away. One stray reading consumes two of the three chances
+        the cap allows, and whether it lands is not a property of the stream count: the
+        same seed failed to converge at 21 and 23 where another passed 46. The reported S
+        was 20 / 24 / 46 and 19 / 36 / 59 across seeds, which is a measurement of where
+        convergence first went wrong.
+
+        So a rung that opened no window is run again. Converging on either attempt makes
+        it a measured rung; failing twice at the same stream count is the server's answer
+        and keeps its UNSTABLE criterion. Both attempts are recorded, in order, so the
+        artifact shows the repeat rather than hiding it.
+        """
         nonlocal invalid_streak
+        attempts = 0
         while True:
             rung = _narrow_canonical(run_rung(plan), plan)
             all_rungs.append(rung)
-            if rung.valid:
-                invalid_streak = 0
-                return rung, None
-            invalid_streak += 1
-            if invalid_streak >= constants.LADDER_INVALID_RUNGS_TO_ABORT:
-                return None, "host unfit"
+            if not rung.valid:
+                invalid_streak += 1
+                if invalid_streak >= constants.LADDER_INVALID_RUNGS_TO_ABORT:
+                    return None, "host unfit"
+                continue
+            invalid_streak = 0
+            attempts += 1
+            if (
+                rung.first_failing_criterion is Criterion.UNSTABLE
+                and attempts < constants.LADDER_UNSTABLE_REPEATS
+            ):
+                continue
+            return rung, None
 
     def search_seed(
         seed: int, start_n: int, initial_hi: int | None = None

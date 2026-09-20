@@ -32,7 +32,7 @@ import copy
 import importlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Final
 
 from verbatim.config import SAMPLE_RATE_HZ, VALID_CHUNK_MS, ChunkMode
 from verbatim.scheduler.graph_budget import ConfigError
@@ -111,6 +111,13 @@ class NeMoPipelineSpec:
     #: Not inferable from the checkpoint here, so the caller states it.
     decoding: str = "rnnt"
     stop_history_eou_ms: int = 800
+    #: Whether NeMo's greedy batched decoder builds the per-stream biasing multi-model,
+    #: which is what carries a session's boosting tree. Off by default: turning it on
+    #: changes the decoder's arithmetic for *every* row, biased or not -- the fused path
+    #: takes a second max over the vocabulary view and a ``torch.where`` -- so a run with
+    #: it on is a different configuration, and the transcript digests of a run with it
+    #: off do not carry over.
+    enable_per_stream_biasing: bool = False
     use_cuda_graphs: bool = False
     compute_dtype: str = "bfloat16"
     device_id: int = 0
@@ -140,16 +147,39 @@ class NeMoPipelineSpec:
                 f"decoding must be rnnt or ctc, got {self.decoding!r}: NeMo's "
                 "CacheAwarePipelineBuilder has those two branches and no other"
             )
+        if self.enable_per_stream_biasing and self.decoding != "rnnt":
+            raise ConfigError(
+                "enable_per_stream_biasing needs decoding='rnnt': biasing is reached "
+                "through the RNNT decoding computer and the cache-aware CTC pipeline has "
+                "no equivalent, so a CTC server would accept phrase lists and transcribe "
+                "every session unbiased without saying so"
+            )
 
+
+#: The only RNNT strategy that carries per-stream biasing. ``RNNTDecoding`` passes
+#: ``enable_per_stream_biasing`` to the decoder in its ``greedy_batch`` branch only;
+#: plain ``greedy`` builds a ``GreedyRNNTInfer`` that never receives the flag and never
+#: raises about it, so that combination transcribes every session unbiased and says
+#: nothing. Read from NeMo's ``rnnt_decoding.py``, not assumed.
+_BIASING_STRATEGY: Final = "greedy_batch"
 
 #: ``asr.decoding`` for the RNNT branch: NeMo merges it over ``RNNTDecodingConfig``.
+#:
+#: ``boosting_tree`` and ``boosting_tree_alpha`` stay empty on purpose and are not the
+#: per-session path. They configure ONE tree for the whole process, fused into every
+#: stream's decode, so tenant A's names would be boosted inside tenant B's transcript.
+#: A session's vocabulary arrives per request instead, on ``ASRRequestOptions.biasing_cfg``.
 _RNNT_DECODING: dict[str, Any] = {
-    "strategy": "greedy_batch",
+    "strategy": _BIASING_STRATEGY,
     "preserve_alignments": False,
     "fused_batch_size": -1,
     "greedy": {
         "use_cuda_graph_decoder": False,
         "enable_per_stream_biasing": False,
+        # Pinned rather than left to NeMo's default: the label-looping decoder is the
+        # one whose fused path was read for the invariance argument, and a default that
+        # moved would move the decode with it.
+        "loop_labels": True,
         "preserve_frame_confidence": False,
         "max_symbols": 10,
         "ngram_lm_model": None,
@@ -172,10 +202,18 @@ def pipeline_config(spec: NeMoPipelineSpec) -> dict[str, Any]:
 
     What differs from NeMo's example file, and why: ``chunk_size_in_secs`` is the
     chunk mode rather than ``null``, so NeMo's shift size is the tick's; ``num_slots``
-    and ``batch_size`` are the scheduler's; per-stream biasing is off (a later task);
+    and ``batch_size`` are the scheduler's; per-stream biasing follows
+    ``spec.enable_per_stream_biasing`` and is off unless an operator asked for it;
     ITN, translation and metrics are off (not this server's); output granularity is
     ``word`` so finals carry word timings; ``return_tail_result`` stays false, the
     published streaming defect is measured with it that way.
+
+    NeMo's example file also carries ``asr.per_stream_biasing_defaults``. It is not
+    written here, because nothing on this path reads it: only ``utils/manifest_io.py``
+    and the offline example script do, and ``CacheAwarePipelineBuilder`` never does. A
+    block that looks like it sets the default ``bpe_mode`` and alpha, and does not, is
+    the same defect as a warm-up recording a capture it never made -- so the fields it
+    would have set are set per request instead, where they take effect.
 
     The ``asr.decoding`` block follows ``spec.decoding``. It is the RNNT block NeMo's
     ``get_rnnt_decoding_cfg`` merges over ``RNNTDecodingConfig``, or, for CTC, the two
@@ -192,6 +230,14 @@ def pipeline_config(spec: NeMoPipelineSpec) -> dict[str, Any]:
     else:
         # A copy: the caller gets a configuration it may edit, not this module's state.
         decoding = copy.deepcopy(_RNNT_DECODING)
+        decoding["greedy"]["enable_per_stream_biasing"] = spec.enable_per_stream_biasing
+        if spec.enable_per_stream_biasing and decoding["strategy"] != _BIASING_STRATEGY:
+            raise ConfigError(
+                f"per-stream biasing needs strategy {_BIASING_STRATEGY!r}, got "
+                f"{decoding['strategy']!r}: NeMo hands the flag to the decoder on that "
+                "branch only and raises nothing on the others, so the server would accept "
+                "phrase lists and decode every session unbiased"
+            )
     return {
         "asr": {
             "model_name": spec.model,
@@ -201,13 +247,6 @@ def pipeline_config(spec: NeMoPipelineSpec) -> dict[str, Any]:
             "use_amp": False,
             "use_cuda_graphs": spec.use_cuda_graphs,
             "decoding": decoding,
-            "per_stream_biasing_defaults": {
-                "boosting_model_alpha": 1.0,
-                "boosting_model_cfg": {
-                    "bpe_mode": "case_insensitive",
-                    "var_bpe_scoring_temp": 10.0,
-                },
-            },
         },
         "itn": {
             "input_case": "lower_cased",
@@ -384,7 +423,8 @@ def build_pipeline(
         f"chunk {spec.chunk.ms} ms "
         f"(att_context_size [{left}, {right}]), num_slots {spec.num_slots}, "
         f"batch_size {spec.batch_size}, {spec.compute_dtype} on cuda:{spec.device_id}, "
-        f"{'CUDA graphs' if spec.use_cuda_graphs else 'eager encoder step'}"
+        f"{'CUDA graphs' if spec.use_cuda_graphs else 'eager encoder step'}, "
+        f"per-stream biasing {'on' if spec.enable_per_stream_biasing else 'off'}"
     )
     try:
         omegaconf = import_module("omegaconf")

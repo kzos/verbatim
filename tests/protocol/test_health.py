@@ -48,8 +48,8 @@ def _base(server: WsServer) -> str:
     return f"http://127.0.0.1:{server.port}"
 
 
-def _reporting(engine: Engine) -> WsServer:
-    return WsServer(engine, WsServerConfig(port=0), health=HealthReporter(engine, FACTS))
+def _reporting(engine: Engine, *, facts: ServiceFacts = FACTS) -> WsServer:
+    return WsServer(engine, WsServerConfig(port=0), health=HealthReporter(engine, facts))
 
 
 async def test_readyz_follows_the_engine_from_unstarted_to_ticking_to_stopped() -> None:
@@ -230,7 +230,7 @@ async def test_metrics_is_the_exposition_with_the_facts_as_labels() -> None:
         status, headers, body = await _get(_base(server) + "/metrics")
     assert status == 200
     assert headers["Content-Type"] == "text/plain; version=0.0.4; charset=utf-8"
-    labels = 'chunk_ms="160",precision="none",execution="fake",model="fake-model"'
+    labels = 'chunk_ms="160",precision="none",execution="fake",biasing="off",model="fake-model"'
     assert f"verbatim_live_sessions{{{labels}}} 1" in body
     assert f"verbatim_up{{{labels}}} 1" in body
     assert "# TYPE verbatim_ticks_total counter" in body
@@ -252,3 +252,40 @@ async def test_the_stream_still_upgrades_and_other_paths_are_404_beside_the_repo
             assert isinstance(raw, str) and json.loads(raw)["type"] == "session"
         status, _, _ = await _get(_base(server) + "/nothing")
         assert status == 404
+
+
+async def test_readyz_reports_the_runtime_the_server_is_actually_running_on() -> None:
+    """A capacity number is not attributable without it. Two A6000 ladders on
+    2026-09-15, same card, same checkpoint, same bucket, gave boundaries of 22 and 17,
+    and neither record named a NeMo version, so the difference could be attributed to
+    nothing. The banner has always printed these; a banner is read by whoever happened
+    to be watching, and a row is read later by everyone."""
+    facts = ServiceFacts(
+        model="m",
+        chunk_ms=160,
+        precision="bfloat16",
+        execution="eager",
+        pipeline="cache_aware_rnnt",
+        nemo_version="3.0.0",
+        torch_version="2.11.0+cu128",
+        device_name="NVIDIA RTX A6000",
+    )
+    engine = stub_engine()
+    async with _reporting(engine, facts=facts) as server, engine:
+        await engine.wait_for_ticks(1)
+        status, _, body = await _get(_base(server) + "/readyz")
+    assert status == 200
+    document = json.loads(body)
+    assert document["nemo_version"] == "3.0.0"
+    assert document["torch_version"] == "2.11.0+cu128"
+    assert document["device_name"] == "NVIDIA RTX A6000"
+
+
+async def test_readyz_reports_no_runtime_rather_than_a_guess_for_the_fake() -> None:
+    engine = stub_engine()
+    async with _reporting(engine) as server, engine:
+        await engine.wait_for_ticks(1)
+        _, _, body = await _get(_base(server) + "/readyz")
+    document = json.loads(body)
+    assert document["nemo_version"] is None
+    assert document["device_name"] is None

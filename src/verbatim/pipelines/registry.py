@@ -118,6 +118,12 @@ def _cache_aware_factory(
             # eager by ``--eager`` and eager by a missing runtime stay two different
             # answers.
             use_cuda_graphs=use_cuda_graphs,
+            # The same flag NeMo's decoder was built with. The adapter then checks the
+            # built pipeline actually carries the biasing arena and refuses to start if
+            # it does not, so "the operator asked for biasing" and "this server can
+            # bias" cannot part company the way the graph flag and the graph path once
+            # did.
+            biasing=config.biasing,
         )
 
     return factory

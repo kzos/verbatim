@@ -18,9 +18,9 @@ The secondary latency is `chunk_watermark`. For chunk `i` covering audio `[a_i, 
 
 Every value in this section is a declared input, definition, threshold, or procedure constant, not a measurement. The run schema constant is `SCHEMA_VERSION_FOR_RUN = "vb-results/3"`. The latency constants are `LATENCY_PRIMARY = "word_emission"`, `LATENCY_SECONDARY = "chunk_watermark"`, `LATENCY_FALLBACK_IF_PRIMARY_UNAVAILABLE = "chunk_watermark"`, `LATENCY_DELETED = "first_partial_after_send"`, and `X_MS = 150`.
 
-The rung uses `WARM_UP_S = 60`, `WINDOW_S = 180`, `WARM_UP_READING_S = 30`, `WARM_UP_CONVERGENCE = 0.10`, and `WARM_UP_CAP_S = 120`. Two consecutive readings of the reading length within 10 percent open the window; failure to converge by the cap fails the rung as `unstable`.
+The rung uses `WARM_UP_S = 60`, `WINDOW_S = 180`, `WARM_UP_READING_S = 30`, `WARM_UP_CONVERGENCE = 0.10`, and `WARM_UP_CAP_S = 120`. Two consecutive readings of the reading length within 10 percent open the window; failure to converge by the cap opens no window, so the rung took no measurement and is repeated (`LADDER_UNSTABLE_REPEATS`). A stream count that fails to converge on every attempt fails as `unstable`; one that converges on any attempt is measured on the attempt that converged. Amended 2026-09-15, DR-0016: before it, a single non-converging attempt failed the rung and the bisection read "no window opened" as "the server cannot sustain this many streams".
 
-The ladder uses `LADDER_N0_FRACTION_OF_C = 0.5`, `LADDER_N0_WITHOUT_CEILING = 16`, `LADDER_MULTIPLIER = 1.15`, `LADDER_RESOLUTION = 0.02`, and `LADDER_INVALID_RUNGS_TO_ABORT = 2`. Its seeds are `SEEDS = (20260914, 20260915, 20260916)`, in that order and distinct, and `S_REPEATS = 3`.
+The ladder uses `LADDER_N0_FRACTION_OF_C = 0.5`, `LADDER_N0_WITHOUT_CEILING = 16`, `LADDER_MULTIPLIER = 1.15`, `LADDER_RESOLUTION = 0.02`, `LADDER_INVALID_RUNGS_TO_ABORT = 2`, and `LADDER_UNSTABLE_REPEATS = 2`. Its seeds are `SEEDS = (20260914, 20260915, 20260916)`, in that order and distinct, and `S_REPEATS = 3`.
 
 The workload constants are `SESSION_PROFILE = "m180"`, `PACING_PROFILE = "uniform"`, `FRAME_MS = 20`, `FRAME_JITTER_MS = 10` in either direction with seeded jitter, and `CHUNK_MODES_DAY21 = (160, 560)`. The jitter is a property of the workload and therefore of the wire: frame `i` is **sent** at `t0 + i * frame_period + jitter_i` and its pacing slip is graded against that same deadline, one draw per frame in frame order, so a seed reproduces the schedule. A deadline the sender does not schedule on would perturb only the metric, which is not a workload.
 
@@ -137,6 +137,7 @@ A slower die lowers `C`, so `F` rises for every host-bound arm; an A6000 pass is
   "LADDER_N0_FRACTION_OF_C": 0.5,
   "LADDER_N0_WITHOUT_CEILING": 16,
   "LADDER_RESOLUTION": 0.02,
+  "LADDER_UNSTABLE_REPEATS": 2,
   "LATENCY_DELETED": "first_partial_after_send",
   "LATENCY_FALLBACK_IF_PRIMARY_UNAVAILABLE": "chunk_watermark",
   "LATENCY_PRIMARY": "word_emission",

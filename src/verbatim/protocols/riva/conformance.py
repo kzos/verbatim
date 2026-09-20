@@ -88,8 +88,10 @@ CONFORMANCE: Final[tuple[FieldRule, ...]] = (
     FieldRule(
         "RecognitionConfig",
         "speech_contexts",
-        FieldStatus.ACCEPTED_AND_IGNORED,
-        "Accepted and ignored in this task (per-stream biasing is a later task), logged.",
+        FieldStatus.HONOURED,
+        "Every context's phrases become SessionOptions.phrases, carried into NeMo's "
+        "per-stream boosting tree. A server started without --biasing refuses a request "
+        "that carries any, rather than transcribing it unbiased and saying nothing.",
         ("pipecat",),
     ),
     FieldRule(
@@ -258,15 +260,19 @@ CONFORMANCE: Final[tuple[FieldRule, ...]] = (
     FieldRule(
         "SpeechContext",
         "phrases",
-        FieldStatus.ACCEPTED_AND_IGNORED,
-        "Accepted and ignored in this task (per-stream biasing is a later task).",
+        FieldStatus.HONOURED,
+        "Each phrase becomes one entry of the session's boosting tree, in the order "
+        "sent. An empty phrase is refused with INVALID_ARGUMENT rather than dropped.",
         ("pipecat",),
     ),
     FieldRule(
         "SpeechContext",
         "boost",
-        FieldStatus.ACCEPTED_AND_IGNORED,
-        "Accepted and ignored in this task (per-stream biasing is a later task).",
+        FieldStatus.HONOURED,
+        "Used as NeMo's per-phrase boosting alpha for that context's phrases; 0 means "
+        "the server's weight. Riva's boost scale and NeMo's alpha have not been "
+        "calibrated against each other here, which the response notes, and a value "
+        "above the server's ceiling is refused rather than clamped.",
         ("pipecat",),
     ),
     # --- SpeakerDiarizationConfig ---

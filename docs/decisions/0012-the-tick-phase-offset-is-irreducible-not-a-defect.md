@@ -61,6 +61,12 @@ latency model:
 Mean 80 ms, worst case 160 ms at the 160 ms chunk mode. No code changes. `S = 38` on the B300 and
 `S = 22` on the A6000 remain what they are; they are not corrected upward, and no criterion moves.
 
+> **Amended 2026-09-15 (DR-0016).** The last sentence is wrong about the two numbers, and right about
+> everything else. Both were the point at which warm-up convergence first failed rather than a capacity:
+> under the repeat rule the B300's fixed arm reads 124. The phase-offset argument does not depend on
+> them — it is about a per-session constant that no stream count changes — so the decision stands as
+> written and only the numbers it cites in passing are withdrawn.
+
 ## The one real lever, and why it is not taken today
 
 **Stagger sessions across sub-ticks.** Run the tick grid `k` times per chunk period and assign each

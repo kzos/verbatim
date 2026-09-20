@@ -145,6 +145,13 @@ class FakePipelineAdapter(PipelineAdapter):
     word's end time while the text stays the same. It exists for the gate's tests and
     nothing else sets it.
 
+    ``honour_phrases`` mixes a stream's OWN biasing digest into its OWN tokens, which is
+    what a boosting tree does to a transcript: same audio, different vocabulary,
+    different text. It is a per-row input and never a cross-row one, so the fake stays
+    invariant by construction while the gate's phrase-list arm has something to detect.
+    Without it the fake ignores a phrase list entirely, which is the other case worth
+    testing: the gate must then report no verdict rather than a free pass.
+
     It also records every batch shape it was called with, so a test can assert the steady
     batch never changed shape without instrumenting the scheduler.
 
@@ -176,6 +183,7 @@ class FakePipelineAdapter(PipelineAdapter):
         script_for: ScriptSource | None = None,
         partial_every: int = 1,
         batch_leak: Sequence[str] = (),
+        honour_phrases: bool = False,
         graphs: GraphCapability | None = None,
         graph_warmup_steps: int = UPSTREAM_WARMUP_STEPS,
     ) -> None:
@@ -186,6 +194,15 @@ class FakePipelineAdapter(PipelineAdapter):
                 f"invalid batch_leak {sorted(unknown)!r}: must be a subset of {sorted(BATCH_LEAKS)}"
             )
         self._batch_leak = leak
+        self._honour_phrases = bool(honour_phrases)
+        #: A stream's own biasing digest, mixed into its own tokens and nothing else's.
+        self._phrase_salt: dict[int, bytes] = {}
+        #: Streams opened carrying a non-empty phrase list, counted for the life of the
+        #: adapter. `_phrase_salt` is dropped on close, so a test that only read that
+        #: could not tell a session that sent no list from one that has since ended --
+        #: and "did this arm put phrases on the wire at all" is exactly what a harness
+        #: with a deliberately unbiased control arm has to be able to check.
+        self.phrase_sessions = 0
         self._chunk = chunk
         self._buckets = tuple(buckets)
         # What a tick "costs": an input to the scheduler's budget arithmetic,
@@ -275,8 +292,14 @@ class FakePipelineAdapter(PipelineAdapter):
 
     def open_stream(self, stream_id: int, options: SessionOptions | None) -> None:
         """Hash mode ignores this (and the None options every tests/scheduler/ Session
-        carries). Scripted mode builds one ScriptedTranscript per stream; without options
-        no script can be chosen, so that is an InvalidArgument, said loudly."""
+        carries) unless ``honour_phrases`` is set, in which case it keeps this stream's
+        own biasing digest. Scripted mode builds one ScriptedTranscript per stream;
+        without options no script can be chosen, so that is an InvalidArgument, said
+        loudly."""
+        if options is not None and options.phrases:
+            self.phrase_sessions += 1
+            if self._honour_phrases:
+                self._phrase_salt[stream_id] = options.biasing_digest.encode()
         if not self._scripted:
             return
         if options is None:
@@ -294,9 +317,10 @@ class FakePipelineAdapter(PipelineAdapter):
         self._stubs.pop(stream_id, None)
         self._last_partial.pop(stream_id, None)
         self._texts.pop(stream_id, None)
+        self._phrase_salt.pop(stream_id, None)
 
     @staticmethod
-    def _token(frame: PcmFrame, *, salt: bytes = b"") -> str:
+    def _token(frame: PcmFrame, *, salt: bytes = b"", phrase_salt: bytes = b"") -> str:
         """One deterministic word per row: a stable hash of the row's own sample bytes.
 
         Independent of the batch it was computed in and of the row's position in it.
@@ -307,7 +331,7 @@ class FakePipelineAdapter(PipelineAdapter):
         if frame.valid_samples <= 0:
             return ""
         digest = hashlib.sha256(
-            np.ascontiguousarray(frame.samples, dtype=np.float32).tobytes() + salt
+            np.ascontiguousarray(frame.samples, dtype=np.float32).tobytes() + salt + phrase_salt
         ).hexdigest()[:8]
         return f"w{digest}"
 
@@ -350,7 +374,9 @@ class FakePipelineAdapter(PipelineAdapter):
         results: list[StepResult] = []
         for frame in frames:
             history = self._texts.setdefault(frame.stream_id, [])
-            token = self._token(frame, salt=salt)
+            token = self._token(
+                frame, salt=salt, phrase_salt=self._phrase_salt.get(frame.stream_id, b"")
+            )
             if token:
                 history.append(token)
             partial = " ".join(history)

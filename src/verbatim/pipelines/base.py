@@ -178,6 +178,18 @@ class PipelineAdapter(abc.ABC):
         """
         return None
 
+    @property
+    def biasing(self) -> bool:
+        """Whether this adapter serves a session's phrase list.
+
+        False here, so an adapter that has no biasing path says so rather than staying
+        silent about it. What labels the row and the ``/readyz`` body is this, read off
+        the built adapter, not the flag the operator passed -- the same rule
+        ``docs/decisions/0011`` set for the graph path after a run announced a path it
+        was not on.
+        """
+        return False
+
     @abc.abstractmethod
     def transcribe_step(
         self, frames: Sequence[PcmFrame], *, keep_all_outputs: bool, graph: bool

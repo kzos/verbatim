@@ -19,7 +19,7 @@ apart and decide whether to retry. That is the engine's rule, not this module's.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from verbatim.config import ChunkMode, EngineConfig
@@ -56,6 +56,7 @@ class ServeSettings:
     pipeline: str = "cache_aware_rnnt"
     eager: bool = False
     padding: str = "fixed"
+    biasing: bool = False
     att_context_left: int | None = None
     language_code: str = "en-US"
     compute_dtype: str = "bfloat16"
@@ -94,6 +95,13 @@ class ServeSettings:
         if self.pipeline not in PIPELINES:
             named = ", ".join(PIPELINES)
             raise ConfigError(f"--pipeline must be one of {named}, got {self.pipeline!r}")
+        if self.biasing and self.pipeline != "cache_aware_rnnt":
+            raise ConfigError(
+                f"--biasing needs --pipeline cache_aware_rnnt, got {self.pipeline!r}: NeMo "
+                "reaches per-stream biasing through the RNNT decoding computer and no other "
+                "pipeline here has one, so the server would accept phrase lists and "
+                "transcribe every session unbiased"
+            )
         if not self.host:
             raise ConfigError("--host must not be empty")
 
@@ -115,6 +123,7 @@ def engine_config(settings: ServeSettings) -> EngineConfig:
         stop_history_eou_ms=settings.stop_history_eou_ms,
         idle_timeout_s=settings.idle_timeout_s,
         padding=settings.padding,
+        biasing=settings.biasing,
     )
 
 
@@ -135,12 +144,18 @@ async def run_server(
     shutdown: asyncio.Event,
     on_ready: Callable[[Endpoints], None] | None = None,
     execution: str | None = None,
+    runtime: Mapping[str, str | None] | None = None,
 ) -> None:
     """Serve until ``shutdown`` is set. Listeners close before the engine stops.
 
     ``execution`` names how the encoder step runs, "eager", "graph path" or "fake",
     for the health endpoints and the metrics labels; the CLI knows it exactly and
     passes it, and the default only derives it from the settings.
+
+    ``runtime`` is what the installed stack turned out to be -- ``nemo``, ``torch`` and
+    ``device`` -- which the CLI has already probed to decide the graph path. It reaches
+    ``/readyz`` so a harness can put it on the row: two ladders of the same checkpoint on
+    the same card are not comparable without it.
     """
     engine = Engine(engine_config(settings), adapter)
     if execution is None:
@@ -156,6 +171,13 @@ async def run_server(
         precision="none" if settings.pipeline == "fake" else settings.compute_dtype,
         execution=execution,
         pipeline=settings.pipeline,
+        # Read from the adapter, not from the flag: the adapter refused to start unless
+        # the built decoder actually carried the biasing arena, so this is what the
+        # server can do rather than what was asked of it.
+        biasing=bool(getattr(adapter, "biasing", False)),
+        nemo_version=(runtime or {}).get("nemo"),
+        torch_version=(runtime or {}).get("torch"),
+        device_name=(runtime or {}).get("device"),
     )
     riva = RivaServer(
         engine,

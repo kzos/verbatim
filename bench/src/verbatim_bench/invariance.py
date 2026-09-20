@@ -42,6 +42,7 @@ from verbatim_bench import constants
 from verbatim_bench.canonical import FinalRecord, finals_digest
 from verbatim_bench.client import ChunkMode, SessionResult, run_session
 from verbatim_bench.corpus import Utterance, load_manifest, read_pcm16, validate_pcm_sha256
+from verbatim_bench.phrases import PhraseBook, assign, missed_words
 from verbatim_bench.results import percentile
 
 __all__ = [
@@ -53,6 +54,7 @@ __all__ = [
     "EXIT_NO_VERDICT",
     "PAIRS",
     "SLOTS",
+    "BiasingControls",
     "Clip",
     "Divergence",
     "GateRefusal",
@@ -64,6 +66,7 @@ __all__ = [
     "default_levels",
     "diff_records",
     "manifest_corpus",
+    "run_controls",
     "run_gate",
     "run_level",
     "synthetic_corpus",
@@ -241,6 +244,9 @@ class LevelRun:
     #: Occupancy each stream met when it was admitted. Empty on a constant level, where
     #: it would be the level's own concurrency for every stream and say nothing.
     occupancy_by_stream: dict[str, int] = field(default_factory=dict)
+    #: How many of this level's streams carried a phrase list. Counted from what was
+    #: sent, so a level that reports 0 on a biasing run did not bias anything.
+    biased_streams: int = 0
 
     @property
     def digest(self) -> str | None:
@@ -407,6 +413,80 @@ def _divergences(runs: Mapping[str, LevelRun]) -> list[Divergence]:
 
 
 @dataclass(slots=True)
+class BiasingControls:
+    """Two readings that say whether the biasing run tested anything.
+
+    **The positive control** is the one that can void a run. A phrase list that reaches
+    nothing produces exactly the transcripts an unbiased server produces, so every level
+    agrees and the gate reports "invariant" for a feature that was never on. Each control
+    clip is run twice at concurrency 1 -- once bare, once boosting its own reference's
+    longer words -- and at least one pair must differ. When none does, the run has no
+    verdict, because a passing digest would be a statement about a server that ignored
+    the phrase lists.
+
+    **The negative control** is a reading, not a gate. One clip is run against an
+    unrelated list and any list word that appears in the biased transcript and not in the
+    bare one is recorded. Over-boosting inserts list words into audio that merely sounds
+    like them, and that is worth knowing and reporting whatever the invariance verdict.
+    It does not change the verdict, because it is an accuracy observation about a weight
+    and the verdict is about batch composition.
+    """
+
+    #: (stream id, bare final, biased final) for every clip the positive control ran.
+    positive: tuple[tuple[str, str, str], ...] = ()
+    #: The stream the negative control ran, the unrelated list it sent, and the words
+    #: from that list which appeared only in the biased transcript.
+    negative_stream: str = ""
+    negative_phrases: tuple[str, ...] = ()
+    inserted: tuple[str, ...] = ()
+    #: How many clips the negative control ran. Recorded because its power is entirely
+    #: exposure: clips times unrelated terms. It reported zero insertions at weight 2.0
+    #: from one clip and six terms, while a corpus-wide sweep at the same weight found
+    #: 105 false accepts. It was not wrong, it was small, and read as reassurance it gave
+    #: more than it had. The instrument for false accepts is ``verbatim-bench
+    #: rare-terms``; this stays a smoke test that says how big it is.
+    negative_clips: int = 0
+    errors: tuple[str, ...] = ()
+
+    @property
+    def ran(self) -> bool:
+        return bool(self.positive) or bool(self.negative_stream)
+
+    @property
+    def changed(self) -> int:
+        """How many control clips the phrase list actually moved."""
+        return sum(1 for _, bare, biased in self.positive if bare != biased)
+
+    @property
+    def proved_biasing(self) -> bool | None:
+        """True when a phrase list demonstrably changed a transcript; None when the
+        control could not run at all, which is not the same as it failing."""
+        if self.errors and not self.positive:
+            return None
+        if not self.positive:
+            return None
+        return self.changed > 0
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "positive": [
+                {"stream_id": stream_id, "bare": bare, "biased": biased, "changed": bare != biased}
+                for stream_id, bare, biased in self.positive
+            ],
+            "positive_clips": len(self.positive),
+            "positive_changed": self.changed,
+            "proved_biasing": self.proved_biasing,
+            "negative_stream": self.negative_stream or None,
+            "negative_clips": self.negative_clips,
+            "negative_phrases": list(self.negative_phrases),
+            "negative_inserted": list(self.inserted),
+            # Its power, as a number, so a small control is never read as a large one.
+            "negative_exposure": self.negative_clips * len(self.negative_phrases),
+            "errors": list(self.errors),
+        }
+
+
+@dataclass(slots=True)
 class GateReport:
     """The verdict and everything it rests on. `digests` maps each slot to its level's
     digest or None; `equal` is True only if all four are present and the same."""
@@ -416,9 +496,13 @@ class GateReport:
     corpus: dict[str, Any]
     runs: list[LevelRun]
     divergences: list[Divergence]
-    verdict: str  # "invariant" | "divergent" | "incomplete" | "vacuous"
+    verdict: str  # "invariant" | "divergent" | "incomplete" | "vacuous" | "uncontrolled"
     timings_present: bool
     wall_clock_s: float
+    #: The phrase book this run sent, or None for a run that sent none.
+    biasing: dict[str, Any] | None = None
+    #: What the controls showed. Empty on a run without biasing.
+    controls: BiasingControls = field(default_factory=BiasingControls)
 
     @property
     def digests(self) -> dict[str, str | None]:
@@ -466,6 +550,7 @@ class GateReport:
                     ),
                     "admission_occupancy_by_stream": run.occupancy_by_stream or None,
                     "streams": len(run.finals),
+                    "biased_streams": run.biased_streams,
                     "errors": len(run.errors),
                     "first_error": next(iter(run.errors.values()), None),
                     "digest": run.digest,
@@ -480,6 +565,8 @@ class GateReport:
                 "equal": self.equal,
             },
             "timings_present": self.timings_present,
+            "biasing": self.biasing,
+            "controls": self.controls.to_json_dict() if self.controls.ran else None,
             "divergences": [d.to_json_dict() for d in self.divergences],
             "verdict": self.verdict,
             "exit_code": self.exit_code,
@@ -493,14 +580,24 @@ class GateReport:
             f"batch-invariance gate: {self.endpoint}, chunk {self.chunk_ms} ms, corpus "
             f"{corpus.get('kind', '?')} ({corpus.get('utterances', '?')} utterances)"
         ]
+        if self.biasing is not None:
+            lines.append(
+                f"  phrase book {self.biasing.get('name', '?')} "
+                f"({self.biasing.get('digest', '')[:12]}), "
+                f"{len(self.biasing.get('lists', ()) or ())} list(s), "
+                f"boost {self.biasing.get('boost')}"
+            )
         for run in self.runs:
             digest = run.digest[:12] if run.digest else "-"
             slip = f"{run.pacing_slip_p99_ms:.1f}" if run.pacing_slip_p99_ms is not None else "-"
+            biased = f", {run.biased_streams} biased" if self.biasing is not None else ""
             lines.append(
                 f"  level {run.level.slot:<4} concurrency {run.level.concurrency:>4}: "
-                f"{len(run.finals)} streams, {len(run.errors)} errors, {run.wall_clock_s:.1f} s, "
-                f"slip p99 {slip} ms, digest {digest}"
+                f"{len(run.finals)} streams{biased}, {len(run.errors)} errors, "
+                f"{run.wall_clock_s:.1f} s, slip p99 {slip} ms, digest {digest}"
             )
+        if self.controls.ran:
+            lines.extend(self._control_lines())
         for number, d in enumerate(self.divergences, start=1):
             where = f"index {d.index}" if d.index is not None else "whitespace only"
             lines.append(
@@ -546,12 +643,57 @@ class GateReport:
                 f"FINAL: no verdict: level {failed.level.slot} had {len(failed.errors)} errored "
                 f"sessions (first: {first})"
             )
+        elif self.verdict == "uncontrolled":
+            lines.append(
+                "FINAL: no verdict: the positive control could not show a phrase list "
+                f"changing any transcript ({self.controls.changed} of "
+                f"{len(self.controls.positive)} control clips moved). A server that ignored "
+                "the phrase lists would agree at every level, so a passing digest here "
+                "would be a statement about biasing being off"
+            )
         else:
             lines.append(
                 "FINAL: no verdict: every final was empty; a server that transcribes nothing "
                 "passes for free, so this run proves nothing"
             )
         return "\n".join(lines)
+
+    def _control_lines(self) -> list[str]:
+        """The two controls, always printed, whichever way they went."""
+        controls = self.controls
+        lines: list[str] = []
+        if controls.positive:
+            lines.append(
+                f"  positive control: {controls.changed} of {len(controls.positive)} clips "
+                "changed when boosted"
+            )
+            for stream_id, bare, biased in controls.positive:
+                if bare == biased:
+                    continue
+                lines.append(f"      {stream_id} bare  : {bare}")
+                lines.append(f"      {stream_id} boosted: {biased}")
+        if controls.negative_stream:
+            if controls.inserted:
+                lines.append(
+                    f"*** NEGATIVE CONTROL: {controls.negative_clips} clip(s) gained "
+                    f"{len(controls.inserted)} word(s) from an unrelated list: "
+                    + ", ".join(sorted(set(controls.inserted)))
+                )
+                lines.append(
+                    "      the weight is inserting list words into audio that only sounds "
+                    "like them; this is an accuracy reading and does not change the verdict"
+                )
+            else:
+                exposure = controls.negative_clips * len(controls.negative_phrases)
+                lines.append(
+                    f"  negative control: {controls.negative_clips} clip(s) gained no word "
+                    f"from an unrelated list of {len(controls.negative_phrases)} "
+                    f"({exposure} clip-term exposures; a smoke test, not the false-accept "
+                    "measurement -- that is verbatim-bench rare-terms)"
+                )
+        for error in controls.errors:
+            lines.append(f"  control error: {error}")
+        return lines
 
 
 def assess(
@@ -561,15 +703,27 @@ def assess(
     chunk_ms: int = 0,
     corpus: Mapping[str, Any] | None = None,
     wall_clock_s: float = 0.0,
+    biasing: Mapping[str, Any] | None = None,
+    controls: BiasingControls | None = None,
 ) -> GateReport:
-    """The verdict over completed level runs. Pure: no server, no clock."""
+    """The verdict over completed level runs. Pure: no server, no clock.
+
+    A biasing run has a fifth way to reach no verdict. When the positive control could
+    not show a phrase list changing any transcript, the levels agreeing says nothing
+    about biasing -- a server that ignored every list would agree just as well -- so the
+    run is "uncontrolled" rather than "invariant". It is checked before the digests for
+    exactly that reason.
+    """
     by_slot = {run.level.slot: run for run in runs}
     records = [record for run in runs for record in run.finals.values()]
     timings_present = any(record.words for record in records)
+    checks = controls or BiasingControls()
     if any(run.errors for run in runs):
         verdict = "incomplete"
     elif all(record.text == "" for record in records):
         verdict = "vacuous"
+    elif checks.proved_biasing is False:
+        verdict = "uncontrolled"
     else:
         digests = [by_slot[slot].digest for slot in SLOTS if slot in by_slot]
         verdict = (
@@ -584,6 +738,8 @@ def assess(
         verdict=verdict,
         timings_present=timings_present,
         wall_clock_s=wall_clock_s,
+        biasing=dict(biasing) if biasing is not None else None,
+        controls=checks,
     )
 
 
@@ -596,17 +752,24 @@ async def run_level(
     lang: str = "en-US",
     frame_ms: int = constants.FRAME_MS,
     seed: int = DEFAULT_SEED,
+    phrases_by_stream: Mapping[str, Sequence[str]] | None = None,
+    boost: float | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> LevelRun:
     """Every clip once, in corpus order, at most `level.concurrency` in flight, each on
     its own connection at real-time pace with canonical framing. The frame jitter is
-    seeded per level and clip, so 32a and 32b arrive at different phases on purpose."""
+    seeded per level and clip, so 32a and 32b arrive at different phases on purpose.
+
+    `phrases_by_stream` is the same mapping at every level. A stream's vocabulary is an
+    input to its transcript exactly as its audio is, so holding it fixed is what leaves
+    batch composition as the only thing that changed."""
     gate: asyncio.Semaphore | ChurnGate = (
         ChurnGate(level.concurrency, level.churn_period_s, clock=clock)
         if level.churn_period_s is not None
         else asyncio.Semaphore(level.concurrency)
     )
     level_index = SLOTS.index(level.slot)
+    assigned: Mapping[str, Sequence[str]] = phrases_by_stream or {}
 
     async def one(index: int, clip: Clip) -> SessionResult:
         admission = gate.admit_as(clip.stream_id) if isinstance(gate, ChurnGate) else gate
@@ -628,6 +791,8 @@ async def run_level(
                 lang=lang,
                 frame_ms=frame_ms,
                 frame_seed=(seed * 4 + level_index) * 100_000 + index,
+                phrases=tuple(assigned.get(clip.stream_id, ())),
+                boost=boost if assigned.get(clip.stream_id) else None,
             )
 
     started = clock()
@@ -651,6 +816,171 @@ async def run_level(
         wall_clock_s=wall_clock_s,
         pacing_slip_p99_ms=percentile(slips, 99) if slips else None,
         occupancy_by_stream=(gate.occupancy_by_stream if isinstance(gate, ChurnGate) else {}),
+        biased_streams=sum(1 for clip in clips if assigned.get(clip.stream_id)),
+    )
+
+
+#: How many clips the positive control runs. Each costs two sessions at concurrency 1,
+#: and one clip moving is enough to establish that a phrase list reaches the decoder.
+DEFAULT_CONTROL_CLIPS: Final = 4
+
+#: How far past ``control_clips`` the scan may walk looking for clips the bare pass got
+#: something wrong on. A clip transcribed perfectly has nothing to prove: boosting words
+#: the model already produced changes nothing whether biasing works or not.
+CONTROL_SCAN_FACTOR: Final = 6
+
+
+async def _one(
+    endpoint: str,
+    clip: Clip,
+    *,
+    session_id: str,
+    chunk: ChunkMode,
+    lang: str,
+    frame_ms: int,
+    frame_seed: int,
+    phrases: Sequence[str] = (),
+    boost: float | None = None,
+) -> SessionResult:
+    """One clip, alone, once. The controls run at concurrency 1 on purpose: they ask
+    what a phrase list does, not what a batch does."""
+    utterance = Utterance(
+        stream_id=clip.stream_id,
+        audio_path=Path(clip.stream_id),
+        duration_s=clip.duration_s,
+        text=clip.text,
+    )
+    return await run_session(
+        endpoint,
+        session_id=session_id,
+        utterance=utterance,
+        pcm=clip.pcm,
+        chunk=chunk,
+        start_delay_s=0.0,
+        words=False,
+        lang=lang,
+        frame_ms=frame_ms,
+        frame_seed=frame_seed,
+        phrases=tuple(phrases),
+        boost=boost,
+    )
+
+
+async def run_controls(
+    endpoint: str,
+    clips: Sequence[Clip],
+    book: PhraseBook,
+    *,
+    chunk: ChunkMode,
+    lang: str = "en-US",
+    frame_ms: int = constants.FRAME_MS,
+    seed: int = DEFAULT_SEED,
+    control_clips: int = DEFAULT_CONTROL_CLIPS,
+) -> BiasingControls:
+    """The two controls, before the levels, at concurrency 1.
+
+    The positive control runs each control clip bare, takes the reference words the bare
+    pass did **not** produce, boosts those, and runs it again. At least one transcript
+    must move.
+
+    Boosting the missed words rather than the reference's rare words is the whole design,
+    and it was learned from a control that reported failure on a working server: a list
+    of words the model already emitted changes nothing, correctly, so the control was
+    measuring its own choice of words rather than the server. A clip the bare pass got
+    completely right is skipped, because it has nothing to prove either way, and the scan
+    walks further down the corpus to find one that has. A synthetic corpus has no
+    reference at all, so the control cannot be built there and the run says so rather
+    than passing quietly.
+
+    The negative control sends an unrelated list to one clip at the book's own weight and
+    records which of its words appear in the biased transcript and not the bare one.
+    """
+    positive: list[tuple[str, str, str]] = []
+    errors: list[str] = []
+    with_text = [clip for clip in clips if clip.text]
+    if not with_text:
+        errors.append(
+            "no control clip carries a reference transcript, so the positive control "
+            "could not be built: this corpus cannot show that biasing reached the decoder"
+        )
+    scanned = 0
+    for index, clip in enumerate(with_text[: control_clips * CONTROL_SCAN_FACTOR]):
+        if scanned >= control_clips:
+            break
+        bare = await _one(
+            endpoint,
+            clip,
+            session_id=f"control-bare-{index:02d}",
+            chunk=chunk,
+            lang=lang,
+            frame_ms=frame_ms,
+            frame_seed=seed * 7 + index,
+        )
+        if bare.error is not None:
+            errors.append(f"{clip.stream_id}: {bare.error}")
+            continue
+        phrases = missed_words(clip.text, bare.final_text)
+        if not phrases:
+            # The bare pass already produced every reference word. Boosting them would
+            # correctly change nothing, so this clip cannot speak either way.
+            continue
+        boosted = await _one(
+            endpoint,
+            clip,
+            session_id=f"control-boost-{index:02d}",
+            chunk=chunk,
+            lang=lang,
+            frame_ms=frame_ms,
+            frame_seed=seed * 7 + index,
+            phrases=phrases,
+            boost=book.boost,
+        )
+        if boosted.error is not None:
+            errors.append(f"{clip.stream_id}: {boosted.error}")
+            continue
+        scanned += 1
+        positive.append((clip.stream_id, bare.final_text, boosted.final_text))
+
+    negative_stream = ""
+    negative_clips = 0
+    found: list[str] = []
+    negative_clip_pool = list(clips[-control_clips:]) if book.unrelated else []
+    for index, clip in enumerate(negative_clip_pool):
+        bare = await _one(
+            endpoint,
+            clip,
+            session_id=f"control-negative-bare-{index:02d}",
+            chunk=chunk,
+            lang=lang,
+            frame_ms=frame_ms,
+            frame_seed=seed * 11 + index,
+        )
+        biased = await _one(
+            endpoint,
+            clip,
+            session_id=f"control-negative-biased-{index:02d}",
+            chunk=chunk,
+            lang=lang,
+            frame_ms=frame_ms,
+            frame_seed=seed * 11 + index,
+            phrases=book.unrelated,
+            boost=book.boost,
+        )
+        if bare.error is not None or biased.error is not None:
+            errors.append(f"negative control {clip.stream_id}: {bare.error or biased.error}")
+            continue
+        negative_clips += 1
+        negative_stream = negative_stream or clip.stream_id
+        before = set(bare.final_text.lower().split())
+        after = set(biased.final_text.lower().split())
+        found.extend(phrase for phrase in book.unrelated if phrase.lower() in after - before)
+    return BiasingControls(
+        positive=tuple(positive),
+        negative_stream=negative_stream,
+        negative_phrases=book.unrelated,
+        inserted=tuple(found),
+        negative_clips=negative_clips,
+        errors=tuple(errors),
     )
 
 
@@ -666,10 +996,17 @@ async def run_gate(
     frame_ms: int = constants.FRAME_MS,
     seed: int = DEFAULT_SEED,
     corpus: Mapping[str, Any] | None = None,
+    book: PhraseBook | None = None,
+    control_clips: int = DEFAULT_CONTROL_CLIPS,
     clock: Callable[[], float] = time.monotonic,
 ) -> GateReport:
     """The four levels in order, then the verdict. Refuses before sending a byte if the
-    corpus cannot reach the highest level."""
+    corpus cannot reach the highest level.
+
+    With a phrase ``book``, the controls run first, at concurrency 1: they are cheap and
+    they decide whether the levels mean anything, so paying for four levels before
+    finding out that the phrase lists reached nothing would be the wrong order.
+    """
     chosen = (
         tuple(levels)
         if levels is not None
@@ -678,6 +1015,21 @@ async def run_gate(
     check_levels(chosen, len(clips))
     selected_chunk = chunk if chunk is not None else ChunkMode(160)
     started = clock()
+    phrases_by_stream = assign([clip.stream_id for clip in clips], book) if book else None
+    controls = (
+        await run_controls(
+            endpoint,
+            clips,
+            book,
+            chunk=selected_chunk,
+            lang=lang,
+            frame_ms=frame_ms,
+            seed=seed,
+            control_clips=control_clips,
+        )
+        if book is not None
+        else BiasingControls()
+    )
     runs = [
         await run_level(
             endpoint,
@@ -687,6 +1039,8 @@ async def run_gate(
             lang=lang,
             frame_ms=frame_ms,
             seed=seed,
+            phrases_by_stream=phrases_by_stream,
+            boost=book.boost if book else None,
             clock=clock,
         )
         for level in chosen
@@ -697,4 +1051,6 @@ async def run_gate(
         chunk_ms=selected_chunk.ms,
         corpus=corpus or {"kind": "clips", "utterances": len(clips)},
         wall_clock_s=clock() - started,
+        biasing=book.to_json_dict() if book is not None else None,
+        controls=controls,
     )

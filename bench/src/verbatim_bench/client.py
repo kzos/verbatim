@@ -244,10 +244,17 @@ async def run_session(
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     frame_ms: int | None = None,
     frame_seed: int = 0,
+    phrases: Sequence[str] = (),
+    boost: float | None = None,
     on_open: Callable[[], None] | None = None,
     on_sample: Callable[[float, float], None] | None = None,
 ) -> SessionResult:
     """Open one WebSocket session and replay `pcm` at real-time pace.
+
+    `phrases` is this session's biasing vocabulary, sent as one `phrase=` per phrase in
+    the order given; `boost` is its weight. A server without biasing refuses a session
+    that carries any, which is deliberate: an unbiased transcript is indistinguishable
+    from a biased one, so the refusal is the only way a caller finds out.
 
     `on_open` fires once, when the server has acknowledged the session, which is the
     only moment at which this stream is demonstrably live on the server rather than
@@ -287,6 +294,8 @@ async def run_session(
             sleep=sleep,
             frame_ms=frame_ms,
             frame_seed=frame_seed,
+            phrases=phrases,
+            boost=boost,
             on_open=on_open,
             on_sample=on_sample,
         )
@@ -310,12 +319,24 @@ async def _run_session_inner(
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     frame_ms: int | None = None,
     frame_seed: int = 0,
+    phrases: Sequence[str] = (),
+    boost: float | None = None,
     on_open: Callable[[], None] | None = None,
     on_sample: Callable[[float, float], None] | None = None,
 ) -> SessionResult:
     if start_delay_s > 0:
         await sleep(start_delay_s)
-    query = urlencode({"chunk_ms": chunk.ms, "lang": lang, "words": "1" if words else "0"})
+    params: list[tuple[str, str]] = [
+        ("chunk_ms", str(chunk.ms)),
+        ("lang", lang),
+        ("words", "1" if words else "0"),
+    ]
+    # One `phrase=` per phrase, in order: the order on the wire is the order the server
+    # builds the tree in, so a re-run with the same list sends the same request.
+    params.extend(("phrase", text) for text in phrases)
+    if boost is not None:
+        params.append(("boost", repr(float(boost))))
+    query = urlencode(params)
     url = f"{endpoint}?{query}"
     effective_frame_ms = frame_ms if frame_ms is not None else chunk.ms
     if effective_frame_ms <= 0:
