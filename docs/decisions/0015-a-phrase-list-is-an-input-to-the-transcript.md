@@ -218,8 +218,66 @@ occurrences — 38 percent of the gap — at roughly one false accept per word r
 That is a real gain and a modest one, and it is under the half-the-gap line the beam-search
 trigger names. Whether the residual sixteen are deletions rather than substitutions is the
 other half of that trigger and has not been checked; it is the next measurement, not a
-claim.
+claim. **Both halves have since been measured on the population this feature is actually for,
+and the section below supersedes this paragraph.**
 
 The invariance arms in the table above were run at 2.0. They are unaffected: the gate
 compares digests across batch compositions and is not an accuracy measurement. A re-run at
 1.0 would produce a different digest and the same verdict.
+
+## What it buys on the population it is aimed at — full corpus, 2026-09-20
+
+The section above measured a term set chosen by document frequency, and that turned out to be
+the wrong population. Of its 256 terms, 245 were ordinary words like `obliged` and `morning`.
+The feature is not for those. `--term-rule unseen` keeps only terms that are **not** in an
+English word list, which is the closest blind proxy this project has for a name the model may
+never have been trained on.
+
+Run over the whole 2,939-utterance split — 256 such terms, the whole list sent to every
+session, one pass per weight, B300, bfloat16, eager
+(`rows/exploratory/rare-terms-unseen-full-b300-2026-09-20.json`):
+
+| weight | recall | hits | missed | false accepts | precision | WER |
+|---|---|---|---|---|---|---|
+| bare | 0.458 | 140 | 166 | 12 | 0.921 | 0.0710 |
+| **1.0** | **0.709** | **217** | **89** | **64** | **0.772** | **0.0719** |
+| 2.0 | 0.755 | 231 | 75 | 820 | 0.220 | 0.0929 |
+| 4.0 | 0.703 | 215 | 91 | 5887 | 0.035 | 0.2710 |
+
+**The model gets fewer than half of these right unaided: 0.458, against 0.911 on the
+rarity-derived set.** Boosting at the knee moves that to 0.709 — **77 of 166 missing
+occurrences recovered, 46 per cent of the gap, at 0.68 false accepts per occurrence
+recovered.**
+
+So the earlier headline understated the feature by measuring it on words the model already
+knew, and it also flattered the cost: roughly one false accept per word recovered there,
+0.68 here, against a gap six times larger. This is the number that should be quoted.
+
+**The knee is still 1.0, and the rule that says so has to be stated explicitly.** 2.0 has the
+higher recall — 0.755 against 0.709 — so any rule that simply maximises recall picks 2.0. It
+should not. 2.0 buys 0.046 recall for **12.8 times the false accepts** (64 to 820), collapses
+precision from 0.772 to 0.220, and costs 29 per cent relative word error rate. The knee is the
+last weight before precision collapses, not the weight with the highest recall. The audit's
+helper previously encoded the recall-maximising rule, which was harmless on the 2026-09-15 row
+and wrong in general; it now encodes the stated rule.
+
+**The residual is substitutions, not deletions, which closes the other half of the beam-search
+trigger — and answers it "no".** Classified: bare 1 deletion and 165 substitutions; at the knee
+1 deletion and 88 substitutions. A deletion is out of reach of any weight, because greedy
+boosting takes the blank-versus-emit decision from the *unbiased* argmax and can respell but
+never un-blank. These are not deletions, so the residual is reachable in principle. And yet no
+usable weight reaches it: the weight that would win those 88 also wins 756 wrong ones.
+**The limit here is not the decoder's blank-versus-emit decision, so beam search is not what
+this points at.** It points at per-term weights, or at a better-chosen list, and neither is
+measured.
+
+**What the proxy actually selects, said plainly so the number is not read as more than it is.**
+Out-of-dictionary is not the same as "name". The 256 terms are mostly genuine proper nouns —
+`bassorah`, `lysimachus`, `arkadyevitch`, `athelstane`, `beaumanoir`, `hudspeth`, `snetkov` —
+but the rule also catches British spellings the model certainly knows (`realised`, `neighbour`,
+`favourite`, `offence`), archaic verb forms from a literary corpus (`burneth`, `wotteth`,
+`betideth`), and the recognizer's own renderings of dialect (`orficer`, `tolerble`,
+`lizabeth`). The word list that was subtracted is recorded in the row, because which list it
+was **is** part of the selection rule. A name-only set would be a different measurement, and
+this one must not be quoted as though it were that.
+

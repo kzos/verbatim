@@ -53,6 +53,33 @@ class Audit:
             self.failures.append(f"{where}: record={record!r} published={published!r}")
 
 
+#: Below this, more than half of what the phrase list puts into a transcript is wrong. No
+#: recall figure makes that a usable setting, so the knee is the best weight that stays
+#: above it rather than the weight with the highest recall outright.
+KNEE_MIN_PRECISION = 0.5
+
+
+def knee(rare: dict[str, Any]) -> float:
+    """The shipped weight a sweep supports: highest recall among the weights whose precision
+    has not collapsed.
+
+    This previously maximised recall and broke ties on false accepts. That was harmless on the
+    2026-09-15 rarity row, where the highest-recall weight was also the sane one, and wrong in
+    general: on the 2026-09-20 unseen-name row the highest recall belongs to 2.0, which buys
+    0.046 recall for 12.8x the false accepts and drops precision from 0.772 to 0.220. A rule
+    that picks that weight is not describing a knee.
+    """
+    usable = [
+        arm
+        for arm in rare["arms"]
+        if arm["boost"] is not None and arm["terms"]["precision"] >= KNEE_MIN_PRECISION
+    ]
+    if not usable:
+        raise SystemExit("no weight in this sweep keeps precision above the floor")
+    best = max(usable, key=lambda arm: (arm["terms"]["recall"], -arm["terms"]["false_accepts"]))
+    return best["boost"]
+
+
 def per_level_divergences(document: dict[str, Any]) -> dict[str, int]:
     return {
         slot: len(
@@ -117,11 +144,7 @@ def main() -> int:
 
     # The shipped default must be the knee the sweep found, not a number someone liked.
     book = json.loads((ROOT / "corpora" / "phrasebooks" / "domains-v1.json").read_text())
-    best = max(
-        (arm for arm in rare["arms"] if arm["boost"] is not None),
-        key=lambda arm: (arm["terms"]["recall"], -arm["terms"]["false_accepts"]),
-    )
-    a.claim("shipped phrase-book weight is the measured knee", book["boost"], best["boost"])
+    a.claim("shipped phrase-book weight is the measured knee", book["boost"], knee(rare))
 
     # --- DR-0015: the invariance arms ----------------------------------------------
     a.claim(
@@ -134,6 +157,72 @@ def main() -> int:
         per_level_divergences(a.load("invariance-biasing-ragged-b300-2026-09-14.json")),
         {"32a": 117, "32b": 117, "max": 89},
     )
+
+    # --- DR-0015: what biasing buys on the population it is aimed at (full corpus) ---
+    unseen = a.load("rare-terms-unseen-full-b300-2026-09-20.json")
+    a.claim("DR-0015 unseen run is usable", unseen["usable"], True)
+    a.claim("DR-0015 unseen list reached the decoder", unseen["reached_the_decoder"], True)
+    a.claim("DR-0015 unseen corpus size", unseen["corpus"]["utterances"], 2939)
+    a.claim("DR-0015 unseen rule", unseen["term_set"]["rule"]["kind"], "unseen")
+    a.claim("DR-0015 unseen term count", len(unseen["term_set"]["terms"]), 256)
+    unseen_arms = {
+        ("bare" if arm["boost"] is None else arm["boost"]): arm for arm in unseen["arms"]
+    }
+    for weight, recall, hits, misses, false_accepts, precision, wer in (
+        ("bare", 0.458, 140, 166, 12, 0.921, 0.0710),
+        (1.0, 0.709, 217, 89, 64, 0.772, 0.0719),
+        (2.0, 0.755, 231, 75, 820, 0.220, 0.0929),
+        (4.0, 0.703, 215, 91, 5887, 0.035, 0.2710),
+    ):
+        terms = unseen_arms[weight]["terms"]
+        a.claim(f"DR-0015 unseen w={weight} recall", round(terms["recall"], 3), recall, 0.0005)
+        a.claim(f"DR-0015 unseen w={weight} hits", terms["hits"], hits)
+        a.claim(f"DR-0015 unseen w={weight} misses", terms["misses"], misses)
+        a.claim(f"DR-0015 unseen w={weight} false accepts", terms["false_accepts"], false_accepts)
+        a.claim(
+            f"DR-0015 unseen w={weight} precision", round(terms["precision"], 3), precision, 0.0005
+        )
+        a.claim(
+            f"DR-0015 unseen w={weight} WER", round(unseen_arms[weight]["wer"], 4), wer, 0.00005
+        )
+
+    # The headline: the model gets fewer than half of these right unaided, and the knee
+    # recovers 46% of the gap at 0.68 false accepts per occurrence recovered.
+    bare_t, knee_t = unseen_arms["bare"]["terms"], unseen_arms[1.0]["terms"]
+    recovered = knee_t["hits"] - bare_t["hits"]
+    extra_false = knee_t["false_accepts"] - bare_t["false_accepts"]
+    a.claim("DR-0015 unseen occurrences recovered at the knee", recovered, 77)
+    a.claim(
+        "DR-0015 unseen share of the gap closed",
+        round(recovered / bare_t["misses"] * 100),
+        46,
+    )
+    a.claim(
+        "DR-0015 unseen false accepts per occurrence recovered",
+        round(extra_false / recovered, 2),
+        0.68,
+        0.005,
+    )
+    # And the knee rule must still choose the shipped weight on THIS row, where a
+    # recall-maximising rule would have chosen 2.0.
+    a.claim("DR-0015 the knee rule picks the shipped weight on the unseen row", knee(unseen), 1.0)
+    a.claim(
+        "DR-0015 a recall-maximising rule would have picked 2.0 here",
+        max(
+            (arm for arm in unseen["arms"] if arm["boost"] is not None),
+            key=lambda arm: arm["terms"]["recall"],
+        )["boost"],
+        2.0,
+    )
+    # The residual is substitutions, so the beam-search trigger is NOT fired.
+    for weight, deletions, substitutions in (("bare", 1, 165), (1.0, 1, 88)):
+        misses = unseen_arms[weight]["misses_by_kind"]
+        a.claim(f"DR-0015 unseen w={weight} residual deletions", misses["deletion"], deletions)
+        a.claim(
+            f"DR-0015 unseen w={weight} residual substitutions",
+            misses["substitution"],
+            substitutions,
+        )
 
     # --- DR-0017: the bucket is the capacity knob, and 128 is its optimum ----------
     b256 = a.load("ladder-b300-fixed-bucket256-2026-09-15.json")
