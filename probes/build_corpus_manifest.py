@@ -56,16 +56,20 @@ for rec in ds:
     if len(rows) >= N:
         break
 
-jsonl = OUT / "librispeech-test-other-256.jsonl"
+# The stem carries the count that was ACTUALLY written, not the one that was asked for.
+# A full-split build landing in files named "-256" would be a filename recording intent
+# instead of fact, which is the one mistake this project keeps making.
+STEM = f"librispeech-test-other-{len(rows)}"
+jsonl = OUT / f"{STEM}.jsonl"
 with jsonl.open("w", encoding="utf-8") as fh:
     for r in rows:
         fh.write(json.dumps(r, ensure_ascii=False) + "\n")
 corpus_id = "sha256:" + hashlib.sha256(jsonl.read_bytes()).hexdigest()
 
 refs = hashlib.sha256("\n".join(r["text"] for r in rows).encode()).hexdigest()
-(OUT / "librispeech-test-other-256.yaml").write_text(
+(OUT / f"{STEM}.yaml").write_text(
     f"""# Corpus record. Audio is on disk and never in git; this file plus the JSONL reproduce it.
-id: librispeech-test-other-256
+id: {STEM}
 corpus_id: {corpus_id}          # sha256 of the JSONL; stamped on every row
 dataset: {DATASET}
 config: {CONFIG}

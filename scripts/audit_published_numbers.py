@@ -223,6 +223,79 @@ def main() -> int:
         "invariant",
     )
 
+    # --- DR-0017: where a FINAL's latency goes, and the gap that section left open --
+    decomp = a.load("latency-decomposition-b300-2026-09-20.json")
+    arms = {arm["bucket"]: arm for arm in decomp["arms"]}
+    for bucket, total, wait, step, edge, overhead in (
+        (
+            256,
+            (167.5, 257.5, 478.4),
+            (81.2, 155.9, 244.2),
+            (53.6, 62.3, 376.9),
+            (22.9, 28.2, 31.1),
+            (2.0, 14.5, 243.7),
+        ),
+        (
+            128,
+            (160.7, 237.7, 360.1),
+            (82.5, 156.3, 258.4),
+            (46.1, 55.6, 59.4),
+            (26.0, 33.0, 50.2),
+            (2.2, 3.0, 55.5),
+        ),
+    ):
+        terms = arms[bucket]["terms"]
+        for name, published in (
+            ("total_ms", total),
+            ("wait_ms", wait),
+            ("step_ms", step),
+            ("edge_ms", edge),
+            ("overhead_ms", overhead),
+        ):
+            for slot, value in zip(("p50", "p95", "p99"), published, strict=True):
+                a.claim(
+                    f"DR-0017 {name} {slot} at bucket {bucket}",
+                    round(terms[name][slot], 1),
+                    value,
+                    0.05,
+                )
+        # The join is only trustworthy if nothing fell out of it. A row with unjoined or
+        # impossible sessions is a row whose decomposition was computed on a subset it
+        # did not name, which is how this probe's first run produced a 91-second wait.
+        arm = arms[bucket]
+        a.claim(f"DR-0017 bucket {bucket} joined every session", arm["sessions_unjoined"], 0)
+        a.claim(f"DR-0017 bucket {bucket} no impossible wait", arm["sessions_impossible_wait"], 0)
+        # And the five terms must close on the total, or one of them is absorbing the others.
+        a.claim(
+            f"DR-0017 bucket {bucket} residual closes",
+            round(terms["rest_ms"]["p95"], 1),
+            0.0,
+            0.05,
+        )
+
+    # The finding: at p95 the grid wait is most of the latency, and it does not move with
+    # the bucket. That is DR-0012's phase offset, recovered by a different instrument.
+    at256 = arms[256]["at_p95_session"]
+    a.claim(
+        "DR-0017 the wait is 69% of the p95 latency at bucket 256",
+        round(at256["wait_ms"] / at256["total_ms"] * 100),
+        69,
+    )
+    a.claim(
+        "DR-0017 the wait does not depend on the bucket",
+        abs(arms[256]["terms"]["wait_ms"]["p95"] - arms[128]["terms"]["wait_ms"]["p95"]) < 2.0,
+        True,
+    )
+    # And what separates the buckets is the step's TAIL, not its median.
+    for bucket, ratio in ((256, 7.0), (128, 1.3)):
+        terms = arms[bucket]["terms"]["step_ms"]
+        a.claim(
+            f"DR-0017 step p99/p50 at bucket {bucket}",
+            round(terms["p99"] / terms["p50"], 1),
+            ratio,
+            0.05,
+        )
+
     # --- DR-0016 and the README: the A6000 is NOT withdrawn ------------------------
     a6000 = a.load("ladder-a6000-bf16-eager-2026-09-13-all-criteria.json")
     a.claim(

@@ -1,0 +1,170 @@
+{
+  "record": "vb-latency-decomposition/1",
+  "model": "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi",
+  "chunk_ms": 160,
+  "compute_dtype": "bfloat16",
+  "window_s": 180.0,
+  "warm_up_s": 60.0,
+  "seed": 20260920,
+  "manifest": "/opt/verbatim/corpus/librispeech-test-other-256/librispeech-test-other-256.jsonl",
+  "question": "DR-0017 left open why bucket 256 blew the latency budget at 46 streams when its steady step costs 56 ms. This splits a final's latency into the grid wait, the tick overhead, the steady step, the serialised edge batches, and the publish.",
+  "note": "In-process. No socket is in the path, which omits time the ladder's client pays; but the feeders share a GIL with the tick thread, which adds time the ladder's client does not. The two push opposite ways and neither is measured here, so this is NOT a bound on the ladder's figure in either direction -- it is a decomposition of the engine's own latency, and only the SHARES should be read across to the ladder. wait/step/edge/overhead come from the tick loop's own recorded boundaries and TickStats; rest is the residual.",
+  "arms": [
+    {
+      "bucket": 256,
+      "streams": 46,
+      "sessions_measured": 1191,
+      "sessions_unjoined": 0,
+      "sessions_refused": 0,
+      "sessions_impossible_wait": 0,
+      "impossible_wait_examples_ms": [],
+      "terms": {
+        "total_ms": {
+          "n": 1191,
+          "p50": 167.51190810464323,
+          "p95": 257.513236021623,
+          "p99": 478.4127571620047,
+          "mean": 173.77191025581553,
+          "max": 648.7358980812132
+        },
+        "wait_ms": {
+          "n": 1191,
+          "p50": 81.186942756176,
+          "p95": 155.9361240360886,
+          "p99": 244.24287606962025,
+          "mean": 79.76959867553049,
+          "max": 305.85977295413613
+        },
+        "overhead_ms": {
+          "n": 1191,
+          "p50": 2.01782607473433,
+          "p95": 14.537333277985454,
+          "p99": 243.68154490366578,
+          "mean": 9.548709273109983,
+          "max": 323.3771219383925
+        },
+        "step_ms": {
+          "n": 1191,
+          "p50": 53.59915620647371,
+          "p95": 62.28167796507478,
+          "p99": 376.89672294072807,
+          "mean": 60.89530123701111,
+          "max": 448.88837495818734
+        },
+        "edge_ms": {
+          "n": 1191,
+          "p50": 22.921605966985226,
+          "p95": 28.23411813005805,
+          "p99": 31.146729132160544,
+          "mean": 23.543044257327278,
+          "max": 38.60891587100923
+        },
+        "rest_ms": {
+          "n": 1191,
+          "p50": 0.01429906114935875,
+          "p95": 0.019273022189736366,
+          "p99": 0.023188069462776184,
+          "mean": 0.015256812836658945,
+          "max": 0.041190069168806076
+        }
+      },
+      "edge_batches_per_tick": {
+        "n": 1711,
+        "p50": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "mean": 0.592635885447107,
+        "max": 2.0
+      },
+      "ticks": 1711,
+      "at_p95_session": {
+        "total_ms": 257.513236021623,
+        "wait_ms": 178.2871091272682,
+        "overhead_ms": 1.8341750837862492,
+        "step_ms": 53.193728905171156,
+        "edge_ms": 24.184765992686152,
+        "rest_ms": 0.013456912711262703,
+        "edge_batches": 1.0,
+        "live_rows": 46.0
+      }
+    },
+    {
+      "bucket": 128,
+      "streams": 124,
+      "sessions_measured": 3210,
+      "sessions_unjoined": 0,
+      "sessions_refused": 0,
+      "sessions_impossible_wait": 0,
+      "impossible_wait_examples_ms": [],
+      "terms": {
+        "total_ms": {
+          "n": 3210,
+          "p50": 160.71839001961052,
+          "p95": 237.6630378421396,
+          "p99": 360.1115981582552,
+          "mean": 163.85540512834336,
+          "max": 527.5958031415939
+        },
+        "wait_ms": {
+          "n": 3210,
+          "p50": 82.49724912457168,
+          "p95": 156.3458468299359,
+          "p99": 258.36581690236926,
+          "mean": 84.12642032299713,
+          "max": 319.66192997060716
+        },
+        "overhead_ms": {
+          "n": 3210,
+          "p50": 2.178687369450927,
+          "p95": 2.970393979921937,
+          "p99": 55.473004933446646,
+          "mean": 3.6974810350343956,
+          "max": 228.2841531559825
+        },
+        "step_ms": {
+          "n": 3210,
+          "p50": 46.12196609377861,
+          "p95": 55.60632306151092,
+          "p99": 59.43239200860262,
+          "mean": 48.96819485232489,
+          "max": 400.74156201444566
+        },
+        "edge_ms": {
+          "n": 3210,
+          "p50": 25.95986006781459,
+          "p95": 32.99187798984349,
+          "p99": 50.2411900088191,
+          "mean": 27.047399776361047,
+          "max": 57.924386113882065
+        },
+        "rest_ms": {
+          "n": 3210,
+          "p50": 0.014977063983678818,
+          "p95": 0.02022203989326954,
+          "p99": 0.026748981326818466,
+          "mean": 0.015909141625895677,
+          "max": 0.03741099499166012
+        }
+      },
+      "edge_batches_per_tick": {
+        "n": 1649,
+        "p50": 1.0,
+        "p95": 1.0,
+        "p99": 1.0,
+        "mean": 0.897513644633111,
+        "max": 2.0
+      },
+      "ticks": 1649,
+      "at_p95_session": {
+        "total_ms": 237.6630378421396,
+        "wait_ms": 146.60215377807617,
+        "overhead_ms": 2.4407210294157267,
+        "step_ms": 58.435352984815836,
+        "edge_ms": 30.165780102834105,
+        "rest_ms": 0.019029946997761726,
+        "edge_batches": 1.0,
+        "live_rows": 121.0
+      }
+    }
+  ]
+}

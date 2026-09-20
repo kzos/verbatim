@@ -94,12 +94,73 @@ does not explain the 124 cap**: at bucket 128 a step is 40 ms against a 112 ms b
 arm was never near a compute limit — it ended on `integrity:refused`, which is admission
 capping at the bucket, exactly as the criterion said.
 
-**What is now open, and was not visible before.** At bucket 256 a step costs 56 ms, still well
+**What was open, and was not visible before.** At bucket 256 a step costs 56 ms, still well
 inside the budget, yet that arm failed on *latency* at 46 to 47 streams with p95 319 ms. The
-step alone does not account for that. The phase offset contributes up to one tick period
-(DR-0012) and the edge batches contribute more, but neither is measured against this. That gap
-between step cost and observed latency is the next thing to profile, and nothing here should
-be read as explaining it.
+step alone does not account for that. That gap between step cost and observed latency was left
+here as the next thing to profile. It has now been profiled, below.
+
+### The gap, closed — 2026-09-20
+
+`probes/latency_decomposition.py` serves real sessions in process and splits a final's latency
+into the five terms the tick loop already knows, joining each session to the tick that produced
+its terminal row:
+
+    L  =  wait  +  overhead  +  step  +  edge  +  rest
+
+`wait` is the time the last sample spends waiting for the next tick boundary, `overhead` is the
+collect and stamping phases plus any late start, `step` is the padded steady batch, `edge` is
+every edge batch in that tick — they run *serially after* the steady step and a final is
+produced by the edge peel, so it waits behind all of them — and `rest` is the residual.
+B300, bfloat16, eager, 180 s windows after a 60 s warm-up
+(`rows/exploratory/latency-decomposition-b300-2026-09-20.json`):
+
+| term | b256/46 p50 | p95 | p99 | | b128/124 p50 | p95 | p99 |
+|---|---|---|---|---|---|---|---|
+| total | 167.5 | 257.5 | 478.4 | | 160.7 | 237.7 | 360.1 |
+| **wait** | **81.2** | **155.9** | **244.2** | | **82.5** | **156.3** | **258.4** |
+| step | 53.6 | 62.3 | **376.9** | | 46.1 | 55.6 | 59.4 |
+| edge | 22.9 | 28.2 | 31.1 | | 26.0 | 33.0 | 50.2 |
+| overhead | 2.0 | 14.5 | 243.7 | | 2.2 | 3.0 | 55.5 |
+| rest | 0.0 | 0.0 | 0.0 | | 0.0 | 0.0 | 0.0 |
+
+**The premise of the question was wrong.** It assumed the step had to grow to explain a 319 ms
+p95. It does not, because the step is not what most of the latency is. At the p95 session,
+bucket 256 spends **178.3 ms of 257.5 on `wait` — 69 per cent** — against 53.2 ms of step and
+24.2 ms of edge. The budget arithmetic in the section above compared a 56 ms step against a
+112 ms allowance as though the whole period were available to compute. It never was: at p95
+about 156 ms is gone before a single sample can be stepped, and about 28 ms more goes to the
+edge peel that produces the final.
+
+**`wait` is the same in both arms and does not depend on the bucket**: 81.2 / 155.9 / 244.2
+against 82.5 / 156.3 / 258.4. That is DR-0012's phase offset — `U[0, period)`, drawn once at
+connect — recovered by an instrument built for a different purpose, and it is irreducible for
+the reason DR-0012 gives: a chunk cannot be stepped before the client has finished sending it.
+
+**What actually separates the two buckets is the step's tail, not its cost.** The medians are
+7.5 ms apart. The p99s are not:
+
+| | step p50 | step p99 | ratio |
+|---|---|---|---|
+| bucket 256 | 53.6 ms | 376.9 ms | **7.0x** |
+| bucket 128 | 46.1 ms | 59.4 ms | 1.3x |
+
+Bucket 128 holds its step almost flat to the 99th percentile. Bucket 256 does not, and its
+`overhead` tail goes the same way, 243.7 ms against 55.5 ms. A latency gate reads a
+percentile, so an arm whose step is occasionally seven times its median fails on a number its
+median never predicts. This is the same instability the section above saw as a
+non-monotonic ladder at bucket 256 and could not name.
+
+**The edge peel is real and was never counted.** One edge batch of at most 8 rows costs 23 to
+26 ms at the median — roughly half a 256-row steady step, for 3 per cent of the rows. That is
+the flat encoder of the profile above showing up where it matters: an edge batch pays the fixed
+cost in full. There is rarely more than one per tick (mean 0.59 at bucket 256, 0.90 at bucket
+128, never more than 2), so serialisation is not the problem; the fixed cost is.
+
+**What this probe cannot say.** The in-process total at bucket 256 is 257.5 ms where the
+ladder measured 319 ms over a socket. No socket is in this path, and the feeders share a GIL
+with the tick thread; the first omits time a real client pays and the second adds time it does
+not. Neither is measured, so the 62 ms difference is not attributed here and the SHARES are
+what carry across, not the total.
 
 The probe measures a synthetic drive of `transcribe_step`, not a live server: no admission, no
 edge batches, no session churn, no biasing. Uniform noise was tried first and understated the
