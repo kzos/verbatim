@@ -5,9 +5,12 @@ box, and provenance beside the two numbers."""
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from test_env import _fake_box_tree, _fake_host_tree, _write, _write_pid_stat
@@ -16,6 +19,7 @@ from verbatim_bench.calibrate import (
     CALIBRATION_REFERENCE_N,
     PRECISION_PCT,
     QUIET_OBSERVATION_S,
+    CalibrationRecord,
     CalibrationRefusal,
     WindowReading,
     calibrate,
@@ -23,7 +27,12 @@ from verbatim_bench.calibrate import (
     observe_quiet,
     thresholds_from,
 )
+from verbatim_bench.client import SessionResult, run_session
+from verbatim_bench.corpus import Utterance, load_manifest, read_pcm16
 from verbatim_bench.env import FakeGpuProbe, fake_gpu_facts
+from verbatim_bench.hostrecord import WindowRecorder, run_load_recorded
+from verbatim_bench.pace import LoadSpec, spec_dict
+from verbatim_bench.results import RunResult
 
 pytestmark = pytest.mark.cpu
 
@@ -92,6 +101,74 @@ def _quiet_tree(tmp_path: Path, *, steal: int = 0, load: str = "0.20 0.10 0.10 1
     _write(procfs / "self" / "cgroup", f"0::/{LEAF}\n")
     _write(tmp_path / "cgroup" / LEAF / "cpu.pressure", PRESSURE)
     return procfs, tmp_path / "cgroup"
+
+
+class _ScheduleClock:
+    """A session's clock that only its own sleeps advance, each by what was asked plus
+    ``late_s``: at zero the sender lands on every deadline it slept to, and above zero it
+    is a generator held back by that much on every frame after the first."""
+
+    def __init__(self, late_s: float = 0.0) -> None:
+        self.now = 1000.0
+        self.late_s = late_s
+
+    def clock(self) -> float:
+        return self.now
+
+    async def sleep(self, delay_s: float) -> None:
+        self.now += delay_s + self.late_s
+
+
+class _OwnClockDrive:
+    """The calibration's load, with its outcome decided by the test and not by the box.
+
+    Every window streams one session per slot to the endpoint the calibration put in the
+    spec, over a real socket, and the client grades each frame's slip exactly as it does
+    on a box; only the clock it grades on is the session's own ``_ScheduleClock``. The
+    recorder's window is opened and closed around the sessions and polled ``polls`` times
+    inside it. ``late_ms`` holds the generator back by that much at the named N.
+
+    On the wall clock the slip was the box's scheduler: under CPU contention the pacing
+    slip p99 of a 0.6 s window at N=6 passed the frozen 5 ms in 22 runs of 30, the only
+    window was unclean, and the calibration refused with no session having failed.
+    """
+
+    def __init__(self, *, polls: int = 3, late_ms: dict[int, float] | None = None) -> None:
+        self.polls = polls
+        self.late_ms = late_ms or {}
+        self.specs: list[LoadSpec] = []
+
+    async def __call__(self, spec: LoadSpec, recorder: WindowRecorder) -> RunResult:
+        self.specs.append(spec)
+        utterances = load_manifest(spec.manifest)
+        late_s = self.late_ms.get(spec.sessions, 0.0) / 1000.0
+        recorder.on_window_open()
+        for _ in range(self.polls):
+            recorder.poll()
+        sessions = await asyncio.gather(
+            *(self._session(spec, slot, utterances, late_s) for slot in range(spec.sessions))
+        )
+        recorder.on_window_close()
+        return RunResult(spec_dict=spec_dict(spec), sessions=list(sessions))
+
+    @staticmethod
+    async def _session(
+        spec: LoadSpec, slot: int, utterances: list[Utterance], late_s: float
+    ) -> SessionResult:
+        utterance = utterances[slot % len(utterances)]
+        schedule = _ScheduleClock(late_s)
+        return await run_session(
+            spec.endpoint,
+            session_id=f"s{slot:04d}-0000",
+            utterance=utterance,
+            pcm=read_pcm16(utterance.audio_path),
+            chunk=spec.chunk,
+            start_delay_s=0.0,
+            clock=schedule.clock,
+            sleep=schedule.sleep,
+            frame_ms=spec.frame_ms,
+            frame_seed=spec.seed + slot,
+        )
 
 
 def test_observe_quiet_passes_a_quiet_box_and_records_pressure(tmp_path: Path) -> None:
@@ -166,6 +243,7 @@ async def test_calibration_runs_the_null_floor_and_writes_provenance(tmp_path: P
     wav = tmp_path / "utt.wav"
     make_wav(wav, 1.0)
     manifest = make_manifest(tmp_path / "m.jsonl", [wav], ["utt-0"])
+    drive = _OwnClockDrive()
     record = await calibrate(
         manifest=manifest,
         ns=(1, 2),
@@ -181,7 +259,24 @@ async def test_calibration_runs_the_null_floor_and_writes_provenance(tmp_path: P
         sysfs=sysfs,
         repo_root=Path(__file__).resolve().parents[2],
         sleep=lambda s: None,
+        drive=drive,
     )
+    # One load per window, at the N and seed the window is filed under, every stream of
+    # it answered by the calibration's own null server, and graded on its own schedule.
+    assert [(s.sessions, s.seed) for s in drive.specs] == [
+        (1, constants.SEEDS[0]),
+        (1, constants.SEEDS[1]),
+        (2, constants.SEEDS[0]),
+        (2, constants.SEEDS[1]),
+    ]
+    assert all(s.endpoint.startswith("ws://127.0.0.1:") for s in drive.specs)
+    assert [(w.sessions, w.sessions_failed) for w in record.windows] == [
+        (1, 0),
+        (1, 0),
+        (2, 0),
+        (2, 0),
+    ]
+    assert all(w.pacing_slip_p99_ms == 0.0 for w in record.windows)
     # The fake counters never advance, so the windows' pressure is exactly zero and the
     # thresholds are zero; the avg60 context still shows the fake file's 0.12 and 0.03.
     assert record.psi_cpu_some_max_pct == 0.0
@@ -291,6 +386,7 @@ async def test_a_calibration_against_the_server_under_test_names_it_and_the_refe
     wav = tmp_path / "utt.wav"
     make_wav(wav, 1.0)
     manifest = make_manifest(tmp_path / "m.jsonl", [wav], ["utt-0"])
+    drive = _OwnClockDrive()
     async with NullServer(NullServerConfig()) as server:  # standing in for the server under test
         with pytest.raises(CalibrationRefusal, match="pid"):
             await calibrate(
@@ -306,7 +402,9 @@ async def test_a_calibration_against_the_server_under_test_names_it_and_the_refe
                 cgroup_root=cgroupfs,
                 sysfs=sysfs,
                 sleep=lambda s: None,
+                drive=drive,
             )
+        assert drive.specs == []  # refused before any load ran
         record = await calibrate(
             manifest=manifest,
             endpoint=server.endpoint,
@@ -323,8 +421,15 @@ async def test_a_calibration_against_the_server_under_test_names_it_and_the_refe
             sysfs=sysfs,
             repo_root=Path(__file__).resolve().parents[2],
             sleep=lambda s: None,
+            drive=drive,
         )
     assert record.mode == "under-test"
+    # The load went to the server under test at the reference N, not merely the record's
+    # label: every one of its streams was answered there.
+    assert [(s.endpoint, s.sessions, s.seed) for s in drive.specs] == [
+        (server.endpoint, CALIBRATION_REFERENCE_N, constants.SEEDS[0])
+    ]
+    assert [(w.sessions, w.sessions_failed, w.clean) for w in record.windows] == [(6, 0, True)]
     # The scoped reading came from the fake tree's leaf, not from whatever cgroup the
     # test process really runs in: on a runner whose cgroup has no cpu.pressure the
     # real leaf is "unavailable" and the calibration refuses, which is how this test
@@ -338,6 +443,88 @@ async def test_a_calibration_against_the_server_under_test_names_it_and_the_refe
     assert doc["load"]["reference_n"] == 6
     assert doc["load"]["server_pid"] == os.getpid()
     assert "under test" in doc["load"]["server"]
+
+
+def test_on_a_box_the_calibration_drives_the_real_load() -> None:
+    """The tests hand the calibration a drive on their own clock; nothing else does."""
+    assert inspect.signature(calibrate).parameters["drive"].default is run_load_recorded
+
+
+async def _calibrate_on_the_fake_box(tmp_path: Path, **kwargs: Any) -> CalibrationRecord:
+    """One seed and the short window, on the fake box and quiet trees; the rest is the
+    caller's."""
+    from test_pace import make_manifest, make_wav
+
+    _, sysfs, _ = _fake_box_tree(tmp_path)
+    procfs, cgroupfs = _quiet_tree(tmp_path)
+    wav = tmp_path / "utt.wav"
+    make_wav(wav, 1.0)
+    return await calibrate(
+        manifest=make_manifest(tmp_path / "m.jsonl", [wav], ["utt-0"]),
+        seeds=(constants.SEEDS[0],),
+        window_s=0.6,
+        warm_up_s=None,
+        frame_ms=160,
+        interval_s=0.1,
+        quiet_s=0.0,
+        procfs=procfs,
+        cgroupfs=cgroupfs,
+        cgroup_root=cgroupfs,
+        sysfs=sysfs,
+        repo_root=Path(__file__).resolve().parents[2],
+        sleep=lambda s: None,
+        **kwargs,
+    )
+
+
+async def test_a_generator_held_back_past_the_pacing_tolerance_is_unclean_and_refused(
+    tmp_path: Path,
+) -> None:
+    """What the wall clock did to this file by chance, on purpose: a generator late past
+    the frozen pacing tolerance with every session answered makes its window unclean, with
+    the reason in the record; with no clean window at all, the calibration refuses."""
+    from verbatim_bench.nullserver import NullServer, NullServerConfig
+
+    late_ms = constants.PACING_SLIP_P99_MAX_MS + 1.0
+    # The null floor held back at N=2 only: that window is recorded, not dropped.
+    record = await _calibrate_on_the_fake_box(
+        tmp_path, ns=(1, 2), drive=_OwnClockDrive(late_ms={2: late_ms})
+    )
+    assert [(w.n, w.clean) for w in record.windows] == [(1, True), (2, False)]
+    held_back = record.windows[1]
+    assert held_back.sessions_failed == 0
+    assert held_back.pacing_slip_p99_ms == pytest.approx(late_ms)
+    assert held_back.unclean_reason is not None
+    assert "pacing slip p99" in held_back.unclean_reason
+    assert record.to_json_dict()["load"]["unclean_windows"] == [
+        {"n": 2, "seed": constants.SEEDS[0], "reason": held_back.unclean_reason}
+    ]
+    # Against the server under test that one window is the whole calibration.
+    async with NullServer(NullServerConfig()) as server:
+        with pytest.raises(CalibrationRefusal, match="no window drove cleanly"):
+            await _calibrate_on_the_fake_box(
+                tmp_path,
+                endpoint=server.endpoint,
+                server_pid=os.getpid(),
+                drive=_OwnClockDrive(late_ms={CALIBRATION_REFERENCE_N: late_ms}),
+            )
+
+
+async def test_a_window_whose_sessions_failed_is_unclean_and_refused(tmp_path: Path) -> None:
+    """The other half of a clean window: a generator exactly on its schedule, against a
+    server under test that fails every session after two chunks, drove nothing, so its one
+    window is unclean and the calibration refuses."""
+    from verbatim_bench.nullserver import NullServer, NullServerConfig
+
+    drive = _OwnClockDrive()
+    async with NullServer(NullServerConfig(fail_after_chunks=2)) as server:
+        with pytest.raises(CalibrationRefusal, match="no window drove cleanly"):
+            await _calibrate_on_the_fake_box(
+                tmp_path, endpoint=server.endpoint, server_pid=os.getpid(), drive=drive
+            )
+    assert [(s.endpoint, s.sessions) for s in drive.specs] == [
+        (server.endpoint, CALIBRATION_REFERENCE_N)
+    ]
 
 
 def test_the_cli_refuses_an_endpoint_without_the_servers_pid(tmp_path: Path) -> None:
