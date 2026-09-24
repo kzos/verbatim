@@ -16,10 +16,16 @@ own tests; none of them may need a GPU or NeMo either.
 from __future__ import annotations
 
 import importlib
+import re
+import tomllib
+from pathlib import Path
 
 import pytest
 
 pytestmark = pytest.mark.cpu
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+STUB_DIR = REPO_ROOT / "src" / "verbatim" / "protocols" / "riva" / "_gen" / "riva" / "proto"
 
 SERVER_MODULES = [
     "verbatim",
@@ -197,3 +203,51 @@ class TestGeneratedRivaStubs:
         assert decoded.WhichOneof("streaming_request") == "streaming_config"
         assert decoded.streaming_config.config.sample_rate_hertz == 16000
         assert decoded.streaming_config.interim_results is True
+
+    def test_declared_runtime_floors_pass_the_stubs_own_version_guards(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The lowest grpcio and protobuf pyproject.toml admits must be ones the stubs import on.
+
+        Every stub refuses at import a runtime older than its generator, and CI only ever installs
+        the newest runtime, so nothing else looks at the floor. Each guard is run here with the
+        floor as the runtime version, through the same function the stub calls.
+        """
+        from google.protobuf import runtime_version
+        from grpc._utilities import first_version_is_lower
+
+        dependencies = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())["project"][
+            "dependencies"
+        ]
+
+        def floor(name: str) -> tuple[int, int, int]:
+            (spec,) = [d for d in dependencies if re.match(rf"{name}\s*>=", d)]
+            parts = [int(p) for p in re.search(r">=\s*([\d.]+)", spec).group(1).split(".")]
+            return (*parts, 0, 0)[:3]
+
+        grpc_stubs = sorted(STUB_DIR.glob("*_pb2_grpc.py"))
+        assert len(grpc_stubs) == 3
+        grpc_floor = ".".join(map(str, floor("grpcio")))
+        for path in grpc_stubs:
+            generated = re.search(r"^GRPC_GENERATED_VERSION = '([^']+)'$", path.read_text(), re.M)
+            assert not first_version_is_lower(grpc_floor, generated.group(1)), (
+                f"{path.name} needs grpcio>={generated.group(1)}; pyproject admits {grpc_floor}"
+            )
+
+        protobuf_stubs = sorted(STUB_DIR.glob("*_pb2.py"))
+        assert len(protobuf_stubs) == 3
+        major, minor, patch = floor("protobuf")
+        monkeypatch.setattr(runtime_version, "MAJOR", major)
+        monkeypatch.setattr(runtime_version, "MINOR", minor)
+        monkeypatch.setattr(runtime_version, "PATCH", patch)
+        monkeypatch.setattr(runtime_version, "SUFFIX", "")
+        for path in protobuf_stubs:
+            gencode = re.search(
+                r"Domain\.PUBLIC,\s*(\d+),\s*(\d+),\s*(\d+),\s*'([^']*)',", path.read_text()
+            )
+            runtime_version.ValidateProtobufRuntimeVersion(
+                runtime_version.Domain.PUBLIC,
+                *(int(g) for g in gencode.groups()[:3]),
+                gencode.group(4),
+                path.name,
+            )

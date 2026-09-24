@@ -16,13 +16,17 @@
 # which is what the generated modules ask for.
 #
 # CI reruns this script and fails on any diff, so the committed stubs cannot
-# drift from the committed protos.
+# drift from the committed protos. The generator is pinned in _gen/GENERATOR and
+# this script runs under no other grpcio-tools, because the stubs carry the
+# generator's version: an unpinned generator makes that diff fail on the day
+# grpcio-tools publishes a release, not on a change to the protos.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROTO_ROOT="${REPO_ROOT}/proto"
 OUT_DIR="${REPO_ROOT}/src/verbatim/protocols/riva/_gen"
+GENERATOR="${OUT_DIR}/GENERATOR"
 
 PROTOS=(
   "riva/proto/riva_common.proto"
@@ -32,9 +36,25 @@ PROTOS=(
 
 PYTHON="${PYTHON:-python3}"
 
+PINNED="$(sed -n 's/^grpcio-tools==\([^[:space:]#]*\).*/\1/p' "${GENERATOR}")"
+if [[ -z "${PINNED}" ]]; then
+  echo "error: no 'grpcio-tools==<version>' line in ${GENERATOR#"${REPO_ROOT}"/}." >&2
+  exit 1
+fi
+
 if ! "${PYTHON}" -c "import grpc_tools.protoc" >/dev/null 2>&1; then
   echo "error: grpcio-tools is not installed in ${PYTHON}." >&2
-  echo "       pip install -e '.[dev]'   (or: pip install grpcio-tools)" >&2
+  echo "       pip install -r ${GENERATOR#"${REPO_ROOT}"/}" >&2
+  exit 1
+fi
+
+INSTALLED="$("${PYTHON}" -c 'import importlib.metadata as m; print(m.version("grpcio-tools"))')"
+if [[ "${INSTALLED}" != "${PINNED}" ]]; then
+  echo "error: grpcio-tools ${INSTALLED} is installed; the stubs are pinned to ${PINNED}." >&2
+  echo "       Any other version writes itself into the stubs and produces a diff that" >&2
+  echo "       says nothing about the protos. To use the pin:" >&2
+  echo "       pip install -r ${GENERATOR#"${REPO_ROOT}"/}" >&2
+  echo "       To move it, see the comment in that file." >&2
   exit 1
 fi
 
