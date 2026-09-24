@@ -60,7 +60,8 @@ cheap watch that will fire meaningfully when it fires.
 ### Generated stubs
 
 `src/verbatim/protocols/riva/_gen/` holds `*_pb2.py`, `*_pb2.pyi` and `*_pb2_grpc.py` generated from the
-vendored protos by [`scripts/gen_protos.sh`](../scripts/gen_protos.sh) with `grpc_tools.protoc`. They are
+vendored protos by [`scripts/gen_protos.sh`](../scripts/gen_protos.sh) with `grpc_tools.protoc`, at the
+`grpcio-tools` version pinned in [`_gen/GENERATOR`](../src/verbatim/protocols/riva/_gen/GENERATOR). They are
 **committed** so that `pip install verbatim` never runs protoc, never needs a compiler and never needs
 CUDA headers. Do not edit them; CI is to regenerate and fail on any diff.
 

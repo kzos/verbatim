@@ -1,0 +1,15 @@
+# The generator the committed stubs in this directory were produced with.
+#
+# pip requirements syntax, so the CI job installs exactly this line:
+#   pip install -r src/verbatim/protocols/riva/_gen/GENERATOR
+#
+# The stubs are not a function of the protos alone. grpcio-tools writes its own version
+# into every *_pb2_grpc.py (GRPC_GENERATED_VERSION), and its bundled protoc writes its
+# protobuf version into every *_pb2.py; both are floors the runtime is checked against at
+# import. scripts/gen_protos.sh therefore refuses any grpcio-tools but this one, so the CI
+# diff tests the protos and the generator's determinism, not the latest release date.
+#
+# To move the pin: change the version below, install it, run scripts/gen_protos.sh, raise
+# the grpcio and protobuf floors in pyproject.toml to the versions the new stubs check for
+# (tests/test_skeleton.py fails until you do), and commit all of it in one change.
+grpcio-tools==1.83.1

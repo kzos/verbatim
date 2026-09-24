@@ -25,8 +25,10 @@ classifiers = [
 # Deliberately minimal for the skeleton. The server's model runtime (NeMo, torch)
 # is NOT installed by default -- see the [nemo] extra and docs/third_party.md.
 dependencies = [
-  "grpcio>=1.71,<2",
-  "protobuf>=5.29,<8",
+  # Both floors are what the committed Riva stubs check for at import, set by the generator
+  # pinned in src/verbatim/protocols/riva/_gen/GENERATOR; tests/test_skeleton.py holds them there.
+  "grpcio>=1.83.1,<2",
+  "protobuf>=7.35.1,<8",
   "websockets>=15,<18",
   "numpy>=1.26",
   "soundfile>=0.12.1",

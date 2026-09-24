@@ -55,10 +55,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install dev tooling
+      - name: Install dev tooling and the pinned generator
+        # The stubs record the grpcio-tools that wrote them, so this job installs that exact
+        # version from the pin next to them, not the newest release; gen_protos.sh checks it.
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev]" -r src/verbatim/protocols/riva/_gen/GENERATOR
       - name: Vendored protos match their recorded checksums
         run: sha256sum --check proto/riva/CHECKSUMS
       - name: Regenerate the Riva stubs
