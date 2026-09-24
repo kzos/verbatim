@@ -495,6 +495,158 @@ def main() -> int:
         len(eq["negation_or_number_places"]),
         6,
     )
+    a.claim(
+        "paper §5.4 place shapes",
+        eq["place_shapes"],
+        {"one_for_one": 223, "multi_word": 61, "one_side_empty": 44},
+    )
+    a.claim("paper §5.4 absent words overall", oov["reference_words_absent"], 208)
+    a.claim("paper §5.4 reference words overall", oov["reference_words"], 6236)
+    a.claim("paper §5.4 absent words at the places", oov["reference_words_at_places_absent"], 85)
+    a.claim("paper §5.4 reference words at the places", oov["reference_words_at_places"], 434)
+    a.claim("paper §5.4 A6000 places", a6000_eq["places"], 350)
+    a.claim("paper §5.4 A6000 batch right", a6000_eq["batch_right"], 114)
+    a.claim("paper §5.4 A6000 alone right", a6000_eq["alone_right"], 105)
+
+    # --- The white paper, Table 1: every server run and its control -----------------
+    # Streams differing from concurrency 1, (at the highest level, at any level).
+    control_arm = a.load("invariance-control-arm-b300-2026-09-14.json")
+    a.claim(
+        "paper Table 1 constant-occupancy runs ran at bucket 38",
+        control_arm["shared"]["bucket"],
+        38,
+    )
+    a.claim(
+        "paper Table 1 constant control, bucket 38",
+        per_level_divergences(control_arm["raw"]["ragged"]),
+        {"32a": 118, "32b": 118, "max": 66},
+    )
+    a.claim(
+        "paper Table 1 constant control at any level",
+        control_arm["arms"]["ragged"]["streams_differing_from_concurrency_1"],
+        128,
+    )
+    a.claim(
+        "paper Table 1 constant fixed, bucket 38", control_arm["arms"]["fixed"]["divergences"], 0
+    )
+    churn = a.load("invariance-churn-b300-2026-09-14.json")
+    a.claim("paper Table 1 churn runs at bucket 128", churn["shared"]["bucket"], 128)
+    a.claim(
+        "paper Table 1 churn control",
+        churn["arms"]["ragged_churned"]["streams_differing_per_comparison"],
+        {"32a_vs_1": 118, "32b_vs_1": 118, "max_vs_1": 88},
+    )
+    a.claim(
+        "paper §5.2 highest level, constant",
+        churn["arms"]["ragged_constant"]["max_level_concurrency"],
+        38,
+    )
+    a.claim(
+        "paper §5.2 highest level, churned",
+        churn["arms"]["ragged_churned"]["max_level_concurrency"],
+        42,
+    )
+    # The churned union is stated only in the record's own reading; the audit pins that
+    # reading rather than a count the record does not carry.
+    a.claim(
+        "paper Table 1 churn control at any level (128 -> 120)",
+        "(128 -> 120)" in churn["reads"][2],
+        True,
+    )
+    a.claim("paper Table 1 churn fixed", churn["arms"]["fixed_churned"]["verdict"], "invariant")
+    for where, name, levels, any_level in (
+        ("vocabulary 2.0", "invariance-biasing-ragged-b300-2026-09-14.json", (117, 117, 89), 120),
+        (
+            "vocabulary 1.0",
+            "invariance-biasing-ragged-w1-b300-2026-09-15.json",
+            (114, 114, 84),
+            117,
+        ),
+    ):
+        document = a.load(name)
+        a.claim(
+            f"paper Table 1 {where} control",
+            per_level_divergences(document),
+            dict(zip(("32a", "32b", "max"), levels, strict=True)),
+        )
+        a.claim(
+            f"paper Table 1 {where} control at any level",
+            len({d["stream_id"] for d in document["divergences"] if d["against"] == "1"}),
+            any_level,
+        )
+    digests = {}
+    for where, name in (
+        ("constant, bucket 128", "invariance-b300-bf16-2026-09-13.json"),
+        ("vocabulary 2.0", "invariance-biasing-b300-2026-09-14.json"),
+        ("vocabulary 1.0", "invariance-biasing-w1-b300-2026-09-15.json"),
+        ("decoder graphs", "invariance-decgraph-b300-2026-09-16.json"),
+    ):
+        document = a.load(name)
+        a.claim(
+            f"paper Table 1 fixed {where}",
+            (document["verdict"], len(document["divergences"])),
+            ("invariant", 0),
+        )
+        level_digests = {level["digest"] for level in document["levels"]}
+        a.claim(f"paper Table 1 fixed {where}: one digest across levels", len(level_digests), 1)
+        digests[where] = level_digests.pop()
+    a.claim(
+        "paper §5.2 the frozen output depends on the bucket",
+        digests["constant, bucket 128"] != control_arm["raw"]["fixed"]["levels"][0]["digest"],
+        True,
+    )
+    a.claim(
+        "paper §5.2 the frozen output depends on decoder graphs",
+        digests["constant, bucket 128"] != digests["decoder graphs"],
+        True,
+    )
+    a.claim(
+        "paper §5.2 the churned fixed run froze the same output as the constant one",
+        digests["constant, bucket 128"].startswith(
+            churn["arms"]["fixed_churned"]["digests"]["max"]
+        ),
+        True,
+    )
+
+    # --- The white paper, §5.3: the reference point and what padding costs ----------
+    ref = a.load("nemo-ceiling-b300-bf16-2026-09-13.json")
+    a.claim("paper §5.3 reference chunk", ref["chunk_ms"], 160)
+    eager, graphed = ref["arms"]["batch128_eager"], ref["arms"]["batch128_graphed"]
+    a.claim("paper §5.3 reference eager", eager["rtfx_median"], 149.48)
+    a.claim(
+        "paper §5.3 reference runs", (len(eager["rtfx_runs"]), len(graphed["rtfx_runs"])), (5, 5)
+    )
+    a.claim("paper §5.3 eager spread %", round(eager["spread_pct_of_median"]), 16)
+    a.claim("paper §5.3 graphed spread %", round(graphed["spread_pct_of_median"]), 10)
+    a.claim("paper §5.3 share of eager", round(124 / eager["rtfx_median"], 2), 0.83)
+    a.claim("paper §5.3 share of graphed", round(124 / graphed["rtfx_median"], 2), 0.86)
+    a.claim("paper §5.3 unpadded seeds", best_per_seed(ragged), {14: 77, 15: 126, 16: 96})
+    a.claim(
+        "paper Table 2 refusals began at 126 streams",
+        min(r["n"] for r in fixed["rungs"] if r.get("sessions_refused")),
+        126,
+    )
+    price = a.load("invariance-price-b300-2026-09-14.json")["result"]
+    a.claim(
+        "paper §5.3 matched pair, padded against unpadded",
+        (price["sustained_streams_fixed"], price["sustained_streams_ragged"]),
+        (42, 59),
+    )
+    noise = {arm["batch"]: arm for arm in a.load("step-phase-noise-b300-2026-09-16.json")["arms"]}
+    a.claim("paper §5.3 256-row step, noise", round(noise[256]["step_median_ms"], 1), 45.7, 0.05)
+
+    # --- The white paper, Figure 2: the two sessions drawn ---------------------------
+    for bucket, streams, parts in (
+        (128, 124, (237.7, 146.6, 58.4, 30.2, 2.4)),
+        (256, 46, (257.5, 178.3, 53.2, 24.2, 1.8)),
+    ):
+        arm = arms[bucket]
+        a.claim(f"paper Figure 2 streams at bucket {bucket}", arm["streams"], streams)
+        session = arm["at_p95_session"]
+        for key, value in zip(
+            ("total_ms", "wait_ms", "step_ms", "edge_ms", "overhead_ms"), parts, strict=True
+        ):
+            a.claim(f"paper Figure 2 bucket {bucket} {key}", round(session[key], 1), value, 0.05)
 
     print(f"{a.matched} published claims matched their record")
     if a.failures:
