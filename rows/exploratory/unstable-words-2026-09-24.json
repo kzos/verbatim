@@ -1,0 +1,328 @@
+{
+ "question": "At the places where a recording's transcript alone differs from its transcript in a batch of 32, was either version right?",
+ "not_a_row": "Derived from stock-pipeline probes at att_context [70,13] (1,120 ms chunks) and batch 32, not the server's [70,1] / bucket-128 setting; the server's own output at these places was not scored.",
+ "inputs": {
+  "stock-divergence-b300-2026-09-11.json": "580a82508d9972275daa41c734d4d71baafa33100c1178e7ff41c44a72bdd801",
+  "stock-divergence-a6000-bf16-2026-09-10.json": "fab9f439223fa5149de3e0cdc2fae3e48a732a88731675bcf27c82967c69beba",
+  "stock-divergence-a6000-fp32-2026-09-10.json": "9f85d4a4b69d03d4e2998798b6154f3684b7492d7bdc7d4927e7039a4aa3b190"
+ },
+ "wordlist": {
+  "path": "/usr/share/dict/american-english",
+  "sha256": "9f513f1ceadb6a01c5485b7dbdfd5118dc66cd70b59cae2851292112d4066a32",
+  "entries": 102485
+ },
+ "rules": "see the module docstring of scripts/unstable_words.py",
+ "recordings_checked": 2939,
+ "changed_recordings": {
+  "b300_bf16_equalised": 295,
+  "b300_bf16_ragged": 264,
+  "b300_fp32_equalised": 1,
+  "b300_fp32_ragged": 1,
+  "a6000_bf16_equalised": 328,
+  "a6000_bf16_varying": 287,
+  "a6000_fp32_equalised": 6,
+  "a6000_fp32_varying": 6
+ },
+ "unstable_in_both_arms": {
+  "b300_bf16": 233,
+  "b300_bf16_union": 326,
+  "a6000_bf16": 250,
+  "a6000_bf16_union": 365
+ },
+ "arms": {
+  "b300_bf16_equalised": {
+   "recordings_changed": 295,
+   "places": 328,
+   "place_shapes": {
+    "one_for_one": 223,
+    "multi_word": 61,
+    "one_side_empty": 44
+   },
+   "alone_right": 119,
+   "batch_right": 96,
+   "neither_right": 113,
+   "both_right": 0,
+   "alone_vs_batch_sign_test_p": 0.1333,
+   "reference_words": 6236,
+   "word_errors_alone": 714,
+   "word_errors_in_batch": 757,
+   "wer_alone": 0.1145,
+   "wer_in_batch": 0.12139,
+   "net_extra_errors_in_batch": 43,
+   "out_of_dictionary": {
+    "reference_words": 6236,
+    "reference_words_absent": 208,
+    "rate_all_reference_words": 0.03335,
+    "reference_words_at_places": 434,
+    "reference_words_at_places_absent": 85,
+    "rate_at_places": 0.19585
+   },
+   "negation_or_number_places": [
+    {
+     "librispeech_id": "7902-96594-0023",
+     "alone": "not",
+     "in_batch": "nought",
+     "reference": "nowt"
+    },
+    {
+     "librispeech_id": "3005-163399-0014",
+     "alone": "once",
+     "in_batch": "warn't",
+     "reference": "warn't"
+    },
+    {
+     "librispeech_id": "8131-117017-0009",
+     "alone": "weren't",
+     "in_batch": "warn't",
+     "reference": "weren't"
+    },
+    {
+     "librispeech_id": "3538-163622-0000",
+     "alone": "seven foals",
+     "in_batch": "sevenfolds",
+     "reference": "seven foals"
+    },
+    {
+     "librispeech_id": "1998-29454-0034",
+     "alone": "once",
+     "in_batch": "one's",
+     "reference": "wild ones ain't alf the"
+    },
+    {
+     "librispeech_id": "7105-2330-0007",
+     "alone": "foreman",
+     "in_batch": "four men",
+     "reference": "foreman"
+    }
+   ]
+  },
+  "b300_bf16_ragged": {
+   "recordings_changed": 264,
+   "places": 294,
+   "place_shapes": {
+    "one_for_one": 198,
+    "multi_word": 57,
+    "one_side_empty": 39
+   },
+   "alone_right": 101,
+   "batch_right": 84,
+   "neither_right": 109,
+   "both_right": 0,
+   "alone_vs_batch_sign_test_p": 0.2394,
+   "reference_words": 5766,
+   "word_errors_alone": 650,
+   "word_errors_in_batch": 679,
+   "wer_alone": 0.11273,
+   "wer_in_batch": 0.11776,
+   "net_extra_errors_in_batch": 29,
+   "out_of_dictionary": {
+    "reference_words": 5766,
+    "reference_words_absent": 169,
+    "rate_all_reference_words": 0.02931,
+    "reference_words_at_places": 405,
+    "reference_words_at_places_absent": 76,
+    "rate_at_places": 0.18765
+   },
+   "negation_or_number_places": [
+    {
+     "librispeech_id": "7902-96594-0023",
+     "alone": "not",
+     "in_batch": "nought",
+     "reference": "nowt"
+    },
+    {
+     "librispeech_id": "3005-163399-0014",
+     "alone": "once",
+     "in_batch": "warn't",
+     "reference": "warn't"
+    },
+    {
+     "librispeech_id": "3538-163622-0000",
+     "alone": "seven foals",
+     "in_batch": "sevenfolds",
+     "reference": "seven foals"
+    },
+    {
+     "librispeech_id": "1688-142285-0064",
+     "alone": "not",
+     "in_batch": "nought",
+     "reference": "nought"
+    },
+    {
+     "librispeech_id": "1998-29454-0034",
+     "alone": "once",
+     "in_batch": "one's",
+     "reference": "wild ones ain't alf the"
+    },
+    {
+     "librispeech_id": "7105-2330-0007",
+     "alone": "foreman",
+     "in_batch": "four men",
+     "reference": "foreman"
+    }
+   ]
+  },
+  "a6000_bf16_equalised": {
+   "recordings_changed": 328,
+   "places": 350,
+   "place_shapes": {
+    "one_for_one": 241,
+    "multi_word": 65,
+    "one_side_empty": 44
+   },
+   "alone_right": 105,
+   "batch_right": 114,
+   "neither_right": 131,
+   "both_right": 0,
+   "alone_vs_batch_sign_test_p": 0.5889,
+   "reference_words": 7303,
+   "word_errors_alone": 840,
+   "word_errors_in_batch": 834,
+   "wer_alone": 0.11502,
+   "wer_in_batch": 0.1142,
+   "net_extra_errors_in_batch": -6,
+   "out_of_dictionary": {
+    "reference_words": 7303,
+    "reference_words_absent": 214,
+    "rate_all_reference_words": 0.0293,
+    "reference_words_at_places": 468,
+    "reference_words_at_places_absent": 83,
+    "rate_at_places": 0.17735
+   },
+   "negation_or_number_places": [
+    {
+     "librispeech_id": "7902-96594-0023",
+     "alone": "not",
+     "in_batch": "nought",
+     "reference": "nowt"
+    },
+    {
+     "librispeech_id": "4198-12259-0039",
+     "alone": "nor",
+     "in_batch": "no",
+     "reference": "nor"
+    },
+    {
+     "librispeech_id": "7975-280085-0010",
+     "alone": "",
+     "in_batch": "six",
+     "reference": "six"
+    },
+    {
+     "librispeech_id": "8131-117017-0009",
+     "alone": "weren't",
+     "in_batch": "warn't",
+     "reference": "weren't"
+    },
+    {
+     "librispeech_id": "3538-163622-0000",
+     "alone": "sevenfolds",
+     "in_batch": "seven foals",
+     "reference": "seven foals"
+    },
+    {
+     "librispeech_id": "1688-142285-0064",
+     "alone": "not",
+     "in_batch": "nought",
+     "reference": "nought"
+    },
+    {
+     "librispeech_id": "7105-2330-0007",
+     "alone": "foreman",
+     "in_batch": "four men",
+     "reference": "foreman"
+    },
+    {
+     "librispeech_id": "2414-128291-0023",
+     "alone": "at once",
+     "in_batch": "i was",
+     "reference": "at once"
+    },
+    {
+     "librispeech_id": "8188-269288-0049",
+     "alone": "cut",
+     "in_batch": "can't",
+     "reference": "can't"
+    }
+   ]
+  },
+  "a6000_bf16_varying": {
+   "recordings_changed": 287,
+   "places": 306,
+   "place_shapes": {
+    "one_for_one": 200,
+    "multi_word": 69,
+    "one_side_empty": 37
+   },
+   "alone_right": 90,
+   "batch_right": 100,
+   "neither_right": 116,
+   "both_right": 0,
+   "alone_vs_batch_sign_test_p": 0.5139,
+   "reference_words": 6214,
+   "word_errors_alone": 732,
+   "word_errors_in_batch": 729,
+   "wer_alone": 0.1178,
+   "wer_in_batch": 0.11732,
+   "net_extra_errors_in_batch": -3,
+   "out_of_dictionary": {
+    "reference_words": 6214,
+    "reference_words_absent": 171,
+    "rate_all_reference_words": 0.02752,
+    "reference_words_at_places": 431,
+    "reference_words_at_places_absent": 71,
+    "rate_at_places": 0.16473
+   },
+   "negation_or_number_places": [
+    {
+     "librispeech_id": "7902-96594-0023",
+     "alone": "not",
+     "in_batch": "nought",
+     "reference": "nowt"
+    },
+    {
+     "librispeech_id": "4198-12259-0039",
+     "alone": "nor",
+     "in_batch": "no",
+     "reference": "nor"
+    },
+    {
+     "librispeech_id": "7975-280085-0010",
+     "alone": "",
+     "in_batch": "six",
+     "reference": "six"
+    },
+    {
+     "librispeech_id": "8131-117017-0009",
+     "alone": "weren't",
+     "in_batch": "warn't",
+     "reference": "weren't"
+    },
+    {
+     "librispeech_id": "3538-163622-0000",
+     "alone": "sevenfolds",
+     "in_batch": "seven foals",
+     "reference": "seven foals"
+    },
+    {
+     "librispeech_id": "7105-2330-0007",
+     "alone": "foreman",
+     "in_batch": "four men",
+     "reference": "foreman"
+    },
+    {
+     "librispeech_id": "2414-128291-0023",
+     "alone": "at once",
+     "in_batch": "i was",
+     "reference": "at once"
+    },
+    {
+     "librispeech_id": "8188-269288-0049",
+     "alone": "cut",
+     "in_batch": "can't",
+     "reference": "can't"
+    }
+   ]
+  }
+ }
+}

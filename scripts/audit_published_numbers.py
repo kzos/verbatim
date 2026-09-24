@@ -394,6 +394,108 @@ def main() -> int:
     )
     a.claim("A6000 certification", a6000["s"], 0)
 
+    # --- The white paper and the plan: the stock-pipeline probe --------------------
+    # Counts are read from the probes' own records, not from the derived one, so a
+    # stale derived file cannot vouch for them.
+    stock_b300 = a.load("stock-divergence-b300-2026-09-11.json")["runs"]
+    stock_a6000 = a.load("stock-divergence-a6000-bf16-2026-09-10.json")["arms"]
+    stock_a6000_fp32 = a.load("stock-divergence-a6000-fp32-2026-09-10.json")["arms"]
+    for where, record, published in (
+        ("A6000 bf16 varying", stock_a6000["uncontrolled"], 287),
+        ("A6000 bf16 equal-length", stock_a6000["controlled"], 328),
+        ("A6000 fp32 varying", stock_a6000_fp32["uncontrolled"], 6),
+        ("A6000 fp32 equal-length", stock_a6000_fp32["controlled"], 6),
+        ("B300 bf16 varying", stock_b300["bfloat16"]["ragged"], 264),
+        ("B300 bf16 equal-length", stock_b300["bfloat16"]["equalised"], 295),
+        ("B300 fp32 varying", stock_b300["float32"]["ragged"], 1),
+        ("B300 fp32 equal-length", stock_b300["float32"]["equalised"], 1),
+    ):
+        a.claim(f"paper §5.1 {where} changed", len(record["divergences"]), published)
+        a.claim(f"paper §5.1 {where} checked", record["checked"], 2939)
+    bf16_rates = [
+        len(r["divergences"]) / r["checked"]
+        for r in (
+            stock_a6000["uncontrolled"],
+            stock_a6000["controlled"],
+            stock_b300["bfloat16"]["ragged"],
+            stock_b300["bfloat16"]["equalised"],
+        )
+    ]
+    a.claim("paper abstract: lowest bf16 rate, 'about 9%'", round(min(bf16_rates) * 100), 9)
+    a.claim("paper abstract: highest bf16 rate, '11%'", round(max(bf16_rates) * 100), 11)
+
+    # --- ...and the words that changed (scripts/unstable_words.py) ------------------
+    words = a.load("unstable-words-2026-09-24.json")
+    word_arms = words["arms"]
+    eq = word_arms["b300_bf16_equalised"]
+    a.claim("paper §5.4 places in the B300 equal-length arm", eq["places"], 328)
+    a.claim("paper §5.4 alone right", eq["alone_right"], 119)
+    a.claim("paper §5.4 batch right", eq["batch_right"], 96)
+    a.claim("paper §5.4 neither right", eq["neither_right"], 113)
+    a.claim("paper §5.4 both right is impossible", eq["both_right"], 0)
+    a.claim("paper §5.4 sign test", eq["alone_vs_batch_sign_test_p"], 0.13, 0.005)
+    a.claim("paper §5.4 WER alone %", round(eq["wer_alone"] * 100, 2), 11.45, 0.005)
+    a.claim("paper §5.4 WER in batch %", round(eq["wer_in_batch"] * 100, 2), 12.14, 0.005)
+    for arm, net in (
+        ("b300_bf16_equalised", 43),
+        ("b300_bf16_ragged", 29),
+        ("a6000_bf16_equalised", -6),
+        ("a6000_bf16_varying", -3),
+    ):
+        a.claim(
+            f"paper §5.4 net extra errors in batch, {arm}",
+            word_arms[arm]["net_extra_errors_in_batch"],
+            net,
+        )
+    oov = eq["out_of_dictionary"]
+    a.claim(
+        "paper §5.4 absent from the word list, all reference words %",
+        round(oov["rate_all_reference_words"] * 100, 1),
+        3.3,
+        0.05,
+    )
+    a.claim(
+        "paper §5.4 absent from the word list, at the places %",
+        round(oov["rate_at_places"] * 100, 1),
+        19.6,
+        0.05,
+    )
+    ratios = [
+        arm["out_of_dictionary"]["rate_at_places"]
+        / arm["out_of_dictionary"]["rate_all_reference_words"]
+        for arm in word_arms.values()
+    ]
+    a.claim("plan and paper: 'about six times', lowest arm", round(min(ratios), 1), 5.9, 0.05)
+    a.claim("plan and paper: 'about six times', highest arm", round(max(ratios), 1), 6.4, 0.05)
+    shares = {
+        key: [arm[key] / arm["places"] for arm in word_arms.values()]
+        for key in ("alone_right", "batch_right", "neither_right")
+    }
+    a6000_eq = word_arms["a6000_bf16_equalised"]
+    a.claim("plan: alone right, low end %", round(min(shares["alone_right"]) * 100), 29)
+    a.claim("plan: alone right, high end %", round(max(shares["alone_right"]) * 100), 36)
+    a.claim("plan: batch right on the B300 %", round(eq["batch_right"] / eq["places"] * 100), 29)
+    a.claim(
+        "plan: batch right on the A6000 %",
+        round(a6000_eq["batch_right"] / a6000_eq["places"] * 100),
+        33,
+    )
+    a.claim("plan: neither right, low end %", round(min(shares["neither_right"]) * 100), 34)
+    a.claim("plan: neither right, high end %", round(max(shares["neither_right"]) * 100), 38)
+    a.claim(
+        "plan: which version does better is within chance on every arm",
+        all(arm["alone_vs_batch_sign_test_p"] > 0.05 for arm in word_arms.values()),
+        True,
+    )
+    a.claim(
+        "paper §5.4 unstable in both B300 arms", words["unstable_in_both_arms"]["b300_bf16"], 233
+    )
+    a.claim(
+        "paper §5.4 places involving a negation or a number",
+        len(eq["negation_or_number_places"]),
+        6,
+    )
+
     print(f"{a.matched} published claims matched their record")
     if a.failures:
         print(f"\n*** {len(a.failures)} MISMATCH(ES) — fix the prose or the audit:")
