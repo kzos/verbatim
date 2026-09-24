@@ -95,7 +95,7 @@ from __future__ import annotations
 import math
 import os
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -119,6 +119,7 @@ from verbatim_bench.env import (
 from verbatim_bench.hostrecord import HostWindow, WindowRecorder, run_load_recorded
 from verbatim_bench.nullserver import NullServer, NullServerConfig
 from verbatim_bench.pace import LoadSpec
+from verbatim_bench.results import RunResult
 
 __all__ = [
     "CALIBRATION_REFERENCE_N",
@@ -512,11 +513,18 @@ async def calibrate(
     sleep: Callable[[float], None] = time.sleep,
     precision: float = PRECISION_PCT,
     cgroup_root: Path = Path("/sys/fs/cgroup"),
+    drive: Callable[[LoadSpec, WindowRecorder], Awaitable[RunResult]] = run_load_recorded,
 ) -> CalibrationRecord:
     """Observe the box quiet, run the floor once per seed at each N with the window recorder,
     and reduce the windows' pressure to the two thresholds with their provenance. Without
     an ``endpoint`` the floor is the harness's null server at ``NULL_FLOOR_NS``; with one it
-    is the server under test at ``CALIBRATION_REFERENCE_N``, which then needs ``server_pid``."""
+    is the server under test at ``CALIBRATION_REFERENCE_N``, which then needs ``server_pid``.
+
+    ``drive`` runs one window's load through the recorder, and on a box it is
+    ``run_load_recorded``, nothing else. It is a test-harness input like ``sleep``: whether a
+    window drove cleanly is the generator's lateness on the wall clock, which is the box's
+    scheduler, so a test that asserts on the record hands a drive whose sessions are paced
+    and graded on a clock it owns."""
     if ns is None:
         ns = NULL_FLOOR_NS if endpoint is None else (CALIBRATION_REFERENCE_N,)
     if endpoint is not None and server_pid is None:
@@ -577,7 +585,7 @@ async def calibrate(
                 cgroupfs=cgroupfs,
                 cgroup_root=cgroup_root,
             )
-            result = await run_load_recorded(spec, recorder)
+            result = await drive(spec, recorder)
             host = recorder.finish()
             if host is None or result.warm_up_converged is False:
                 raise CalibrationRefusal(
