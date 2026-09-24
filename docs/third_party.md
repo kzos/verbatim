@@ -100,12 +100,23 @@ default.
 
 ## 3. Not redistributed
 
-**Model checkpoints.** `nvidia/nemotron-3.5-asr-streaming-0.6b` and
-`nvidia/nemotron-speech-streaming-en-0.6b` are **OpenMDW-1.1** (`license: other`,
-`license_name: openmdw-1.1`, `license_link: https://openmdw.ai/license/1-1/` in the card front matter),
-not Apache-2.0. They are never shipped in a wheel, a container or a release asset; they are fetched
-from Hugging Face at first run. Verbatim's Apache-2.0 grant does not extend to them, and the CLI is to
-print the model licence and its link on first download.
+**Model checkpoints.** None of them is Apache-2.0, and they do not share one licence. As read from
+each card's front matter on 2026-09-24:
+
+| Checkpoint | Card revision | Licence |
+|---|---|---|
+| `nvidia/nemotron-speech-streaming-en-0.6b` | `ebe59e5a` (2026-08-05) | **NVIDIA Open Model License** (`license: other`, `license_name: nvidia-open-model-license`, `license_link: https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/`) |
+| `nvidia/nemotron-3.5-asr-streaming-0.6b` | `ea30d66d` (2026-09-10) | **OpenMDW-1.1** (`license: other`, `license_name: openmdw-1.1`) |
+| `nvidia/stt_en_fastconformer_hybrid_large_streaming_multi` | `ae981433` (2025-02-18) | **CC-BY-4.0** (`license: cc-by-4.0`); the model the probes in `probes/` measured |
+
+An earlier revision of this file said both Nemotron checkpoints were OpenMDW-1.1. That was true only
+of the multilingual one.
+
+They are never shipped in a wheel, a container or a release asset; they are fetched from Hugging Face
+at first run. Verbatim's Apache-2.0 grant does not extend to them, and the CLI is to print the model
+licence and its link on first download. The NVIDIA Open Model License asks anyone who *distributes*
+the model to pass on the agreement and a notice file; fetching at run time is not distribution, so
+nothing is owed here, but a derivative that bundles the weights would owe it.
 
 **Corpus audio.** LibriSpeech (`openslr/librispeech_asr`) and FLEURS (`google/fleurs`) are CC-BY-4.0, so
 redistribution would be lawful; the reason not to is that a repository carrying a gigabyte of WAV is a

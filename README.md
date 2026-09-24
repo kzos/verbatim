@@ -616,10 +616,12 @@ recorded on its date, whatever it says.
 
 ## Licence
 
-Apache-2.0. Model checkpoints carry their own licences from Hugging Face
-(`nvidia/nemotron-3.5-asr-streaming-0.6b` and `nvidia/nemotron-speech-streaming-en-0.6b` are released
-under **OpenMDW-1.1** — `license: other`, `license_name: openmdw-1.1` on the card — not Apache-2.0);
-Verbatim downloads them, it does not redistribute them.
+Apache-2.0. Model checkpoints carry their own licences from Hugging Face, and none is Apache-2.0:
+`nvidia/nemotron-speech-streaming-en-0.6b` is under the **NVIDIA Open Model License**,
+`nvidia/nemotron-3.5-asr-streaming-0.6b` under **OpenMDW-1.1**, and
+`nvidia/stt_en_fastconformer_hybrid_large_streaming_multi` under **CC-BY-4.0** (card revisions and
+front matter in [docs/third_party.md](docs/third_party.md)). Verbatim downloads them, it does not
+redistribute them.
 
 ---
 
