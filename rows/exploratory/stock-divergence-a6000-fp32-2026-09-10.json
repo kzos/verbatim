@@ -1,0 +1,114 @@
+{
+ "model": "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi",
+ "machine": "NVIDIA RTX A6000",
+ "torch": "2.11.0+cu128",
+ "compute_dtype": "float32",
+ "matmul_precision": "highest",
+ "path": "nemo.collections.asr.inference CacheAwareRNNTPipeline.transcribe_step",
+ "att_context_size": [
+  70,
+  13
+ ],
+ "batch": 32,
+ "chunk_samples": 17920,
+ "note": "the SERVER path, not the example path: per-stream right_paddings, finals in their own sub-batch",
+ "arms": {
+  "uncontrolled": {
+   "control": "rows keep their own lengths, so a short stream's is_last lands early and carries a real right_padding while its neighbours keep streaming",
+   "checked": 2939,
+   "divergences": [
+    {
+     "n": 694,
+     "librispeech_id": "2033-164916-0010",
+     "reference": "he then repaired to the heart of the encampment and ordered the host to halt ten days",
+     "alone": "he then repaired the heart of the encampment and ordered the host to halt ten days",
+     "in_batch": "he then repaired the to the heart of the encampment and ordered the host to halt ten days"
+    },
+    {
+     "n": 899,
+     "librispeech_id": "3528-168669-0022",
+     "reference": "when the vault is open i will close it again",
+     "alone": "with all the is open i will close it again",
+     "in_batch": "with all the open i will close it again"
+    },
+    {
+     "n": 2369,
+     "librispeech_id": "2609-156975-0002",
+     "reference": "let us have faith that right makes might and in that faith let us dare to do our duty as we understand it lincoln",
+     "alone": "let us have faith that right matron might and in that faith that dared to do our duty if he understood it lincoln",
+     "in_batch": "let us have faith that right matron might and in that faith let it dared to do our duty if he understand it lincoln"
+    },
+    {
+     "n": 2903,
+     "librispeech_id": "8188-269288-0022",
+     "reference": "leslie seated herself with her back to her companion and opened her own letters",
+     "alone": "liszy seated herself with her back to her companion and opened her on letters",
+     "in_batch": "liszie seated herself with her back to her companion and opened her on letters"
+    },
+    {
+     "n": 2915,
+     "librispeech_id": "8188-269288-0034",
+     "reference": "annie's eyes were very bright her cheeks were no longer pale and there was a brilliant color in them",
+     "alone": "annie's eyes were very bright her cheeks were no longer pale and there was a brilliant colour in them",
+     "in_batch": "eyes were very bright her cheeks were no longer pale and there was a brilliant colour in them"
+    },
+    {
+     "n": 2935,
+     "librispeech_id": "8188-269288-0054",
+     "reference": "tired out leslie herself dropped asleep",
+     "alone": "tired out lizzley herself dropped asleep",
+     "in_batch": "tied out lizzie herself dropped asleep"
+    }
+   ]
+  },
+  "controlled": {
+   "control": "every row zero-padded to one common length in BOTH arms, so every stream's is_last lands on the same step with the same right_padding; batch size is the only variable",
+   "checked": 2939,
+   "divergences": [
+    {
+     "n": 694,
+     "librispeech_id": "2033-164916-0010",
+     "reference": "he then repaired to the heart of the encampment and ordered the host to halt ten days",
+     "alone": "he then repaired the heart of the encampment and ordered the host to halt ten days",
+     "in_batch": "he then repaired the to the heart of the encampment and ordered the host to halt ten days"
+    },
+    {
+     "n": 899,
+     "librispeech_id": "3528-168669-0022",
+     "reference": "when the vault is open i will close it again",
+     "alone": "with all the is open i will close it again",
+     "in_batch": "with all the open i will close it again"
+    },
+    {
+     "n": 2369,
+     "librispeech_id": "2609-156975-0002",
+     "reference": "let us have faith that right makes might and in that faith let us dare to do our duty as we understand it lincoln",
+     "alone": "let us have faith that right matron might and in that faith that dared to do our duty if he understood it lincoln",
+     "in_batch": "let us have faith that right matron might and in that faith let it dared to do our duty if he understand it lincoln"
+    },
+    {
+     "n": 2903,
+     "librispeech_id": "8188-269288-0022",
+     "reference": "leslie seated herself with her back to her companion and opened her own letters",
+     "alone": "liszy seated herself with her back to her companion and opened her on letters",
+     "in_batch": "liszie seated herself with her back to her companion and opened her on letters"
+    },
+    {
+     "n": 2915,
+     "librispeech_id": "8188-269288-0034",
+     "reference": "annie's eyes were very bright her cheeks were no longer pale and there was a brilliant color in them",
+     "alone": "annie's eyes were very bright her cheeks were no longer pale and there was a brilliant colour in them",
+     "in_batch": "eyes were very bright her cheeks were no longer pale and there was a brilliant colour in them"
+    },
+    {
+     "n": 2935,
+     "librispeech_id": "8188-269288-0054",
+     "reference": "tired out leslie herself dropped asleep",
+     "alone": "tired out lizzley herself dropped asleep",
+     "in_batch": "tied out lizzie herself dropped asleep"
+    }
+   ]
+  }
+ },
+ "seconds": 5464.5
+}
