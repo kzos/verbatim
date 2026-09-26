@@ -10,7 +10,8 @@ Three things live here, and NeMo is imported by exactly two of them, at call tim
   ``examples/asr/conf/asr_streaming_inference/cache_aware_rnnt.yaml`` (Speech
   ``353d190``), which the wheel does not ship, so the keys are carried here. Pure,
   and tested without NeMo. ``spec.decoding`` picks the branch
-  ``CacheAwarePipelineBuilder.build`` takes: ``rnnt`` or ``ctc``.
+  ``CacheAwarePipelineBuilder.build`` takes: ``rnnt`` or ``ctc``. ``spec.word_confidence``
+  picks whether NeMo's RNNT decoder computes word confidence at all, and with which measure.
 - ``inspect_runtime`` reports which NeMo track is installed and whether it carries
   the graphed streaming encoder step of NeMo PR #15863: the module
   ``nemo.collections.asr.parts.submodules.streaming_encoder_cuda_graphs`` with
@@ -39,6 +40,7 @@ from verbatim.scheduler.graph_budget import ConfigError
 
 __all__ = [
     "KNOWN_LEFT_CONTEXT",
+    "WORD_CONFIDENCE_MODES",
     "NeMoPipelineSpec",
     "PipelineBuildError",
     "RuntimeReport",
@@ -127,6 +129,36 @@ class NeMoPipelineSpec:
     #: same reason ``--biasing`` is: a different decode path may produce different
     #: transcripts, and the digests of a run without it do not carry over.
     use_cuda_graph_decoder: bool = False
+    #: What each word's ``confidence`` carries: "off", "nemo-shipped" or "paper-best".
+    #:
+    #: "off" (the default) is the configuration this module has always written, byte
+    #: for byte. ``asr.decoding.greedy.preserve_frame_confidence`` is false, so NeMo's
+    #: ``BaseBuilder._apply_confidence_cfg`` returns before it reads the ``confidence``
+    #: block, the label-looping decoder records no step confidence, and the streaming
+    #: ``RNNTGreedyDecoder`` fills 0.0 for every token. Every word an RNNT server sends
+    #: therefore says 0.0, and that 0.0 is not a measurement. "nemo-shipped" turns it on
+    #: with the block NeMo's streaming YAML ships (Tsallis entropy, exp normalisation,
+    #: mean over a word's tokens, alpha 0.5). "paper-best" uses the measure of Laptev and
+    #: Ginsburg (2022) (Tsallis, exp, min over a word's tokens, alpha 0.33), which are
+    #: also NeMo's own library defaults.
+    #:
+    #: Turning it on is a DIFFERENT CONFIGURATION, the same way ``--biasing`` and decoder
+    #: graphs are. The argmax that picks each token is taken before any confidence is
+    #: computed, and confidence reads the logits through an out-of-place ``log_softmax``
+    #: (the logits tensor itself without fusion models, a clone of it with them), so it
+    #: should not move a token. But the decode path changes: a ``torch.where`` per inner
+    #: iteration to keep the non-blank logits, the confidence kernels, per-step confidence
+    #: storage in the batched hypotheses, a different captured graph when decoder graphs
+    #: are on, and a confidence pass on the host after every decode. So the transcript
+    #: digests of a run with it on must be PROVEN identical to the "off" configuration,
+    #: on the GPU, before anyone assumes they are. Until then they do not carry over.
+    #:
+    #: RNNT only. NeMo's cache-aware CTC pipeline computes word confidence on every step
+    #: from the top-level ``confidence`` block whatever this says (its
+    #: ``run_greedy_decoder`` passes ``compute_confidence=True``), so a CTC server already
+    #: sends the nemo-shipped measure and "off" does not switch it off. A value other
+    #: than "off" is refused there, because it would promise something it cannot deliver.
+    word_confidence: str = "off"
     use_cuda_graphs: bool = False
     compute_dtype: str = "bfloat16"
     device_id: int = 0
@@ -163,6 +195,19 @@ class NeMoPipelineSpec:
                 "no equivalent, so a CTC server would accept phrase lists and transcribe "
                 "every session unbiased without saying so"
             )
+        if self.word_confidence not in WORD_CONFIDENCE_MODES:
+            raise ConfigError(
+                f"word_confidence must be one of {', '.join(WORD_CONFIDENCE_MODES)}, "
+                f"got {self.word_confidence!r}"
+            )
+        if self.word_confidence != "off" and self.decoding != "rnnt":
+            raise ConfigError(
+                f"word_confidence {self.word_confidence!r} needs decoding='rnnt': the switch "
+                "is the RNNT decoder's preserve_frame_confidence, and NeMo's cache-aware CTC "
+                "pipeline computes word confidence on every step from the confidence block "
+                "whatever that flag says, so on CTC 'off' already sends the nemo-shipped "
+                "measure and the three values would not mean what they say"
+            )
 
 
 #: The only RNNT strategy that carries per-stream biasing. ``RNNTDecoding`` passes
@@ -189,6 +234,8 @@ _RNNT_DECODING: dict[str, Any] = {
         # one whose fused path was read for the invariance argument, and a default that
         # moved would move the decode with it.
         "loop_labels": True,
+        # Follows ``spec.word_confidence``; false is "off". It is the flag NeMo's
+        # ``BaseBuilder._apply_confidence_cfg`` reads first, and returns on when false.
         "preserve_frame_confidence": False,
         "max_symbols": 10,
         "ngram_lm_model": None,
@@ -203,6 +250,53 @@ _RNNT_DECODING: dict[str, Any] = {
         "boosting_tree_alpha": 0.0,
     },
 }
+
+#: The ``confidence`` block of NeMo's streaming example, key for key
+#: (``examples/asr/conf/asr_streaming_inference/cache_aware_rnnt.yaml`` at NeMo main
+#: ``cf724ac``): Tsallis entropy, exp normalisation, mean over a word's tokens, alpha 0.5.
+#: This module has always written it, so "off" keeps it and stays byte-identical.
+#: ``exclude_blank`` stays true in every mode: ``_apply_confidence_cfg`` raises on
+#: anything else, because the streaming pipelines only carry non-blank confidence.
+_NEMO_SHIPPED_CONFIDENCE: Final[dict[str, Any]] = {
+    "exclude_blank": True,
+    "aggregation": "mean",
+    "method_cfg": {
+        "name": "entropy",
+        "entropy_type": "tsallis",
+        "alpha": 0.5,
+        "entropy_norm": "exp",
+    },
+}
+
+#: Laptev and Ginsburg (2022): Tsallis entropy, exp normalisation, alpha 0.33, and the
+#: minimum over a word's tokens. The same four values are NeMo's library defaults
+#: (``ConfidenceMethodConfig`` and ``ConfidenceConfig.aggregation``).
+_PAPER_BEST_CONFIDENCE: Final[dict[str, Any]] = {
+    "exclude_blank": True,
+    "aggregation": "min",
+    "method_cfg": {
+        "name": "entropy",
+        "entropy_type": "tsallis",
+        "alpha": 0.33,
+        "entropy_norm": "exp",
+    },
+}
+
+#: ``spec.word_confidence`` -> (``asr.decoding.greedy.preserve_frame_confidence``, the
+#: top-level ``confidence`` block). These are the keys NeMo reads for word confidence
+#: on this path, and the only ones this switch writes. ``_apply_confidence_cfg`` reads the
+#: flag, then ``exclude_blank``, ``aggregation`` and ``method_cfg`` into the decoder's
+#: confidence config. ``get_confidence_utils`` reads ``aggregation`` and ``method_cfg``
+#: again for the pipeline's word aggregator. No ``beam`` block is written, because the
+#: strategy is pinned to ``greedy_batch``.
+_WORD_CONFIDENCE: Final[dict[str, tuple[bool, dict[str, Any]]]] = {
+    "off": (False, _NEMO_SHIPPED_CONFIDENCE),
+    "nemo-shipped": (True, _NEMO_SHIPPED_CONFIDENCE),
+    "paper-best": (True, _PAPER_BEST_CONFIDENCE),
+}
+
+#: The values ``NeMoPipelineSpec.word_confidence`` and ``serve --word-confidence`` take.
+WORD_CONFIDENCE_MODES: Final[tuple[str, ...]] = tuple(_WORD_CONFIDENCE)
 
 
 def pipeline_config(spec: NeMoPipelineSpec) -> dict[str, Any]:
@@ -232,8 +326,13 @@ def pipeline_config(spec: NeMoPipelineSpec) -> dict[str, Any]:
     knobs there would claim a configuration nothing applies. ``return_tail_result`` is
     likewise inert for CTC under ``use_cache: true``, because the wrapper only slices a
     tail when ``valid_out_len`` is set, and it is ``None`` whenever the cache is on.
+
+    Word confidence follows ``spec.word_confidence`` and nothing else. It sets
+    ``asr.decoding.greedy.preserve_frame_confidence`` and picks the ``confidence`` block.
+    "off" writes what this function always wrote, so its configuration is unchanged.
     """
     left, right = spec.att_context
+    preserve_confidence, confidence = _WORD_CONFIDENCE[spec.word_confidence]
     if spec.decoding == "ctc":
         decoding: dict[str, Any] = {"strategy": "greedy", "preserve_alignments": False}
     else:
@@ -241,6 +340,7 @@ def pipeline_config(spec: NeMoPipelineSpec) -> dict[str, Any]:
         decoding = copy.deepcopy(_RNNT_DECODING)
         decoding["greedy"]["enable_per_stream_biasing"] = spec.enable_per_stream_biasing
         decoding["greedy"]["use_cuda_graph_decoder"] = spec.use_cuda_graph_decoder
+        decoding["greedy"]["preserve_frame_confidence"] = preserve_confidence
         if spec.enable_per_stream_biasing and decoding["strategy"] != _BIASING_STRATEGY:
             raise ConfigError(
                 f"per-stream biasing needs strategy {_BIASING_STRATEGY!r}, got "
@@ -267,16 +367,8 @@ def pipeline_config(spec: NeMoPipelineSpec) -> dict[str, Any]:
             "batch_size": 32,
             "n_jobs": 16,
         },
-        "confidence": {
-            "exclude_blank": True,
-            "aggregation": "mean",
-            "method_cfg": {
-                "name": "entropy",
-                "entropy_type": "tsallis",
-                "alpha": 0.5,
-                "entropy_norm": "exp",
-            },
-        },
+        # A copy, for the same reason as the decoding block.
+        "confidence": copy.deepcopy(confidence),
         "endpointing": {
             "stop_history_eou": spec.stop_history_eou_ms,
             "residue_tokens_at_end": 2,
@@ -435,7 +527,8 @@ def build_pipeline(
         f"batch_size {spec.batch_size}, {spec.compute_dtype} on cuda:{spec.device_id}, "
         f"{'CUDA graphs' if spec.use_cuda_graphs else 'eager encoder step'}, "
         f"per-stream biasing {'on' if spec.enable_per_stream_biasing else 'off'}, "
-        f"decoder graphs {'on' if spec.use_cuda_graph_decoder else 'off'}"
+        f"decoder graphs {'on' if spec.use_cuda_graph_decoder else 'off'}, "
+        f"word confidence {spec.word_confidence}"
     )
     try:
         omegaconf = import_module("omegaconf")

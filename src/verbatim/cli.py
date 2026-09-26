@@ -41,12 +41,14 @@ from verbatim.pipelines import registry
 from verbatim.pipelines.base import PipelineAdapter
 from verbatim.pipelines.cache_aware_rnnt import NeMoBoundary
 from verbatim.pipelines.nemo_runtime import (
+    WORD_CONFIDENCE_MODES,
     NeMoPipelineSpec,
     PipelineBuildError,
     RuntimeReport,
     att_context_size,
     build_pipeline,
     inspect_runtime,
+    pipeline_config,
 )
 from verbatim.protocols.base import MAX_BOOST
 from verbatim.scheduler.graph_budget import ConfigError
@@ -228,6 +230,17 @@ def _parser() -> argparse.ArgumentParser:
         "carry over and the invariance gate must be re-run",
     )
     serve.add_argument(
+        "--word-confidence",
+        choices=WORD_CONFIDENCE_MODES,
+        default="off",
+        help="what each word's confidence carries (cache_aware_rnnt only). off, the default, "
+        "is the configuration as it has always been: NeMo computes no confidence and every "
+        "word says 0.0. nemo-shipped is the block NeMo's streaming config ships (Tsallis, "
+        "exp, mean, alpha 0.5); paper-best is Laptev and Ginsburg 2022 (Tsallis, exp, min, "
+        "alpha 0.33). It is a SEPARATE CONFIGURATION: the decode path changes, so digests "
+        "are not proven identical to off until a GPU run shows they are",
+    )
+    serve.add_argument(
         "--att-context-left",
         type=int,
         metavar="N",
@@ -284,7 +297,7 @@ def _settings(args: argparse.Namespace) -> ServeSettings:
 
 
 def _build_adapter(
-    settings: ServeSettings, hooks: Hooks
+    settings: ServeSettings, hooks: Hooks, *, word_confidence: str = "off"
 ) -> tuple[PipelineAdapter, list[str], str, dict[str, str | None]]:
     """The pipeline adapter for these settings, the banner lines that describe it, and
     how the encoder step runs ("fake", "eager" or "graph path") for the health endpoints.
@@ -292,8 +305,17 @@ def _build_adapter(
     The order is deliberate: the runtime is inspected and the graph path decided
     before any model is loaded, so a refusal costs nothing, and the config guards
     run before the checkpoint download too.
+
+    ``word_confidence`` is ``--word-confidence``, carried here beside the settings
+    rather than on them, and handed to the ``NeMoPipelineSpec`` unchanged.
     """
     config = engine_config(settings)
+    if word_confidence != "off" and settings.pipeline == "fake":
+        raise _Refused(
+            EXIT_CONFIG,
+            f"--word-confidence {word_confidence} needs a NeMo pipeline: the fake runs no "
+            "decoder and its scripted confidence would not change, so the flag would do nothing",
+        )
     if settings.pipeline == "fake":
         try:
             adapter = registry.build_for(config)
@@ -344,6 +366,7 @@ def _build_adapter(
             stop_history_eou_ms=settings.stop_history_eou_ms,
             enable_per_stream_biasing=settings.biasing,
             use_cuda_graph_decoder=settings.decoder_graphs,
+            word_confidence=word_confidence,
             use_cuda_graphs=use_graphs,
             compute_dtype=settings.compute_dtype,
             device_id=settings.device_id,
@@ -402,6 +425,7 @@ def _build_adapter(
                 if settings.decoder_graphs
                 else []
             ),
+            *_confidence_lines(spec),
             *_language_lines(decoding, settings.language_code),
         ],
         "graph path" if use_graphs else "eager",
@@ -433,6 +457,27 @@ def _biasing_lines(adapter: PipelineAdapter, settings: ServeSettings) -> list[st
         f"             without --biasing. Weights are NeMo alpha, capped at {MAX_BOOST}, "
         "and a tree is",
         "             built per session, on the tick thread, and never cached across sessions.",
+    ]
+
+
+def _confidence_lines(spec: NeMoPipelineSpec) -> list[str]:
+    """What the banner says when word confidence is on.
+
+    The measure is read from the ``confidence`` block ``pipeline_config`` built for this
+    spec, the one NeMo was handed, rather than restated here. With it off the banner
+    says nothing, as it said nothing before the switch existed.
+    """
+    if spec.word_confidence == "off":
+        return []
+    block = pipeline_config(spec)["confidence"]
+    method = block["method_cfg"]
+    return [
+        f"confidence   word confidence ON, {spec.word_confidence}: {method['entropy_type']} "
+        f"{method['name']}, {method['entropy_norm']} normalisation, alpha {method['alpha']}, "
+        f"{block['aggregation']} over a word's tokens.",
+        "             A SEPARATE CONFIGURATION: the decode path changes, so transcript digests "
+        "are NOT proven",
+        "             identical to --word-confidence off until a GPU run shows they are.",
     ]
 
 
@@ -512,7 +557,9 @@ def _banner(settings: ServeSettings, adapter_lines: list[str]) -> list[str]:
 
 def _serve(args: argparse.Namespace, hooks: Hooks) -> int:
     settings = _settings(args)
-    adapter, adapter_lines, execution, runtime = _build_adapter(settings, hooks)
+    adapter, adapter_lines, execution, runtime = _build_adapter(
+        settings, hooks, word_confidence=args.word_confidence
+    )
     for line in _banner(settings, adapter_lines):
         print(f"[verbatim] {line}", file=hooks.stdout, flush=True)
 

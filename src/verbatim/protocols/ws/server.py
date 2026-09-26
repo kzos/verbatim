@@ -47,6 +47,7 @@ from verbatim.protocols.ws.frames import (
     FinalFrame,
     PartialFrame,
     SessionFrame,
+    confidence_on_wire,
     parse_client_text,
     parse_query,
 )
@@ -72,6 +73,10 @@ class WsServerConfig:
     path: str = "/v1/stream"
     invariance_class: str = "<unmeasured>"  # a placeholder, never a fabricated value
     max_message_bytes: int = DEFAULT_MAX_MESSAGE_BYTES
+    #: The server's configured word confidence, as ``/readyz`` reports it. Finals carry
+    #: each word's ``"c"`` only when ``confidence_on_wire`` says so; "off", the default,
+    #: sends the bytes a final had before ``"c"`` existed.
+    word_confidence: str | None = "off"
 
     def __post_init__(self) -> None:
         if self.max_message_bytes < 2:
@@ -229,7 +234,14 @@ class WsServer:
                     invariance_class=self._config.invariance_class,
                 ).to_json()
             )
-            writer = asyncio.create_task(self._write_results(ws, session, options))
+            writer = asyncio.create_task(
+                self._write_results(
+                    ws,
+                    session,
+                    options,
+                    confidence=confidence_on_wire(self._config.word_confidence),
+                )
+            )
             decoder = wire_decoder(options.wire_encoding, options.wire_sample_rate_hz)
             await self._read_audio(ws, session, decoder)
             # end() or abort() has been called, so the engine's results end after the
@@ -320,7 +332,11 @@ class WsServer:
 
     @staticmethod
     async def _write_results(
-        ws: ServerConnection, session: SessionHandle, options: SessionOptions
+        ws: ServerConnection,
+        session: SessionHandle,
+        options: SessionOptions,
+        *,
+        confidence: bool = False,
     ) -> None:
         """Forward every hypothesis the engine delivers, then close cleanly.
 
@@ -331,6 +347,11 @@ class WsServer:
         A normal end closes with 1000. When the engine is going away under a live
         session it raises `UNAVAILABLE`; that closes with 1001 (going away), the code
         a client reads as "the server left", not "your utterance finished".
+
+        ``confidence`` is ``confidence_on_wire`` of the server's configured word
+        confidence, decided once per server and never by the client: True adds each
+        word's ``"c"`` to a final, False writes a final's bytes as they were before
+        ``"c"`` existed.
         """
         close_code = 1000
         try:
@@ -342,6 +363,7 @@ class WsServer:
                             text=hypothesis.text,
                             audio_s=hypothesis.audio_processed_s,
                             words=words,
+                            confidence=confidence,
                         ).to_json()
                     )
                 elif options.interim_results:
