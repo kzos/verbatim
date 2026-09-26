@@ -11,12 +11,15 @@ first on the path:
 Environment: RUNBOOK_VENV names the Python environment the runbook runs (default: the one
 running pytest). RUNBOOK_CORPUS_ROOT names the local corpus root; the one test that reads
 the real 256-clip manifest skips without it. Every runbook these tests start gets its own
-values of the five variables a run needs.
+values of the seven variables a run needs.
 
 What each part proves:
 
-* The five variables the header says a production run needs are the ones it refuses to
+* The seven variables the header says a production run needs are the ones it refuses to
   run without, each of them unset or empty, and --help prints that header with none set.
+  The card is the operator's: a malformed index or uuid is refused, and the index and uuid
+  given are the ones every card query, the server's placement, the run directory and the
+  records use, for two cards neither of which is the A6000's card 3.
 * The dry run's command lines parse against the real `verbatim serve` and
   `verbatim-bench invariance` parsers, every `--flag` is an exact option string (argparse
   would otherwise accept an abbreviation), the bucket and the max level are the operator's
@@ -35,8 +38,9 @@ What each part proves:
   The monitor's two timeouts and its sleep are observed doing what they were given: a
   hanging nvidia-smi, a slow /admission and the spacing of its polls.
 * Test mode runs the card, placement, checkpoint, code and git checks for real, against
-  stubs, and each refusal exits 2. The stub nvidia-smi answers a per-card query for card 3
-  alone, so a query of any other card fails where it is made.
+  stubs, and each refusal exits 2. The stub nvidia-smi answers a per-card query for its
+  one card alone (CARD_INDEX unless STUB_SMI_INDEX says otherwise), so a query of any other
+  card fails where it is made.
 * Rehearsals over the fake run the whole mechanism end to end, and the failures before,
   between, during and after arms (a server whose built encoder, banner or derived spec is
   not the arm, a server importing another checkout's code with this repository's
@@ -110,7 +114,14 @@ ARMS = ("fixed-churn", "ragged-churn", "fixed-const", "ragged-const")
 MODEL = "nvidia/nemotron-speech-streaming-en-0.6b"
 REVISION = "ebe59e5a817142986528bbbee5dba8db7b38ed50"
 NEMO_FILE = "nemotron-speech-streaming-en-0.6b.nemo"
-CARD_UUID = "GPU-b43f9262-f250-444a-bfbf-461dd3500f1e"
+#: The card these tests give the runbook (RUNBOOK_GPU_INDEX, RUNBOOK_GPU_UUID), and the one
+#: card the stub nvidia-smi has. Neither the A6000's card 3 nor the B300 workspace's card 0,
+#: so a runbook that hard-coded either asks the stub about a card it does not have. The uuid
+#: is a stub's, in the form nvidia-smi prints, with letters so its case matters.
+CARD_INDEX = "5"
+CARD_UUID = "GPU-feedface-0000-4000-8000-00000000cafe"
+#: preflight's card.json for that card, as each arm.json carries it.
+CARD_DOC = {"gpu_index": int(CARD_INDEX), "gpu_uuid": CARD_UUID, "gpu_uuid_reported": CARD_UUID}
 PUBLISHED_CORPUS_ID = "sha256:6a142a960379d48ed31d5ec8c3bc07dbdfcd34ef2b6db041a888b07bdc0003be"
 #: The server's own tick budget at 160 ms, from its own config code.
 BUDGET_MS = EngineConfig(chunk=ChunkMode(160), buckets=(128,)).budget_ms
@@ -163,7 +174,8 @@ def _no_gpu_shim() -> Path:
     return _shim("fail", "#!/bin/sh\necho 'nvidia-smi is disabled in this test' >&2\nexit 1\n")
 
 
-#: Stands in for nvidia-smi in test mode. STUB_SMI_MODE picks what card 3 holds:
+#: Stands in for nvidia-smi in test mode. It has one card, STUB_SMI_INDEX (default
+#: CARD_INDEX) with uuid STUB_SMI_UUID (default CARD_UUID). STUB_SMI_MODE picks what it holds:
 #:   idle          the server, once it is running (the normal case)
 #:   busy          a foreign process, always
 #:   foreign       the server and a foreign process, once the server is running
@@ -186,14 +198,15 @@ def _no_gpu_shim() -> Path:
 #:   edit_between  idle; once an arm has finished, a line is appended to STUB_SMI_EDIT
 #:   commit        idle; once a gate has started, an empty commit lands in STUB_SMI_COMMIT
 #: The server is found by the server.pid files the runbook writes under STUB_SMI_ROOT.
-#: Only card 3 exists: a compute-apps or uuid query without `-i 3` fails (exit 6, as
+#: Only that card exists: a compute-apps or uuid query without `-i <it>` fails (exit 6, as
 #: nvidia-smi does for a card it cannot find), so a query of any other card is seen. When
 #: STUB_SMI_LOG is set, each call appends "monitor ARGS" or "runbook ARGS" to it, by
 #: whether the process asking is the runbook's monitor.
 STUB_SMI = r"""#!/usr/bin/env bash
 # runbook-test-stub: never calls the real nvidia-smi
 mode="${STUB_SMI_MODE:-idle}"
-uuid="${STUB_SMI_UUID:-GPU-b43f9262-f250-444a-bfbf-461dd3500f1e}"
+card="${STUB_SMI_INDEX:-@CARD_INDEX@}"
+uuid="${STUB_SMI_UUID:-@CARD_UUID@}"
 root="${STUB_SMI_ROOT:-/nonexistent}"
 foreign="999999, python3, 1024"
 index="" previous=""
@@ -206,8 +219,8 @@ tr '\0' '\n' < "/proc/$PPID/cmdline" 2>/dev/null | grep -qx monitor && who=monit
 [[ -n "${STUB_SMI_LOG:-}" ]] && echo "$who $*" >> "$STUB_SMI_LOG"
 case " $* " in
     *" --query-compute-apps="*|*" --query-gpu=uuid "*)
-        if [[ "$index" != 3 ]]; then
-            echo "No devices were found (runbook-test-stub: -i '$index'; only card 3 exists)" >&2
+        if [[ "$index" != "$card" ]]; then
+            echo "No devices were found (stub: -i '$index'; only card $card exists)" >&2
             exit 6
         fi ;;
 esac
@@ -272,11 +285,11 @@ case " $* " in
             *) [[ -n "$server" ]] && echo "$server, verbatim, 2048" ;;
         esac ;;
     *" --query-gpu=uuid "*) echo "$uuid" ;;
-    *" --query-gpu=index,uuid"*) echo "3, $uuid, stub-name, stub-bus, stub-driver" ;;
+    *" --query-gpu=index,uuid"*) echo "$card, $uuid, stub-name, stub-bus, stub-driver" ;;
     *) echo "stub nvidia-smi: unexpected arguments: $*" >&2; exit 1 ;;
 esac
 exit 0
-"""
+""".replace("@CARD_INDEX@", CARD_INDEX).replace("@CARD_UUID@", CARD_UUID)
 
 #: Stands in for `ss` in one test: once a server has started under STUB_SMI_ROOT, the
 #: listener on the port belongs to someone else; before that, the real `ss` answers.
@@ -295,13 +308,15 @@ def _stub_smi() -> Path:
     return _shim("stub", STUB_SMI)
 
 
-#: The five variables the runbook's header says a production run needs, in its order.
+#: The seven variables the runbook's header says a production run needs, in its order.
 REQUIRED_ENV = (
     "RUNBOOK_VENV",
     "RUNBOOK_CORPUS_ROOT",
     "RUNBOOK_MEASUREMENT_DIR",
     "RUNBOOK_BUCKET",
     "RUNBOOK_MAX_LEVEL",
+    "RUNBOOK_GPU_INDEX",
+    "RUNBOOK_GPU_UUID",
 )
 
 
@@ -313,8 +328,9 @@ def _clean_env(
     unset: tuple[str, ...] = (),
     **extra: str,
 ) -> dict[str, str]:
-    """The five required variables set (the corpus root to the published runs' location, the
-    measurement directory under _TMP), minus those named in `unset`, then `extra`."""
+    """The seven required variables set (the corpus root to the published runs' location, the
+    measurement directory under _TMP, the card the stub nvidia-smi has), minus those named
+    in `unset`, then `extra`."""
     env = {k: v for k, v in os.environ.items() if not k.startswith(("RUNBOOK_", "STUB_SMI_"))}
     env.pop("HF_HUB_CACHE", None)
     env["CUDA_VISIBLE_DEVICES"] = ""
@@ -329,6 +345,8 @@ def _clean_env(
         env["RUNBOOK_BUCKET"] = bucket
     if max_level is not None:
         env["RUNBOOK_MAX_LEVEL"] = max_level
+    env["RUNBOOK_GPU_INDEX"] = CARD_INDEX
+    env["RUNBOOK_GPU_UUID"] = CARD_UUID
     for name in unset:
         env.pop(name, None)
     env.update(extra)
@@ -636,7 +654,7 @@ def test_sigterm_mid_gate_stops_the_runbook_and_leaves_nothing_behind(tmp_path: 
                 cwd=str(WORKTREE),
             )
         # _TMP (runbook-test-*), then the test's own directory, then its run directory
-        arm = "*/out/gate-nemotron-card3-rehearsal/fixed-const"
+        arm = f"*/out/gate-nemotron-card{CARD_INDEX}-rehearsal/fixed-const"
         deadline = time.monotonic() + 150
         while not list(tmpdir.glob(f"runbook-test-*/{arm}/gate.log")):
             assert child.poll() is None and time.monotonic() < deadline, log.read_text()[-3000:]
@@ -700,7 +718,7 @@ def test_every_serve_flag_exists_exactly_and_the_settings_are_the_arm_asked_for(
         settings = serve_cli._settings(args)  # the server's own validation
         config = engine_config(settings)
         assert config.padding == args.padding and config.buckets == (128,)
-        assert "CUDA_VISIBLE_DEVICES=3" in line["env"]
+        assert f"CUDA_VISIBLE_DEVICES={CARD_INDEX}" in line["env"]
         assert "CUDA_DEVICE_ORDER=PCI_BUS_ID" in line["env"]
         assert "HF_HUB_OFFLINE=1" in line["env"]
         assert any(entry.startswith("HF_HUB_CACHE=/") for entry in line["env"])
@@ -761,7 +779,9 @@ def test_the_locations_come_from_the_environment(tmp_path: Path) -> None:
     line = json.loads(done.stdout)
     gate = bench_cli._build_parser().parse_args(line["gate"][1:])
     assert gate.manifest == root / MANIFEST_REL
-    assert line["record"].startswith(str(tmp_path / "measure") + "/gate-nemotron-card3-")
+    assert line["record"].startswith(
+        str(tmp_path / "measure") + f"/gate-nemotron-card{CARD_INDEX}-"
+    )
 
 
 @pytest.mark.parametrize(
@@ -789,8 +809,8 @@ def test_production_refuses_a_missing_or_impossible_bucket_or_max_level(
 def test_every_variable_a_production_run_needs_is_refused_when_unset(
     name: str, value: str | None
 ) -> None:
-    """Each of the five, unset or empty, stops the runbook before it does anything: a run of
-    an arm, a dry run, and the modes that print what a run would use."""
+    """Each of the seven, unset or empty, stops the runbook before it does anything: a run
+    of an arm, a dry run, and the modes that print what a run would use."""
     env = _clean_env(unset=(name,)) if value is None else _clean_env(**{name: value})
     for args in (("fixed-churn",), ("--dry-run",), ("--facts-expect",), ("--derive-spec", "fixed")):
         done = _run(*args, env=env)
@@ -801,8 +821,9 @@ def test_every_variable_a_production_run_needs_is_refused_when_unset(
 
 def test_the_header_states_the_environment_a_production_run_needs() -> None:
     """The header's first block, which --help prints with no environment at all, names
-    exactly the five variables the runbook refuses to run without, in its order, with the
-    step-1 run's bucket and max level; with all five unset the refusal names the same five."""
+    exactly the seven variables the runbook refuses to run without, in its order, with the
+    step-1 run's bucket, max level and card index; with all seven unset the refusal names the
+    same seven."""
     done = subprocess.run(
         ["bash", str(SCRIPT), "--help"],
         env={"PATH": os.environ["PATH"]},
@@ -816,10 +837,62 @@ def test_the_header_states_the_environment_a_production_run_needs() -> None:
     ]
     assert tuple(re.findall(r"\b(RUNBOOK_[A-Z_]+)=", block)) == REQUIRED_ENV, block
     assert "RUNBOOK_BUCKET=128 RUNBOOK_MAX_LEVEL=128" in block, block
+    # The B300 workspace's one card; its uuid is that box's to read, so a placeholder.
+    assert re.search(r"RUNBOOK_GPU_INDEX=0 ", block) and "RUNBOOK_GPU_UUID=<" in block, block
     refused = _run("--dry-run", env=_clean_env(unset=REQUIRED_ENV))
     assert refused.returncode == 2 and f"FATAL: set {' '.join(REQUIRED_ENV)}: " in refused.stderr, (
         refused.stderr
     )
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("RUNBOOK_GPU_INDEX", "-1"),
+        ("RUNBOOK_GPU_INDEX", "x"),
+        ("RUNBOOK_GPU_INDEX", "1.5"),
+        ("RUNBOOK_GPU_INDEX", "+1"),
+        ("RUNBOOK_GPU_INDEX", "03"),  # 3 written otherwise: another run directory, same card
+        ("RUNBOOK_GPU_INDEX", " 0"),
+        ("RUNBOOK_GPU_INDEX", "0\n"),
+        ("RUNBOOK_GPU_INDEX", "0,1"),
+        ("RUNBOOK_GPU_INDEX", CARD_UUID),  # nvidia-smi -i takes a uuid; this setting does not
+        ("RUNBOOK_GPU_UUID", CARD_UUID[len("GPU-") :]),
+        ("RUNBOOK_GPU_UUID", "gpu-" + CARD_UUID[len("GPU-") :]),
+        ("RUNBOOK_GPU_UUID", "GPU-" + CARD_UUID[len("GPU-") :].upper()),
+        ("RUNBOOK_GPU_UUID", "MIG-" + CARD_UUID[len("GPU-") :]),
+        ("RUNBOOK_GPU_UUID", CARD_UUID[:-1]),
+        ("RUNBOOK_GPU_UUID", CARD_UUID[:-1] + "g"),
+        ("RUNBOOK_GPU_UUID", CARD_UUID + "-0000"),
+        ("RUNBOOK_GPU_UUID", CARD_UUID + " "),
+        ("RUNBOOK_GPU_UUID", CARD_UUID + "\n"),
+        ("RUNBOOK_GPU_UUID", CARD_UUID.replace("-", "", 1)),
+        ("RUNBOOK_GPU_UUID", CARD_INDEX),  # an index where the uuid goes
+    ],
+)
+def test_a_malformed_card_is_refused_before_anything_runs(name: str, value: str) -> None:
+    """The index is a plain non-negative integer and the uuid is nvidia-smi's form; anything
+    else stops the runbook, exit 2, in every mode that reads them, before it prints or runs
+    anything. Production mode, so a run that got past the check would stop elsewhere; the
+    message says it was this check."""
+    env = _clean_env(**{name: value})
+    for args in (("fixed-churn",), ("--dry-run",), ("--facts-expect",), ("--derive-spec", "fixed")):
+        done = _run(*args, env=env)
+        assert done.returncode == 2, (args, done.stdout, done.stderr)
+        assert f"FATAL: {name} must be " in done.stderr, (args, done.stderr)
+        assert not done.stdout, (args, done.stdout)
+
+
+def test_a_well_formed_card_passes_the_check() -> None:
+    """The other side of the refusal above: the forms nvidia-smi uses pass it."""
+    for index, uuid in (("0", CARD_UUID), ("12", "GPU-0123abcd-4567-89ef-0123-456789abcdef")):
+        done = _run(
+            "--dry-run",
+            "fixed-churn",
+            env=_clean_env(RUNBOOK_GPU_INDEX=index, RUNBOOK_GPU_UUID=uuid),
+        )
+        assert done.returncode == 0, done.stderr
+        assert f"CUDA_VISIBLE_DEVICES={index}" in json.loads(done.stdout)["env"]
 
 
 def test_the_old_parameter_name_is_refused_rather_than_ignored() -> None:
@@ -1709,6 +1782,7 @@ def _arm_doc(
     runbook_sha: str | None = "same",
     git_head: str | None = "head",
     versions: dict | None = None,
+    card: dict | None = CARD_DOC,
 ) -> None:
     (root / arm).mkdir(parents=True)
     ragged = arm.startswith("ragged")
@@ -1746,6 +1820,7 @@ def _arm_doc(
                     "verbatim": "x",
                     **(versions if versions is not None else {"version_verbatim": "0.1"}),
                 },
+                "card": card,
             }
         )
     )
@@ -1929,17 +2004,25 @@ def test_every_summary_exit_code_is_reached_by_its_case(
         ({"runbook_sha": "other"}, "ran at different settings"),
         ({"git_head": "other"}, "ran at different settings"),
         ({"versions": {"version_verbatim": "0.2"}}, "ran at different settings"),
+        ({"card": {**CARD_DOC, "gpu_index": 0}}, "ran at different settings"),
+        # The same index on another physical card (another box, or a card swapped).
+        (
+            {"card": {**CARD_DOC, "gpu_uuid_reported": "GPU-0123abcd-4567-89ef-0123-456789abcdef"}},
+            "ran at different settings",
+        ),
         ({"git_head": None}, "did not record their settings"),
         ({"runbook_sha": None}, "did not record their settings"),
         ({"versions": {}}, "did not record their settings"),
+        ({"card": None}, "did not record their settings"),
+        ({"card": {**CARD_DOC, "gpu_uuid_reported": None}}, "did not record their settings"),
     ],
 )
 def test_arms_run_at_different_settings_are_not_read_against_each_other(
     tmp_path: Path, override: dict, message: str
 ) -> None:
-    """A continued run directory whose ragged-const ran at another bucket or max level, or
-    with another runbook, git HEAD or package set: its control and its restart comparison
-    would be between different experiments."""
+    """A continued run directory whose ragged-const ran at another bucket or max level, with
+    another runbook, git HEAD or package set, or on another card: its control and its
+    restart comparison would be between different experiments."""
     for arm, spec in CLEAN.items():
         _arm_doc(tmp_path, arm, spec[0], **(override if arm == "ragged-const" else {}))
     done = _helper("summary", str(tmp_path))
@@ -1952,6 +2035,8 @@ def test_arms_run_at_different_settings_are_not_read_against_each_other(
         "runbook_sha256": "same",
         "git_head": "head",
         "versions": {"version_verbatim": "0.1"},
+        "gpu_index": int(CARD_INDEX),
+        "gpu_uuid": CARD_UUID,
     }
 
 
@@ -2791,8 +2876,8 @@ def _rehearsal_env(
     return env
 
 
-def _run_dir(tmp_path: Path) -> Path:
-    return tmp_path / "out" / "gate-nemotron-card3-rehearsal"
+def _run_dir(tmp_path: Path, card: str = CARD_INDEX) -> Path:
+    return tmp_path / "out" / f"gate-nemotron-card{card}-rehearsal"
 
 
 def _port_free(port: int) -> bool:
@@ -2814,34 +2899,62 @@ COMPUTE_APPS = (
 )
 
 
+UUID_QUERY = ("--query-gpu=uuid", "--format=csv,noheader")
+
+
 @pytest.mark.parametrize(
-    ("args", "code"),
+    ("stub_card", "args", "code", "stdout"),
     [
-        (("-i", "3", *COMPUTE_APPS), 0),
-        (("-i", "0", *COMPUTE_APPS), 6),
-        (COMPUTE_APPS, 6),
-        (("-i", "3", "--query-gpu=uuid", "--format=csv,noheader"), 0),
-        (("-i", "2", "--query-gpu=uuid", "--format=csv,noheader"), 6),
-        (("--query-gpu=index,uuid,name,pci.bus_id,driver_version", "--format=csv,noheader"), 0),
+        (None, ("-i", CARD_INDEX, *COMPUTE_APPS), 0, ""),
+        (None, ("-i", "3", *COMPUTE_APPS), 6, None),
+        (None, ("-i", "0", *COMPUTE_APPS), 6, None),
+        (None, COMPUTE_APPS, 6, None),
+        (None, ("-i", CARD_INDEX, *UUID_QUERY), 0, CARD_UUID + "\n"),
+        (None, ("-i", "3", *UUID_QUERY), 6, None),
+        ("0", ("-i", "0", *UUID_QUERY), 0, CARD_UUID + "\n"),
+        ("0", ("-i", CARD_INDEX, *UUID_QUERY), 6, None),
+        (
+            None,
+            ("--query-gpu=index,uuid,name,pci.bus_id,driver_version", "--format=csv,noheader"),
+            0,
+            f"{CARD_INDEX}, {CARD_UUID}, stub-name, stub-bus, stub-driver\n",
+        ),
     ],
-    ids=["apps-card-3", "apps-card-0", "apps-no-card", "uuid-card-3", "uuid-card-2", "gpu-list"],
+    ids=[
+        "apps-its-card",
+        "apps-card-3",
+        "apps-card-0",
+        "apps-no-card",
+        "uuid-its-card",
+        "uuid-card-3",
+        "uuid-card-0-when-it-is-card-0",
+        "uuid-its-default-when-it-is-card-0",
+        "gpu-list",
+    ],
 )
-def test_the_stub_nvidia_smi_answers_for_card_3_alone(
-    tmp_path: Path, args: tuple, code: int
+def test_the_stub_nvidia_smi_answers_for_its_one_card_alone(
+    tmp_path: Path, stub_card: str | None, args: tuple, code: int, stdout: str | None
 ) -> None:
-    """The stub the rehearsals run with: a per-card query of any card but 3 fails, so a
-    runbook or monitor asking about another card is seen; each call is logged with it."""
+    """The stub the rehearsals run with: a per-card query of any card but its one (the tests'
+    card, or STUB_SMI_INDEX) fails, so a runbook or monitor asking about another card is
+    seen; each call is logged with it."""
     log = tmp_path / "calls.log"
+    env = {**os.environ, "STUB_SMI_ROOT": str(tmp_path), "STUB_SMI_LOG": str(log)}
+    if stub_card is not None:
+        env["STUB_SMI_INDEX"] = stub_card
     done = subprocess.run(
         [str(_stub_smi() / "nvidia-smi"), *args],
-        env={**os.environ, "STUB_SMI_ROOT": str(tmp_path), "STUB_SMI_LOG": str(log)},
+        env=env,
         capture_output=True,
         text=True,
         timeout=30,
     )
     assert done.returncode == code, done.stdout + done.stderr
     if code == 6:
-        assert "only card 3 exists" in done.stderr and not done.stdout
+        card = stub_card or CARD_INDEX
+        assert f"only card {card} exists" in done.stderr and not done.stdout
+    else:
+        assert done.stdout == stdout, done.stdout
     # "runbook" or "monitor", by the process asking (here pytest, which is not the monitor).
     assert log.read_text().split(" ", 1)[1] == " ".join(args) + "\n"
 
@@ -2873,6 +2986,11 @@ def _break_uuid(tmp_path: Path, env: dict) -> None:
     env["STUB_SMI_UUID"] = "GPU-00000000-0000-0000-0000-000000000000"
 
 
+def _break_index(tmp_path: Path, env: dict) -> None:
+    """The box's one card is not the index the runbook was given."""
+    env["STUB_SMI_INDEX"] = "0"
+
+
 def _break_refs(tmp_path: Path, env: dict) -> None:
     shutil.rmtree(tmp_path / "hf")
     env["HF_HUB_CACHE"] = str(_hf_cache(tmp_path / "hf", ref="0" * 40))
@@ -2901,7 +3019,7 @@ def test_preflight_accepts_a_checkpoint_stored_the_xet_way(tmp_path: Path) -> No
     done = _run("fixed-churn", env=env)
     assert done.returncode == 2, done.stderr
     assert "not to its blob name" not in done.stderr, done.stderr
-    assert "not GPU-b43f9262-f250-444a-bfbf-461dd3500f1e" in done.stderr, done.stderr
+    assert f"not {CARD_UUID} (RUNBOOK_GPU_UUID)" in done.stderr, done.stderr
 
 
 def _break_resolution(tmp_path: Path, env: dict) -> None:
@@ -2927,7 +3045,11 @@ def _break_git(tmp_path: Path, env: dict) -> None:
 @pytest.mark.parametrize(
     ("breaker", "message"),
     [
-        (_break_uuid, "not GPU-b43f9262-f250-444a-bfbf-461dd3500f1e"),
+        (
+            _break_uuid,
+            f"card {CARD_INDEX} is GPU-00000000-0000-0000-0000-000000000000, not {CARD_UUID}",
+        ),
+        (_break_index, f"nvidia-smi -i {CARD_INDEX} failed: no card {CARD_INDEX}"),
         (_break_refs, "refs/main"),
         (_break_blob, "not to its blob name"),
         (_break_xet_blob, "not to its blob name"),
@@ -2936,6 +3058,7 @@ def _break_git(tmp_path: Path, env: dict) -> None:
     ],
     ids=[
         "wrong-uuid",
+        "wrong-index",
         "wrong-refs-main",
         "blob-hash-mismatch",
         "xet-blob-hash-mismatch",
@@ -2965,7 +3088,7 @@ def test_preflight_records_whether_head_holds_the_runbook_that_ran(tmp_path: Pat
     env = _rehearsal_env(tmp_path / "held", _free_port(), 4)
     _break_uuid(tmp_path, env)
     done = _run("fixed-churn", env=env, script=copy)
-    assert done.returncode == 2 and "not GPU-b43f9262" in done.stderr, done.stderr
+    assert done.returncode == 2 and f"not {CARD_UUID}" in done.stderr, done.stderr
     doc = _preflight_runbook(tmp_path / "held")
     assert doc["committed_at_head"] is True
     assert doc["sha256"] == hashlib.sha256(copy.read_bytes()).hexdigest()
@@ -3000,6 +3123,88 @@ def test_the_card_must_hold_the_server_and_nothing_else(
     assert (arm / "server.log").exists() is server_started
     assert not (arm / "gate.log").exists()
     assert _port_free(port)  # the server it started was stopped
+
+
+#: Two boxes' one card, neither the tests' default card nor the A6000's card 3: the B300
+#: workspace's index 0, and a two-digit index.
+OTHER_CARDS = (
+    ("0", "GPU-0123abcd-4567-89ef-0123-456789abcdef"),
+    ("12", "GPU-abcdef01-2345-6789-abcd-ef0123456789"),
+)
+
+
+@needs_venv
+@pytest.mark.parametrize(("index", "uuid"), OTHER_CARDS, ids=["card-0", "card-12"])
+def test_the_card_given_is_the_card_every_check_asks_about(
+    tmp_path: Path, index: str, uuid: str
+) -> None:
+    """A box whose one card is `index` with `uuid`, and a runbook told so: one arm runs to its
+    summary. Preflight's uuid query, the placement check, the monitor's polls and the
+    reading after the gate all ask nvidia-smi about that index (the stub fails any other,
+    so an index the runbook kept for itself stops it), preflight compared the uuid given,
+    and card.json, arm.json, the summary, the monitor and the run directory's name record
+    that card; the dry run places the server on it. Told the same box has another uuid, or
+    another index, the runbook refuses at preflight, before an arm, and says which."""
+    card = {
+        "RUNBOOK_GPU_INDEX": index,
+        "RUNBOOK_GPU_UUID": uuid,
+        "STUB_SMI_INDEX": index,
+        "STUB_SMI_UUID": uuid,
+    }
+    env = _rehearsal_env(tmp_path, _free_port(), 34, **card)
+    done = _run("fixed-const", env=env, timeout=180)
+    # One fixed arm, invariant, with no twin: uncontrolled, so 3, and no problem of the card's.
+    assert done.returncode == 3, done.stdout[-3000:] + done.stderr[-3000:]
+    run = _run_dir(tmp_path, index)
+    recorded = {"gpu_index": int(index), "gpu_uuid": uuid, "gpu_uuid_reported": uuid}
+    assert json.loads(next(run.glob("preflight-*/card.json")).read_text()) == recorded
+    arm = json.loads((run / "fixed-const" / "arm.json").read_text())
+    assert arm["card"] == recorded
+    assert arm["operational_problems"] == [] and arm["invalidating_problems"] == [], arm
+    assert arm["monitor_summary"]["monitor_parsed"]["gpu_index"] == index
+    assert arm["monitor_summary"]["card_polls"] >= 1
+    settings = json.loads((run / "summary.json").read_text())["settings_by_arm"]["fixed-const"]
+    assert (settings["gpu_index"], settings["gpu_uuid"]) == (int(index), uuid)
+    calls = Path(env["STUB_SMI_LOG"]).read_text().splitlines()
+    per_card = [
+        line for line in calls if "--query-compute-apps=" in line or " --query-gpu=uuid " in line
+    ]
+    assert all(f" -i {index} " in f" {line} " for line in per_card), calls
+    assert any(" --query-gpu=uuid " in line for line in per_card), calls
+    apps = [line for line in per_card if "--query-compute-apps=" in line]
+    assert {line.split()[0] for line in apps} == {"runbook", "monitor"}, calls
+    # Production places the server on the same card, and names the run directory for it.
+    dry = _run(
+        "--dry-run",
+        "fixed-const",
+        env=_clean_env(RUNBOOK_GPU_INDEX=index, RUNBOOK_GPU_UUID=uuid),
+    )
+    assert dry.returncode == 0, dry.stderr
+    line = json.loads(dry.stdout)
+    assert f"CUDA_VISIBLE_DEVICES={index}" in line["env"]
+    assert Path(line["record"]).parent.name.startswith(f"gate-nemotron-card{index}-")
+    # The same box, told another uuid (the tests' default card's) or another index (the
+    # A6000's): refused at preflight, with what nvidia-smi reported recorded beside it.
+    for name, wrong, message in (
+        (
+            "RUNBOOK_GPU_UUID",
+            CARD_UUID,
+            f"card {index} is {uuid}, not {CARD_UUID} (RUNBOOK_GPU_UUID)",
+        ),
+        ("RUNBOOK_GPU_INDEX", "3", "nvidia-smi -i 3 failed: no card 3 (RUNBOOK_GPU_INDEX) here"),
+    ):
+        again = tmp_path / name
+        env = _rehearsal_env(again, _free_port(), 4, **{**card, name: wrong})
+        done = _run("fixed-const", env=env)
+        assert done.returncode == 2 and message in done.stderr, (name, done.stderr)
+        wrong_run = _run_dir(again, env["RUNBOOK_GPU_INDEX"])
+        assert not (wrong_run / "fixed-const").exists()
+        if name == "RUNBOOK_GPU_UUID":
+            assert json.loads(next(wrong_run.glob("preflight-*/card.json")).read_text()) == {
+                "gpu_index": int(index),
+                "gpu_uuid": CARD_UUID,
+                "gpu_uuid_reported": uuid,
+            }
 
 
 @needs_venv
@@ -3093,7 +3298,7 @@ def test_refusals_during_the_gate_take_the_verdict_away(tmp_path: Path) -> None:
     ("mode", "message", "where"),
     [
         # Seen by the reading after the gate (and by the monitor's polls during it).
-        ("late", "on card 3 after the gate", "operational_problems"),
+        ("late", f"on card {CARD_INDEX} after the gate", "operational_problems"),
         # Seen only while the gate ran: the monitor's polls are what catch it.
         ("transient", "polls during the gate", "operational_problems"),
         # ... at a single one of them.
@@ -3102,7 +3307,7 @@ def test_refusals_during_the_gate_take_the_verdict_away(tmp_path: Path) -> None:
         ("blind", "nvidia-smi failed at", "operational_problems"),
         ("vanish", "no longer shows the server", "operational_problems"),
         # Two things wrong at every poll: each is a problem of its own.
-        ("swap", "did not show the server on card 3 at", "operational_problems"),
+        ("swap", f"did not show the server on card {CARD_INDEX} at", "operational_problems"),
         ("warn", "not a supported look-ahead", "invalidating_problems"),
     ],
 )
@@ -3298,7 +3503,11 @@ if _sys.argv[3:4] and _sys.argv[3].endswith("admission-after.json"):
             "idle",
             "the server was not running when the runbook read it after the gate",
         ),
-        ({}, "blind_after", "nvidia-smi could not list card 3's compute processes after the gate"),
+        (
+            {},
+            "blind_after",
+            f"nvidia-smi could not list card {CARD_INDEX}'s compute processes after the gate",
+        ),
         (
             {"helper_prelude": {"http": ADMISSION_UNANSWERED_AFTER_THE_GATE}},
             "idle",
@@ -3438,7 +3647,7 @@ def test_a_later_arm_that_fails_still_gets_the_earlier_arms_summarised(tmp_path:
     summary = _summary(tmp_path)
     assert summary["exit_code"] == 2
     assert [row["arm"] for row in summary["arms"]] == ["fixed-const"]
-    assert summary["stopped"].startswith("arm ragged-const: card 3 is in use")
+    assert summary["stopped"].startswith(f"arm ragged-const: card {CARD_INDEX} is in use")
     assert "the run stopped before it finished" in summary["reading"]
     run = _run_dir(tmp_path)
     assert "is in use" in (run / "ragged-const" / "fatal.txt").read_text()
@@ -3574,9 +3783,12 @@ def test_a_rehearsal_over_the_fake_runs_the_whole_mechanism(tmp_path: Path) -> N
             "runbook_sha256": sha,
             "git_head": head,
             "versions": versions,
+            "gpu_index": int(CARD_INDEX),
+            "gpu_uuid": CARD_UUID,
         }
         for arm in ARMS
     }
+    assert json.loads((preflight / "card.json").read_text()) == CARD_DOC
     assert (preflight / "runbook.sh").read_bytes() == SCRIPT.read_bytes()
     assert (preflight / "runbook.sha256").read_text().split()[0] == sha
     self_blob = _git(WORKTREE, "hash-object", str(SCRIPT))
@@ -3643,7 +3855,8 @@ def test_a_rehearsal_over_the_fake_runs_the_whole_mechanism(tmp_path: Path) -> N
         ]
         assert ran == asked == [0.2, 2.0, 1.0], monitor
         assert monitor["monitor_parsed"]["server_pid"] == str(doc["server_pid"])
-        assert monitor["monitor_parsed"]["gpu_index"] == "3"
+        assert monitor["monitor_parsed"]["gpu_index"] == CARD_INDEX
+        assert doc["card"] == CARD_DOC
         assert monitor["longest_admission_read_s"] < 1.0 and monitor["longest_card_query_s"] < 2.0
         # Contract C7: the server said it runs this checkout's code.
         assert doc["readyz_before"]["code"] == SERVER_CODE
@@ -3670,11 +3883,12 @@ def test_a_rehearsal_over_the_fake_runs_the_whole_mechanism(tmp_path: Path) -> N
         assert (
             smoke["phases"]["solo"]["sessions"] >= 1 and smoke["phases"]["burst"]["sessions"] == 34
         )
-    # Every per-card question, the runbook's own and its monitor's, was about card 3 (the
-    # stub fails any other, which would have been a problem above), and both asked.
+    # Every per-card question, the runbook's own and its monitor's, was about the card it
+    # was given (the stub fails any other, which would have been a problem above), and both
+    # asked.
     calls = Path(env["STUB_SMI_LOG"]).read_text().splitlines()
     apps = [line for line in calls if "--query-compute-apps=" in line]
-    assert apps and all(" -i 3 " in f" {line} " for line in apps), calls
+    assert apps and all(f" -i {CARD_INDEX} " in f" {line} " for line in apps), calls
     assert {line.split()[0] for line in apps} == {"runbook", "monitor"}, calls
     churned = json.loads((run / "fixed-churn" / "record-summary.json").read_text())
     assert churned["max_level_admission_occupancy_range"][1] > 1

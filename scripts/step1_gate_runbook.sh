@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # step1_gate_runbook.sh -- Verbatim's batch-invariance gate (the server test) on
-# nvidia/nemotron-speech-streaming-en-0.6b, on card 3: fixed-shape padding against its
-# ragged control arm (DR-0014), with the max level churned and at constant occupancy.
+# nvidia/nemotron-speech-streaming-en-0.6b, on the one card RUNBOOK_GPU_INDEX and
+# RUNBOOK_GPU_UUID name: fixed-shape padding against its ragged control arm (DR-0014), with
+# the max level churned and at constant occupancy.
 #
 # WRITTEN, NOT RUN ON A GPU. Its checks have run only on the CPU, over `--pipeline fake`,
 # with nvidia-smi and the HF cache stubbed (scripts/test_step1_gate_runbook.py). Every
@@ -17,20 +18,22 @@
 # graph path (src/verbatim/cli.py:345-353; the installed NeMo carries both halves of PR
 # #15863), so nothing here says anything about the graph path. summary.json says so too.
 #
-# THE ENVIRONMENT A PRODUCTION RUN NEEDS. These five, each set, none with a default; the
-# runbook refuses to start (exit 2) while any of them is unset or empty, in every mode but
-# --help. The step-1 run on card 3 is exactly:
+# THE ENVIRONMENT A PRODUCTION RUN NEEDS. These seven, each set, none with a default; the
+# runbook refuses to start (exit 2) while any of them is unset, empty or malformed, in every
+# mode but --help. The step-1 run, on the one GPU of the B300 workspace, is exactly:
 #   RUNBOOK_VENV=<the Python environment the server runs in> \
 #   RUNBOOK_CORPUS_ROOT=<the local root holding librispeech-test-other-256/> \
 #   RUNBOOK_MEASUREMENT_DIR=<the directory its run directory is written under> \
 #   RUNBOOK_BUCKET=128 RUNBOOK_MAX_LEVEL=128 \
+#   RUNBOOK_GPU_INDEX=0 \
+#   RUNBOOK_GPU_UUID=<what `nvidia-smi -i 0 --query-gpu=uuid --format=csv,noheader` prints there> \
 #   scripts/step1_gate_runbook.sh
 # with no other RUNBOOK_* variable set: the test-mode overrides are refused in production,
 # and the operator limits (RUNBOOK_WS_PORT, RUNBOOK_READY_TIMEOUT_S, RUNBOOK_GATE_TIMEOUT_S,
 # RUNBOOK_CARD_IDLE_WAIT_S, RUNBOOK_SMOKE_SOLO_S) keep their defaults, which change nothing
-# that is measured. What each of the five is: Locations and Parameters, below.
+# that is measured. What each of the seven is: Locations, Parameters and Card, below.
 #
-# Usage (the five variables above are required):
+# Usage (the seven variables above are required):
 #   scripts/step1_gate_runbook.sh [ARM...]           the arms named, in order; all four if none
 #   scripts/step1_gate_runbook.sh --dry-run [ARM...] each arm's env and argv as one JSON line;
 #                                                    checks nothing, starts nothing
@@ -63,18 +66,19 @@
 #   RUNBOOK_MAX_LEVEL  --max, the gate's max level; at most RUNBOOK_BUCKET and at most the
 #                      corpus's 256 utterances.
 #   The step-1 run uses RUNBOOK_BUCKET=128 RUNBOOK_MAX_LEVEL=128. The bucket comes from the
-#   step profile of this checkpoint on card 3 (profile-nemotron-160-eager.json in the
-#   measurement directory: A6000, NeMo cf724ac, bfloat16, 160 ms chunks, eager, 40 steps
-#   with 8 warm-up steps discarded, real speech): median step 30.5 ms at batch 32, 65.6 ms at
-#   128 and 77.0 ms at 160, against the server's tick budget of 112 ms at 160 ms. Those are
-#   medians only. Whether this card keeps the budget at the p95 the admission controller
-#   counts is what the smoke below decides before every gate; the profile does not decide
+#   step profile of this checkpoint on the A6000 the step-1 probe ran on, not on the card a
+#   run uses (profile-nemotron-160-eager.json in that box's measurement directory: A6000,
+#   NeMo cf724ac, bfloat16, 160 ms chunks, eager, 40 steps with 8 warm-up steps discarded,
+#   real speech): median step 30.5 ms at batch 32, 65.6 ms at 128 and 77.0 ms at 160,
+#   against the server's tick budget of 112 ms at 160 ms. Those are medians only. Whether
+#   the run's card keeps the budget at the p95 the admission controller counts is what the
+#   smoke below decides before every gate; the profile does not decide
 #   it. The max level is the bucket itself, the most streams the fixed shape holds, so the
 #   top level fills the batch it pads to. That leaves no headroom: if the server still
 #   counts a finished session live when the gate opens the next one, the new one is refused
 #   (admission.py:200-204) and the monitor stops the gate, exit 2. Whether that happens has
 #   not been observed. The published B300 churn record ran bucket 128 and max 42 with the
-#   older checkpoint. The one capacity search on this card
+#   older checkpoint. The one capacity search on that A6000
 #   (rows/exploratory/ladder-a6000-fixed-dr0016-2026-09-15.json: the older checkpoint,
 #   fixed, bfloat16, eager, 160 ms, gpu_index 3; bucket not recorded) ended at S = 17 on its
 #   latency criterion.
@@ -94,12 +98,26 @@
 # The repository is the one this file is in (git rev-parse --show-toplevel); the runbook
 # refuses to run a copy of itself from anywhere else.
 #
+# Card (environment, required, no defaults; one card for every arm of a run):
+#   RUNBOOK_GPU_INDEX  the card's index as nvidia-smi numbers it, a non-negative integer
+#                      written plainly (0, 1, 12; not 03 or +1). Every per-card nvidia-smi
+#                      query (-i), the monitor's polls, the server's CUDA_VISIBLE_DEVICES
+#                      (with CUDA_DEVICE_ORDER=PCI_BUS_ID, so CUDA numbers the cards as
+#                      nvidia-smi does) and the run directory's name use it.
+#   RUNBOOK_GPU_UUID   that card's uuid, GPU- and five groups of lowercase hex (8-4-4-4-12),
+#                      exactly as `nvidia-smi -i <index> --query-gpu=uuid --format=csv,noheader`
+#                      prints it. An index names a slot and the uuid the physical card:
+#                      preflight asks nvidia-smi for the index's uuid and refuses any other
+#                      (exit 2), so a renumbered box or another machine is refused, not run.
+#   Preflight records both, and the uuid nvidia-smi reported, in card.json; each arm.json
+#   carries it, and the summary reads arms on different cards as different settings.
+#
 # Before each gate: a smoke on the same server (about SMOKE_SOLO_S of audio as one session,
 # then max(32, MAX_LEVEL) sessions at once) with /admission read throughout. The run stops,
 # exit 2, before the long gate if p95_tick_ms reaches the server's tick budget (chunk x
 # utilisation target, config.py:225-228, derived from the server's own code), if any
 # session was refused, or if degradation_level reached 1. During the gate a monitor reads
-# /admission, and asks nvidia-smi what holds card 3, sleeping MONITOR_EVERY_S between polls
+# /admission, and asks nvidia-smi what holds the card, sleeping MONITOR_EVERY_S between polls
 # (the spacing asked for: each poll also waits up to ADMISSION_READ_TIMEOUT_S and
 # CARD_QUERY_TIMEOUT_S; monitor-summary.json records the spacing the polls actually had and
 # the longest each read took, measured by the monitor around each read). It stops the gate
@@ -120,7 +138,7 @@
 # on: refused_total is cumulative and is read again after the gate. That reading after the
 # gate is the runbook's own, and each of these takes the verdict away as well: the server
 # no longer running, no /admission answer, refused_total above its value when the gate
-# started, degradation_level 1 or more, nvidia-smi unable to list card 3, or not showing
+# started, degradation_level 1 or more, nvidia-smi unable to list the card, or not showing
 # the server on it. The smoke also warms the server, identically for every arm.
 #
 # What the server is (contract C5): /readyz's "observed" object is read off the built model
@@ -157,7 +175,7 @@
 #   2  the run stopped before it finished (a refusal or failure in some arm; the arms that
 #      finished are summarised anyway), or the arms in one run directory (continued with
 #      RUNBOOK_RUN_ID) ran at different settings or did not record them: bucket, max level,
-#      runbook sha256, git HEAD, package versions
+#      runbook sha256, git HEAD, package versions, card index and uuid
 #   4  a server restart changed the bytes: fixed-churn and fixed-const differ at a level
 #      they share, or ragged-churn and ragged-const differ at level 1 (one stream in flight)
 #   2  no verdict somewhere (refused, errored, vacuous, record or finals missing or
@@ -227,8 +245,11 @@ readonly SERVER_BENCH_PATH="$(realpath -m "$REPO/bench/src/verbatim_bench")"
 # The environment a run needs (the header's first block): each set, none with a default.
 # Defaults once stood here (.venv at the repository root, /opt/verbatim/corpus,
 # probe-output/step1 in this checkout); where the step-1 run is made, the first two do not
-# exist and the third is not where its measurements go. Nothing is assumed now.
-readonly REQUIRED_ENV=(RUNBOOK_VENV RUNBOOK_CORPUS_ROOT RUNBOOK_MEASUREMENT_DIR RUNBOOK_BUCKET RUNBOOK_MAX_LEVEL)
+# exist and the third is not where its measurements go. The card was a constant here too
+# (index 3 and its uuid, the A6000 the step-1 probe ran on); the run is made on another
+# box. Nothing is assumed now.
+readonly REQUIRED_ENV=(RUNBOOK_VENV RUNBOOK_CORPUS_ROOT RUNBOOK_MEASUREMENT_DIR RUNBOOK_BUCKET RUNBOOK_MAX_LEVEL
+                       RUNBOOK_GPU_INDEX RUNBOOK_GPU_UUID)
 [[ -z "${RUNBOOK_MAX:-}" ]] || die "RUNBOOK_MAX is now RUNBOOK_MAX_LEVEL; unset RUNBOOK_MAX"
 unset_env=()
 for var in "${REQUIRED_ENV[@]}"; do
@@ -246,10 +267,9 @@ readonly MODEL=nvidia/nemotron-speech-streaming-en-0.6b
 readonly MODEL_REVISION=ebe59e5a817142986528bbbee5dba8db7b38ed50
 readonly MODEL_FILENAME=nemotron-speech-streaming-en-0.6b.nemo
 
-readonly GPU_INDEX=3
-# The card the step-1 stock probe ran on with CUDA_VISIBLE_DEVICES=3, as nvidia-smi -i 3
-# reported it: probe-output/step1/nemotron-bf16-1120.json, "driver_and_uuid".
-readonly EXPECTED_GPU_UUID=GPU-b43f9262-f250-444a-bfbf-461dd3500f1e
+# The card (the header's Card block): the operator's, validated under Parameters below.
+readonly GPU_INDEX="$RUNBOOK_GPU_INDEX"
+readonly GPU_UUID="$RUNBOOK_GPU_UUID"
 
 readonly CHUNK_MS=160
 readonly CHUNK="${CHUNK_MS}ms"
@@ -284,9 +304,10 @@ CHURN_S=20                      # invariance-churn-b300-2026-09-14.json shared.c
 # sha256:6a142a96... A local copy holds the same 256 entries in the same order with the same
 # per-clip PCM sha256 and differs ONLY in the audio path prefix: with RUNBOOK_CORPUS_ROOT/
 # rewritten to /opt/verbatim/corpus/ it hashes to exactly the published id. Preflight checks
-# that on every production run and records the local id it observed (on the measurement box
-# that is sha256:d1bae7c7..., the corpus_id the A6000 ladder records carry). The record
-# check then requires the gate's record to carry that observed id.
+# that on every production run and records the local id it observed. The local id hashes
+# the local paths, so it is each box's own: on the A6000 box it was sha256:d1bae7c7..., the
+# corpus_id the A6000 ladder records carry, and another root gives another. The record
+# check then requires the gate's record to carry the id this run observed.
 CORPUS_ROOT="${RUNBOOK_CORPUS_ROOT%/}"
 MANIFEST="$CORPUS_ROOT/librispeech-test-other-256/librispeech-test-other-256.jsonl"
 readonly LOCAL_PREFIX="$CORPUS_ROOT/"
@@ -324,6 +345,12 @@ BUCKET="$RUNBOOK_BUCKET"
 MAX_LEVEL="$RUNBOOK_MAX_LEVEL"
 is_int "$BUCKET" && (( BUCKET >= 1 )) || die "RUNBOOK_BUCKET must be a positive integer, got '$BUCKET'"
 is_int "$MAX_LEVEL" && (( MAX_LEVEL >= 1 )) || die "RUNBOOK_MAX_LEVEL must be a positive integer, got '$MAX_LEVEL'"
+# Plain decimal only: the index is compared as text and names the run directory, so 03 and
+# 3 must not both pass as card 3.
+[[ "$GPU_INDEX" =~ ^(0|[1-9][0-9]*)$ ]] \
+    || die "RUNBOOK_GPU_INDEX must be a non-negative integer written plainly (0, 1, 12), the card's index as nvidia-smi numbers it, got '$GPU_INDEX'"
+[[ "$GPU_UUID" =~ ^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+    || die "RUNBOOK_GPU_UUID must be a card uuid as nvidia-smi prints it (GPU-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, lowercase hex), got '$GPU_UUID'"
 for var in CARD_IDLE_WAIT_S GATE_TIMEOUT_S READY_TIMEOUT_S WS_PORT; do
     is_int "${!var}" || die "RUNBOOK_$var must be a whole number, got '${!var}'"
 done
@@ -1323,21 +1350,26 @@ def summary(run_dir, stopped=""):
             uncontrolled.append(f"{fixed} {c.replace('_vs_', ' vs ')} (twin {twin} {state})")
 
     # A run directory can be continued (RUNBOOK_RUN_ID), so its arms may come from
-    # different invocations. Arms at different buckets or max levels, or run by a different
-    # runbook, git HEAD or package set, are different experiments: no control, and no
-    # restart comparison, holds between them. Settings an arm did not record are unknown,
-    # never assumed equal.
+    # different invocations. Arms at different buckets or max levels, run by a different
+    # runbook, git HEAD or package set, or on a different card (index or uuid; the uuid is
+    # the one nvidia-smi reported at preflight), are different experiments: no control, and
+    # no restart comparison, holds between them. Settings an arm did not record are
+    # unknown, never assumed equal.
     def setting(doc):
         gate = doc.get("gate_argv") or []
         code = doc.get("code") or {}
+        card = doc.get("card") or {}
         return {"bucket": (((doc.get("serve_spec") or {}).get("spec")) or {}).get("batch_size"),
                 "max_level": gate[gate.index("--max") + 1] if "--max" in gate[:-1] else None,
                 "runbook_sha256": (doc.get("runbook") or {}).get("sha256"),
                 "git_head": doc.get("git_head"),
-                "versions": {k: code[k] for k in sorted(code) if k.startswith("version_")}}
+                "versions": {k: code[k] for k in sorted(code) if k.startswith("version_")},
+                "gpu_index": card.get("gpu_index"),
+                "gpu_uuid": card.get("gpu_uuid_reported")}
     settings = {n: setting(arms[n]) for n in ORDER if n in arms}
     unrecorded = [n for n, v in settings.items()
-                  if None in (v["bucket"], v["max_level"], v["runbook_sha256"], v["git_head"]) or not v["versions"]]
+                  if None in (v["bucket"], v["max_level"], v["runbook_sha256"], v["git_head"],
+                              v["gpu_index"], v["gpu_uuid"]) or not v["versions"]]
     mixed = len({json.dumps(v, sort_keys=True) for v in settings.values()}) > 1
 
     ran = [n for n in ORDER if n in arms]
@@ -1426,8 +1458,8 @@ build_serve() {  # $1 = fixed | ragged, $2 = pipeline (default: this mode's); se
                    PYTHONPATH="$PYTHONPATH")
     else
         SERVE_ENV=(
-            CUDA_VISIBLE_DEVICES="$GPU_INDEX"   # card 3; the process then sees it as cuda:0
-            CUDA_DEVICE_ORDER=PCI_BUS_ID        # so "3" is the card nvidia-smi calls 3
+            CUDA_VISIBLE_DEVICES="$GPU_INDEX"   # RUNBOOK_GPU_INDEX; the process then sees it as cuda:0
+            CUDA_DEVICE_ORDER=PCI_BUS_ID        # so the index is the card nvidia-smi calls by it
             HF_HUB_CACHE="$HF_HUB_DIR"          # the cache preflight checked, as huggingface_hub resolves it
             HF_HUB_OFFLINE=1                    # resolve refs/main in the cache (checked = the pinned revision), never the network
             PYTHONUNBUFFERED=1
@@ -1553,7 +1585,7 @@ port_listeners() {  # every listening TCP socket on the port, any address, with 
     ss -H -ltnp "sport = :$1" 2>/dev/null || true
 }
 
-card_apps() {  # compute processes on card 3, one "pid, name, MiB" line each
+card_apps() {  # compute processes on the card (RUNBOOK_GPU_INDEX), one "pid, name, MiB" line each
     nvidia-smi -i "$GPU_INDEX" --query-compute-apps=pid,process_name,used_memory \
         --format=csv,noheader,nounits
 }
@@ -1699,7 +1731,7 @@ require_facts() {  # $1 padding, $2 arm dir
     bad=$(check_banner "$padding" "$dir/server.log" "$kind") || die "banner: $bad"
 }
 
-require_on_card() {  # $1 arm dir: the server's own pid holds a context on card 3, and nothing else does
+require_on_card() {  # $1 arm dir: the server's own pid holds a context on the card, and nothing else does
     local dir=$1 apps foreign
     apps=$(card_apps) || die "nvidia-smi could not list card $GPU_INDEX's compute processes"
     printf '%s\n' "$apps" > "$dir/card-apps-before.txt"
@@ -1907,13 +1939,15 @@ print(path if isinstance(path, str) else "")' "$MODEL" "$MODEL_FILENAME") || die
     helper obj "model=$MODEL" "revision=$rev" "hf_hub_cache=$HF_HUB_DIR" "nemo_file=$model_file" \
         "nemo_sha256=$actual" > "$dir/model.json"
 
-    # The card: the same physical card the step-1 probe used.
+    # The card: the index RUNBOOK_GPU_INDEX names is the physical card RUNBOOK_GPU_UUID
+    # names. What was asked for and what nvidia-smi reported are both recorded.
     nvidia-smi --query-gpu=index,uuid,name,pci.bus_id,driver_version --format=csv,noheader \
         > "$dir/gpus.txt" || die "nvidia-smi failed"
     gpu_line=$(nvidia-smi -i "$GPU_INDEX" --query-gpu=uuid --format=csv,noheader) \
-        || die "nvidia-smi -i $GPU_INDEX failed"
-    [[ "$gpu_line" == "$EXPECTED_GPU_UUID" ]] \
-        || die "card $GPU_INDEX is $gpu_line, not $EXPECTED_GPU_UUID (the card the step-1 probe ran on)"
+        || die "nvidia-smi -i $GPU_INDEX failed: no card $GPU_INDEX (RUNBOOK_GPU_INDEX) here"
+    helper obj "gpu_index=#$GPU_INDEX" "gpu_uuid=$GPU_UUID" "gpu_uuid_reported=$gpu_line" > "$dir/card.json"
+    [[ "$gpu_line" == "$GPU_UUID" ]] \
+        || die "card $GPU_INDEX is $gpu_line, not $GPU_UUID (RUNBOOK_GPU_UUID)"
 }
 
 # ---------------------------------------------------------------------------------------
@@ -2059,6 +2093,7 @@ run_arm() {  # $1 arm, $2 run dir
         arm="$arm" padding="$ARM_PADDING" occupancy="$ARM_OCCUPANCY" \
         record="$record" finals="$finals" preflight="$PREFLIGHT_DIR" \
         "runbook=@$PREFLIGHT_DIR/runbook.json" "git_head=$PREFLIGHT_HEAD" "code=@$PREFLIGHT_DIR/code.json" \
+        "card=@$PREFLIGHT_DIR/card.json" \
         "server_pid=#$(cat "$dir/server.pid")" \
         "gate_exit=#$gate_rc" "server_exit=#${SERVER_EXIT:-null}" "record_check_exit=#$rec_rc" \
         "monitor_exit=#${MONITOR_EXIT:-null}" \
@@ -2134,7 +2169,7 @@ if (( DRY_RUN )); then
 fi
 
 mkdir -p "$RUN_DIR"
-log "run directory $RUN_DIR; arms: ${ARMS[*]}; bucket $BUCKET, max level $MAX_LEVEL; EAGER ONLY"
+log "run directory $RUN_DIR; arms: ${ARMS[*]}; bucket $BUCKET, max level $MAX_LEVEL; card $GPU_INDEX ($GPU_UUID); EAGER ONLY"
 [[ "$TEST_FAKE" == 1 ]] && log "TEST MODE: --pipeline fake on the CPU; nothing here is a measurement"
 # Every invocation checks the runbook, code, corpus, checkpoint and card again, into its own
 # directory, including one that continues an earlier run directory through RUNBOOK_RUN_ID.
