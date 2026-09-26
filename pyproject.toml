@@ -44,6 +44,9 @@ nemo = [
 ]
 dev = [
   "grpcio-tools>=1.71,<2",
+  # tests/test_server_frozen_answers.py checks its hub-cache resolution against
+  # huggingface_hub's own; the library pulls in neither torch nor NeMo.
+  "huggingface_hub>=1.0,<2",
   "pytest>=8.0",
   "pytest-asyncio>=0.24",
   "ruff>=0.6",
