@@ -1,0 +1,1666 @@
+{
+ "flips_vs_confidence": {
+  "both_right": 3,
+  "flips_side_b": {
+   "corpus_word_errors": 3224,
+   "empty_spans": 6,
+   "not_right": 134,
+   "not_right_by_analyse": 135,
+   "null": {
+    "draws": 1000,
+    "random_recordings": {
+     "not_right_mean": 14.692,
+     "not_right_rate_mean": 0.07774,
+     "observed_over_null_mean": 8.90445,
+     "p_value_not_right": 0.001,
+     "p_value_word_errors_removable": 0.001,
+     "recall_mean": 0.0062,
+     "recordings_drawn_from": 2939,
+     "word_errors_removable_mean": 19.99
+    },
+    "same_recordings": {
+     "not_right_mean": 32.276,
+     "not_right_rate_mean": 0.17077,
+     "observed_over_null_mean": 4.20099,
+     "p_value_not_right": 0.001,
+     "p_value_word_errors_removable": 0.001,
+     "recall_mean": 0.01314,
+     "recordings_drawn_from": 181,
+     "word_errors_removable_mean": 42.371
+    },
+    "seed": "20260924/bfloat16/server_fixed_vs_ragged/places/b"
+   },
+   "precision": 0.70899,
+   "recall": 0.05521,
+   "recordings_flagged": 181,
+   "spans": 189,
+   "word_errors_removable": 178,
+   "words_flagged": 226
+  },
+  "modes": {
+   "nemo-shipped": {
+    "confidence": {
+     "corpus_word_errors": 3220,
+     "empty_spans": 0,
+     "not_right": 145,
+     "null": {
+      "draws": 1000,
+      "random_recordings": {
+       "not_right_mean": 15.515,
+       "not_right_rate_mean": 0.07459,
+       "observed_over_null_mean": 8.59571,
+       "p_value_not_right": 0.001,
+       "p_value_word_errors_removable": 0.001,
+       "recall_mean": 0.00643,
+       "recordings_drawn_from": 2939,
+       "word_errors_removable_mean": 20.708
+      },
+      "same_recordings": {
+       "not_right_mean": 46.351,
+       "not_right_rate_mean": 0.22284,
+       "observed_over_null_mean": 2.83525,
+       "p_value_not_right": 0.001,
+       "p_value_word_errors_removable": 0.001,
+       "recall_mean": 0.0195,
+       "recordings_drawn_from": 184,
+       "word_errors_removable_mean": 62.781
+      },
+      "seed": "20260924/bfloat16/server_fixed_vs_ragged/confidence/a"
+     },
+     "precision": 0.69712,
+     "recall": 0.05528,
+     "recordings_flagged": 184,
+     "spans": 208,
+     "word_errors_removable": 178,
+     "words_flagged": 240
+    },
+    "confidence_capture": "server-a207de6-fixed-nemoshipped-c32.json.gz",
+    "cutoff_confidence": 0.0256195068359375,
+    "finals_digest": "45e1ddba293689ca005cdf2b7d84e8ffd8125a4e0d929f6c0d0ae74c53bd5a7f",
+    "flips": {
+     "corpus_word_errors": 3220,
+     "empty_spans": 4,
+     "not_right": 125,
+     "not_right_by_analyse": 127,
+     "null": {
+      "draws": 1000,
+      "random_recordings": {
+       "not_right_mean": 15.176,
+       "not_right_rate_mean": 0.0803,
+       "observed_over_null_mean": 8.44578,
+       "p_value_not_right": 0.001,
+       "p_value_word_errors_removable": 0.001,
+       "recall_mean": 0.0064,
+       "recordings_drawn_from": 2939,
+       "word_errors_removable_mean": 20.602
+      },
+      "same_recordings": {
+       "not_right_mean": 31.199,
+       "not_right_rate_mean": 0.16507,
+       "observed_over_null_mean": 4.17627,
+       "p_value_not_right": 0.001,
+       "p_value_word_errors_removable": 0.001,
+       "recall_mean": 0.01294,
+       "recordings_drawn_from": 181,
+       "word_errors_removable_mean": 41.664
+      },
+      "seed": "20260924/bfloat16/server_fixed_vs_ragged/places/a"
+     },
+     "precision": 0.66138,
+     "recall": 0.05404,
+     "recordings_flagged": 181,
+     "spans": 189,
+     "word_errors_removable": 174,
+     "words_flagged": 240
+    },
+    "k_words": 240,
+    "same_answers_as_served": "IDENTICAL IN TEXT AND TIMINGS",
+    "tie_range": {
+     "choices": 1,
+     "chosen": 1,
+     "range": {
+      "not_right": [
+       145,
+       145
+      ],
+      "precision": [
+       0.69712,
+       0.69712
+      ],
+      "recall": [
+       0.05528,
+       0.05528
+      ],
+      "spans": [
+       208,
+       208
+      ],
+      "word_errors_removable": [
+       178,
+       178
+      ]
+     },
+     "tied": 1
+    },
+    "tied_at_cutoff": {
+     "all": 1,
+     "flagged": 1
+    }
+   },
+   "paper-best": {
+    "confidence": {
+     "corpus_word_errors": 3220,
+     "empty_spans": 0,
+     "not_right": 190,
+     "null": {
+      "draws": 1000,
+      "random_recordings": {
+       "not_right_mean": 15.812,
+       "not_right_rate_mean": 0.06996,
+       "observed_over_null_mean": 10.56405,
+       "p_value_not_right": 0.001,
+       "p_value_word_errors_removable": 0.001,
+       "recall_mean": 0.0065,
+       "recordings_drawn_from": 2939,
+       "word_errors_removable_mean": 20.92
+      },
+      "same_recordings": {
+       "not_right_mean": 43.025,
+       "not_right_rate_mean": 0.19038,
+       "observed_over_null_mean": 4.03321,
+       "p_value_not_right": 0.001,
+       "p_value_word_errors_removable": 0.001,
+       "recall_mean": 0.01702,
+       "recordings_drawn_from": 204,
+       "word_errors_removable_mean": 54.795
+      },
+      "seed": "20260924/bfloat16/server_fixed_vs_ragged/confidence/a"
+     },
+     "precision": 0.84071,
+     "recall": 0.06863,
+     "recordings_flagged": 204,
+     "spans": 226,
+     "word_errors_removable": 221,
+     "words_flagged": 240
+    },
+    "confidence_capture": "server-a207de6-fixed-paperbest-c32.json.gz",
+    "cutoff_confidence": 5.3085386753082275e-08,
+    "finals_digest": "45e1ddba293689ca005cdf2b7d84e8ffd8125a4e0d929f6c0d0ae74c53bd5a7f",
+    "flips": {
+     "corpus_word_errors": 3220,
+     "empty_spans": 4,
+     "not_right": 125,
+     "not_right_by_analyse": 127,
+     "null": {
+      "draws": 1000,
+      "random_recordings": {
+       "not_right_mean": 15.176,
+       "not_right_rate_mean": 0.0803,
+       "observed_over_null_mean": 8.44578,
+       "p_value_not_right": 0.001,
+       "p_value_word_errors_removable": 0.001,
+       "recall_mean": 0.0064,
+       "recordings_drawn_from": 2939,
+       "word_errors_removable_mean": 20.602
+      },
+      "same_recordings": {
+       "not_right_mean": 31.199,
+       "not_right_rate_mean": 0.16507,
+       "observed_over_null_mean": 4.17627,
+       "p_value_not_right": 0.001,
+       "p_value_word_errors_removable": 0.001,
+       "recall_mean": 0.01294,
+       "recordings_drawn_from": 181,
+       "word_errors_removable_mean": 41.664
+      },
+      "seed": "20260924/bfloat16/server_fixed_vs_ragged/places/a"
+     },
+     "precision": 0.66138,
+     "recall": 0.05404,
+     "recordings_flagged": 181,
+     "spans": 189,
+     "word_errors_removable": 174,
+     "words_flagged": 240
+    },
+    "k_words": 240,
+    "same_answers_as_served": "IDENTICAL IN TEXT AND TIMINGS",
+    "tie_range": {
+     "choices": 6,
+     "chosen": 1,
+     "range": {
+      "not_right": [
+       189,
+       190
+      ],
+      "precision": [
+       0.83628,
+       0.84071
+      ],
+      "recall": [
+       0.06801,
+       0.06863
+      ],
+      "spans": [
+       225,
+       226
+      ],
+      "word_errors_removable": [
+       219,
+       221
+      ]
+     },
+     "tied": 6
+    },
+    "tied_at_cutoff": {
+     "all": 6,
+     "flagged": 1
+    }
+   }
+  },
+  "nulls": {
+   "draws": 1000,
+   "seed": 20260924
+  },
+  "places": "places-a207de6.json.gz",
+  "places_analysis": {
+   "alone_right": 62,
+   "alone_vs_batch_sign_test_p": 0.5159,
+   "batch_right": 54,
+   "both_right": 0,
+   "negation_or_number_places": 4,
+   "neither_right": 73,
+   "net_extra_errors_in_batch": 4,
+   "place_shapes": {
+    "multi_word": 68,
+    "one_for_one": 111,
+    "one_side_empty": 10
+   },
+   "places": 189,
+   "recordings_changed": 181,
+   "reference_words": 3828,
+   "wer_alone": 0.12147,
+   "wer_in_batch": 0.12252,
+   "word_errors_alone": 465,
+   "word_errors_in_batch": 469
+  },
+  "places_count": 189,
+  "served_right": {
+   "by_analyse": 62,
+   "span_rule": 64
+  },
+  "side": "the served answer: the server capture with --padding fixed"
+ },
+ "inputs": {
+  "directory": "step1-a6000-2026-09-26",
+  "manifest_sha256": "06d1661f3ec9673427e63f5758fea8dd5cee14dc9967714eb8de3b6c618bb8ac",
+  "sha256_raw": {
+   "places-22e8406.json.gz": "ff7d22aafc6c530b7e58771534b311b588693a836b2a150b17a3a0a9242e2f59",
+   "places-a207de6.json.gz": "cb817c3868c1113de27224e472cb45ae56bf84f2f59775412ef5f06ac188688a",
+   "replay-22e8406-nemotron-bf16-1120-n64.json.gz": "70b18a73c5f80c738b2f3c8a76799aae055957447d6f562cbaa50f31fa1a7f59",
+   "server-22e8406-fixed-c32.json.gz": "0079a84d02e60676044b897a1eb449a4c1e9adba223c9d162ffedf0b9bf5851d",
+   "server-22e8406-fixed-c8.json.gz": "6d1fd9e208d6915ed34669d7883e566d05a6da677b3ac62b880ba35edd77eca8",
+   "server-22e8406-ragged-c32.json.gz": "098ae59b5a3263a3e2ded2747cdaae31d431811d2c8c90082399a6a496402d81",
+   "server-a207de6-fixed-c32.json.gz": "87a3e0a76d5ae8f623efc26527462c1e732355d0010cecbd5dace04fbd346afb",
+   "server-a207de6-fixed-c8.json.gz": "2ff72731645876f17fef35160d28a3fe5627b035776a104d77dd1451dc3f4d7f",
+   "server-a207de6-fixed-nemoshipped-c32.json.gz": "ff4f3c24f398f7cad9ff1e957c11923d899c0d781cf8d36b0ce6ee9f0ebd23c2",
+   "server-a207de6-fixed-paperbest-c32.json.gz": "a1ba0ece94b5fe0f9cface453c2bebcea6fea064734f5df9dc75a78628534e61",
+   "server-a207de6-ragged-c32-repeat.json.gz": "169d2ff8a6886ca7c6e7d7d585e2e271cfd1335a290f5c33f0210dcda737b359",
+   "server-a207de6-ragged-c32.json.gz": "d3fe0003d421e6adb1c38cc57fabb10b7a22bf53248f30b11c868263f41531ed",
+   "stock-hybrid-bf16-1120.json.gz": "74a1e98017ac36df080f9e3b8381e0d24f5d4a0eb8933ef3560941d21125b236",
+   "stock-nemotron-bf16-1120.json.gz": "db2c1b876143f1cac53a7eb1db0f48d4240a082d4e8a0de6fdb462c116649fff",
+   "stock-nemotron-bf16-160-high-n1024.json.gz": "788a8aad1ad6b0fa32c619bf267f3555ca621712ae7fec9a54763b0b58945ad4",
+   "stock-nemotron-fp32-1120.json.gz": "2cba7d5bcbbc4388752df595d63fad2b6eb1198ee3f8d395459733b17d540d16"
+  }
+ },
+ "not_a_row": "Derived by scripts/step1_summary.py from the exploratory records in rows/exploratory/step1-a6000-2026-09-26/ (stock-pipeline probes and server captures on one card). Not a harness row: nothing here is a benchmark result or reads a gate.",
+ "question": "Step 1 on nvidia/nemotron-speech-streaming-en-0.6b, on one RTX A6000: how often do its answers depend on the batch, does the server's fixed padding freeze them, and do the places where they flip find errors better than the model's own confidence?",
+ "replay": {
+  "arms": {
+   "bfloat16/equalised": {
+    "checked": 64,
+    "text_divergent": 4,
+    "timing_only_divergent": 19
+   },
+   "bfloat16/fixed": {
+    "checked": 64,
+    "text_divergent": 0,
+    "timing_only_divergent": 0
+   },
+   "bfloat16/ragged": {
+    "checked": 64,
+    "text_divergent": 2,
+    "timing_only_divergent": 16
+   }
+  },
+  "differences": [],
+  "record": "replay-22e8406-nemotron-bf16-1120-n64.json.gz",
+  "replays": "stock-nemotron-bf16-1120.json.gz",
+  "reproduced": true,
+  "targets": 64
+ },
+ "rules": {
+  "flags": "scripts/step1_places.py: precision is the flag's spans that are not right over its spans; recall is the word errors a perfect correction of every flagged span would remove, over all the side's word errors; each null draws spans of the same lengths at random, 1,000 draws, seed 20260924",
+  "flips_vs_confidence": "the flips are the place flag on side a, the served (fixed) answer; the confidence flag marks side a's K lowest-confidence words, K being the words the flips mark",
+  "places_analysis": "scripts/unstable_words.py analyse via scripts/step1_places.py, whose labels name side a 'alone' and side b 'in_batch' (or 'batch'); out-of-dictionary figures are not derived here (no word list in these records)",
+  "punctuation_only": "a text-divergent recording whose two transcripts agree after words()",
+  "rates": "over the recordings checked, rounded to 5 decimals (scripts/step1_places.py rate)",
+  "served_right": "the flips' spans that are right: by the flag's rule (span_not_right, a gap not right only when a reference word is missing there), spans minus not_right; by analyse's rule, which also calls a gap not right when side b's words there are right, spans minus not_right_by_analyse",
+  "ticks": "server.load as each capture recorded it; the tick budget is not stamped in the captures",
+  "tie_range": "scripts/step1_places.py tie_range: when words tie at the confidence cutoff, every choice of the tied words that fills K, scored without nulls; each figure's lowest and highest. The flag's own figures are the seeded choice's",
+  "timing_only": "the two texts are equal and the word timings (word, start, end) are not",
+  "wer": "scripts/step1_places.py corpus figures: word Levenshtein distance to the reference, summed over every checked recording, over the reference words, after its normalise(); side a and side b as the arm names them",
+  "word_level": "a text-divergent recording whose two transcripts differ after the probe's words() (probes/stock_divergence.py: lowercased, every run of characters other than word characters, apostrophes and spaces made a space)"
+ },
+ "server": {
+  "captures": {
+   "server-22e8406-fixed-c32.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "22e84061fdb228d4d858cdc9229f485a16a59ac2",
+    "concurrency_configured": 32,
+    "finals_digest": "45e1ddba293689ca005cdf2b7d84e8ffd8125a4e0d929f6c0d0ae74c53bd5a7f",
+    "observed_peak_in_flight": 32,
+    "p95_tick_ms_after": 187.06308118999004,
+    "p95_tick_ms_before": 67.39549385383725,
+    "padding": "fixed",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06107789007126072,
+     "errors": 3197,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T10:15:51+0300",
+    "ticks_during_run": 4008,
+    "ticks_late_during_run": 1422,
+    "ticks_over_budget_during_run": 2534,
+    "wall_clock_s": 641.061,
+    "warnings": [
+     "2534 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-22e8406-fixed-c8.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "22e84061fdb228d4d858cdc9229f485a16a59ac2",
+    "concurrency_configured": 8,
+    "finals_digest": "45e1ddba293689ca005cdf2b7d84e8ffd8125a4e0d929f6c0d0ae74c53bd5a7f",
+    "observed_peak_in_flight": 8,
+    "p95_tick_ms_after": 136.22351409867406,
+    "p95_tick_ms_before": 67.49918684363365,
+    "padding": "fixed",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06107789007126072,
+     "errors": 3197,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T10:27:52+0300",
+    "ticks_during_run": 15642,
+    "ticks_late_during_run": 240,
+    "ticks_over_budget_during_run": 2419,
+    "wall_clock_s": 2502.535,
+    "warnings": [
+     "2419 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-22e8406-ragged-c32.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "22e84061fdb228d4d858cdc9229f485a16a59ac2",
+    "concurrency_configured": 32,
+    "finals_digest": "ee539981a81bace26082858e320cb6abae693399018014cf42a625721adee7bf",
+    "observed_peak_in_flight": 32,
+    "p95_tick_ms_after": 150.84951929748058,
+    "p95_tick_ms_before": 0.0,
+    "padding": "ragged",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06121162333072235,
+     "errors": 3204,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T11:11:37+0300",
+    "ticks_during_run": 3972,
+    "ticks_late_during_run": 591,
+    "ticks_over_budget_during_run": 2146,
+    "wall_clock_s": 635.367,
+    "warnings": [
+     "2146 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-a207de6-fixed-c32.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+    "concurrency_configured": 32,
+    "finals_digest": "45e1ddba293689ca005cdf2b7d84e8ffd8125a4e0d929f6c0d0ae74c53bd5a7f",
+    "observed_peak_in_flight": 32,
+    "p95_tick_ms_after": 183.40411130338907,
+    "p95_tick_ms_before": 65.99880009889603,
+    "padding": "fixed",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06107789007126072,
+     "errors": 3197,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T12:17:02+0300",
+    "ticks_during_run": 4002,
+    "ticks_late_during_run": 1176,
+    "ticks_over_budget_during_run": 2452,
+    "wall_clock_s": 640.215,
+    "warnings": [
+     "2452 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-a207de6-fixed-c8.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+    "concurrency_configured": 8,
+    "finals_digest": "45e1ddba293689ca005cdf2b7d84e8ffd8125a4e0d929f6c0d0ae74c53bd5a7f",
+    "observed_peak_in_flight": 8,
+    "p95_tick_ms_after": 112.96269204467535,
+    "p95_tick_ms_before": 66.84557115659118,
+    "padding": "fixed",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06107789007126072,
+     "errors": 3197,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T12:28:48+0300",
+    "ticks_during_run": 15624,
+    "ticks_late_during_run": 167,
+    "ticks_over_budget_during_run": 2053,
+    "wall_clock_s": 2499.699,
+    "warnings": [
+     "2053 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-a207de6-fixed-nemoshipped-c32.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+    "concurrency_configured": 32,
+    "finals_digest": "45e1ddba293689ca005cdf2b7d84e8ffd8125a4e0d929f6c0d0ae74c53bd5a7f",
+    "observed_peak_in_flight": 32,
+    "p95_tick_ms_after": 179.5062366873026,
+    "p95_tick_ms_before": 64.80010692030191,
+    "padding": "fixed",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06107789007126072,
+     "errors": 3197,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T13:36:16+0300",
+    "ticks_during_run": 4007,
+    "ticks_late_during_run": 1306,
+    "ticks_over_budget_during_run": 2463,
+    "wall_clock_s": 641.032,
+    "warnings": [
+     "2463 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "nemo-shipped"
+   },
+   "server-a207de6-fixed-paperbest-c32.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+    "concurrency_configured": 32,
+    "finals_digest": "45e1ddba293689ca005cdf2b7d84e8ffd8125a4e0d929f6c0d0ae74c53bd5a7f",
+    "observed_peak_in_flight": 32,
+    "p95_tick_ms_after": 179.29501459002495,
+    "p95_tick_ms_before": 67.55239889025688,
+    "padding": "fixed",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06107789007126072,
+     "errors": 3197,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T13:24:01+0300",
+    "ticks_during_run": 4015,
+    "ticks_late_during_run": 1505,
+    "ticks_over_budget_during_run": 2508,
+    "wall_clock_s": 642.249,
+    "warnings": [
+     "2508 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "paper-best"
+   },
+   "server-a207de6-ragged-c32-repeat.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+    "concurrency_configured": 32,
+    "finals_digest": "65e11a9d24abf0af872318ed7b93c3b144c426efbaa1b2ec0e8b01769afbedd1",
+    "observed_peak_in_flight": 32,
+    "p95_tick_ms_after": 168.57609571889043,
+    "p95_tick_ms_before": 0.0,
+    "padding": "ragged",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06121162333072235,
+     "errors": 3204,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T13:53:22+0300",
+    "ticks_during_run": 3971,
+    "ticks_late_during_run": 589,
+    "ticks_over_budget_during_run": 2107,
+    "wall_clock_s": 635.279,
+    "warnings": [
+     "2107 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-a207de6-ragged-c32.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+    "concurrency_configured": 32,
+    "finals_digest": "505d92637efde2ec22e6fc4859e658d56cba22ca9334badb24a1df4a0e677590",
+    "observed_peak_in_flight": 32,
+    "p95_tick_ms_after": 186.28876097500324,
+    "p95_tick_ms_before": 0.0,
+    "padding": "ragged",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06117341382801903,
+     "errors": 3202,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T13:11:55+0300",
+    "ticks_during_run": 3953,
+    "ticks_late_during_run": 280,
+    "ticks_over_budget_during_run": 1127,
+    "wall_clock_s": 632.275,
+    "warnings": [
+     "1127 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   }
+  },
+  "confidence_equivalence": {
+   "nemo-shipped": {
+    "differences": [],
+    "identical": true,
+    "off": "server-a207de6-fixed-c32.json.gz",
+    "on": "server-a207de6-fixed-nemoshipped-c32.json.gz",
+    "verdict": "IDENTICAL IN TEXT AND TIMINGS"
+   },
+   "paper-best": {
+    "differences": [],
+    "identical": true,
+    "off": "server-a207de6-fixed-c32.json.gz",
+    "on": "server-a207de6-fixed-paperbest-c32.json.gz",
+    "verdict": "IDENTICAL IN TEXT AND TIMINGS"
+   }
+  },
+  "finals_digests": {
+   "45e1ddba293689ca005cdf2b7d84e8ffd8125a4e0d929f6c0d0ae74c53bd5a7f": [
+    "server-22e8406-fixed-c32.json.gz",
+    "server-22e8406-fixed-c8.json.gz",
+    "server-a207de6-fixed-c32.json.gz",
+    "server-a207de6-fixed-c8.json.gz",
+    "server-a207de6-fixed-nemoshipped-c32.json.gz",
+    "server-a207de6-fixed-paperbest-c32.json.gz"
+   ],
+   "505d92637efde2ec22e6fc4859e658d56cba22ca9334badb24a1df4a0e677590": [
+    "server-a207de6-ragged-c32.json.gz"
+   ],
+   "65e11a9d24abf0af872318ed7b93c3b144c426efbaa1b2ec0e8b01769afbedd1": [
+    "server-a207de6-ragged-c32-repeat.json.gz"
+   ],
+   "ee539981a81bace26082858e320cb6abae693399018014cf42a625721adee7bf": [
+    "server-22e8406-ragged-c32.json.gz"
+   ]
+  },
+  "frozen": {
+   "22e8406": {
+    "finals_digest": "45e1ddba293689ca005cdf2b7d84e8ffd8125a4e0d929f6c0d0ae74c53bd5a7f",
+    "fixed_c32_vs_fixed_c8": {
+     "confidence_only_differs": 0,
+     "digests_match": true,
+     "identical": 2939,
+     "punctuation_only": 0,
+     "recordings": 2939,
+     "text_differs": 0,
+     "text_differs_rate": 0.0,
+     "timing_only": 0,
+     "timing_only_rate": 0.0,
+     "word_level": 0,
+     "word_level_rate": 0.0
+    },
+    "frozen": true,
+    "verdict": "FROZEN: the fixed captures at concurrency 32 and 8 (observed peak in flight 32 and 8) match on all 2939 recordings (digest 45e1ddba293689ca), and the ragged capture differs on 330 in text and 1071 in word timings only"
+   },
+   "a207de6": {
+    "finals_digest": "45e1ddba293689ca005cdf2b7d84e8ffd8125a4e0d929f6c0d0ae74c53bd5a7f",
+    "fixed_c32_vs_fixed_c8": {
+     "confidence_only_differs": 0,
+     "digests_match": true,
+     "identical": 2939,
+     "punctuation_only": 0,
+     "recordings": 2939,
+     "text_differs": 0,
+     "text_differs_rate": 0.0,
+     "timing_only": 0,
+     "timing_only_rate": 0.0,
+     "word_level": 0,
+     "word_level_rate": 0.0
+    },
+    "frozen": true,
+    "verdict": "FROZEN: the fixed captures at concurrency 32 and 8 (observed peak in flight 32 and 8) match on all 2939 recordings (digest 45e1ddba293689ca), and the ragged capture differs on 349 in text and 1028 in word timings only"
+   }
+  },
+  "frozen_rule": "two fixed captures whose clients observed a different peak number of sessions in flight on the wire, with identical answers on both channels, AND a ragged capture of the same setting that differs, AND the padding of all three observed, AND none of them from a test double, AND none taken from a modified tree unless --allow-modified-tree is given",
+  "ragged_vs_fixed": {
+   "22e8406": {
+    "confidence_only_differs": 0,
+    "digests_match": false,
+    "identical": 1538,
+    "places": "places-22e8406.json.gz",
+    "punctuation_only": 164,
+    "recordings": 2939,
+    "sides": {
+     "a": "the served answer: the server capture with --padding fixed",
+     "b": "a server capture of the same recordings with --padding ragged"
+    },
+    "text_differs": 330,
+    "text_differs_rate": 0.11228,
+    "timing_only": 1071,
+    "timing_only_rate": 0.36441,
+    "timing_shift_ms": {
+     "largest_shift_counts": {
+      "160": 166,
+      "240": 94,
+      "320": 118,
+      "400": 42,
+      "480": 6,
+      "560": 4,
+      "640": 2,
+      "80": 639
+     },
+     "max": 640,
+     "median": 80,
+     "min": 80,
+     "p90": 320,
+     "paired": 1071,
+     "recordings": 1071,
+     "segments_in_paired_recordings": 23861,
+     "segments_shifted": 2707,
+     "unpairable": 0
+    },
+    "verdict": "POSITIVE CONTROL PRESENT: ragged padding differs from fixed on 330 in text and 1071 in word timings only, of 2939 recordings; those are the places. FROZEN: the fixed captures at concurrency 32 and 8 (observed peak in flight 32 and 8) match on all 2939 recordings (digest 45e1ddba293689ca), and the ragged capture differs on 330 in text and 1071 in word timings only",
+    "wer": {
+     "reference_words": 52343,
+     "wer_a": 0.06152,
+     "wer_b": 0.06161,
+     "word_errors_a": 3220,
+     "word_errors_b": 3225
+    },
+    "word_level": 166,
+    "word_level_rate": 0.05648
+   },
+   "a207de6": {
+    "confidence_only_differs": 0,
+    "digests_match": false,
+    "identical": 1562,
+    "places": "places-a207de6.json.gz",
+    "punctuation_only": 168,
+    "recordings": 2939,
+    "sides": {
+     "a": "the served answer: the server capture with --padding fixed",
+     "b": "a server capture of the same recordings with --padding ragged"
+    },
+    "text_differs": 349,
+    "text_differs_rate": 0.11875,
+    "timing_only": 1028,
+    "timing_only_rate": 0.34978,
+    "timing_shift_ms": {
+     "largest_shift_counts": {
+      "160": 161,
+      "240": 93,
+      "320": 118,
+      "400": 36,
+      "480": 7,
+      "560": 4,
+      "640": 4,
+      "80": 605
+     },
+     "max": 640,
+     "median": 80,
+     "min": 80,
+     "p90": 320,
+     "paired": 1028,
+     "recordings": 1028,
+     "segments_in_paired_recordings": 22803,
+     "segments_shifted": 2617,
+     "unpairable": 0
+    },
+    "verdict": "POSITIVE CONTROL PRESENT: ragged padding differs from fixed on 349 in text and 1028 in word timings only, of 2939 recordings; those are the places. FROZEN: the fixed captures at concurrency 32 and 8 (observed peak in flight 32 and 8) match on all 2939 recordings (digest 45e1ddba293689ca), and the ragged capture differs on 349 in text and 1028 in word timings only",
+    "wer": {
+     "reference_words": 52343,
+     "wer_a": 0.06152,
+     "wer_b": 0.06159,
+     "word_errors_a": 3220,
+     "word_errors_b": 3224
+    },
+    "word_level": 181,
+    "word_level_rate": 0.06159
+   }
+  },
+  "ragged_vs_ragged": {
+   "a207de6": {
+    "captures": [
+     "server-a207de6-ragged-c32.json.gz",
+     "server-a207de6-ragged-c32-repeat.json.gz"
+    ],
+    "confidence_only_differs": 0,
+    "digests_match": false,
+    "identical": 1724,
+    "punctuation_only": 133,
+    "recordings": 2939,
+    "text_differs": 280,
+    "text_differs_rate": 0.09527,
+    "timing_only": 935,
+    "timing_only_rate": 0.31814,
+    "verdict": "RAGGED VS RAGGED: of 2939 recordings, 280 in text and 935 in word timings only; frozen is not assessable",
+    "word_level": 147,
+    "word_level_rate": 0.05002
+   }
+  },
+  "setting": {
+   "att_context": [
+    70,
+    1
+   ],
+   "biasing": false,
+   "bucket": 128,
+   "chunk_ms": 160,
+   "decoder_graphs": false,
+   "device_name": "NVIDIA RTX A6000",
+   "dtype": "bfloat16",
+   "execution": "eager",
+   "matmul": "high",
+   "model": "nvidia/nemotron-speech-streaming-en-0.6b",
+   "nemo_version": "3.1.0+cf724ac33",
+   "pipeline": "cache_aware_rnnt",
+   "revision": "ebe59e5a817142986528bbbee5dba8db7b38ed50",
+   "torch_version": "2.11.0+cu128"
+  }
+ },
+ "stock": {
+  "hybrid-bf16-1120": {
+   "record": "stock-hybrid-bf16-1120.json.gz",
+   "runs": {
+    "bfloat16": {
+     "arms": {
+      "equalised": {
+       "checked": 2939,
+       "confidence_only": null,
+       "punctuation_only": 0,
+       "punctuation_only_rate": 0.0,
+       "text_divergent": 313,
+       "text_divergent_rate": 0.1065,
+       "timing_only": 1208,
+       "timing_only_rate": 0.41102,
+       "timing_shift_ms": {
+        "largest_shift_counts": {
+         "160": 56,
+         "240": 114,
+         "2800": 1,
+         "320": 170,
+         "3360": 1,
+         "400": 67,
+         "480": 6,
+         "560": 3,
+         "640": 1,
+         "80": 789
+        },
+        "max": 3360,
+        "median": 80,
+        "min": 80,
+        "p90": 320,
+        "paired": 1208,
+        "recordings": 1208,
+        "segments_in_paired_recordings": 25360,
+        "segments_shifted": 2870,
+        "unpairable": 0
+       },
+       "wer": {
+        "reference_words": 52343,
+        "wer_a": 0.064,
+        "wer_b": 0.06461,
+        "word_errors_a": 3350,
+        "word_errors_b": 3382
+       },
+       "word_level": 313,
+       "word_level_rate": 0.1065,
+       "zero_reading": null
+      },
+      "fixed": {
+       "checked": 2939,
+       "confidence_only": null,
+       "punctuation_only": 0,
+       "punctuation_only_rate": 0.0,
+       "text_divergent": 0,
+       "text_divergent_rate": 0.0,
+       "timing_only": 0,
+       "timing_only_rate": 0.0,
+       "timing_shift_ms": {
+        "largest_shift_counts": {},
+        "max": null,
+        "median": null,
+        "min": null,
+        "p90": null,
+        "paired": 0,
+        "recordings": 0,
+        "segments_in_paired_recordings": 0,
+        "segments_shifted": 0,
+        "unpairable": 0
+       },
+       "wer": {
+        "reference_words": 52343,
+        "wer_a": 0.06461,
+        "wer_b": 0.06461,
+        "word_errors_a": 3382,
+        "word_errors_b": 3382
+       },
+       "word_level": 0,
+       "word_level_rate": 0.0,
+       "zero_reading": "zero at one shape. The positive control is present but on the shape axis; nothing on this run shows the harness can see a change of neighbour content, the only thing this arm varies."
+      },
+      "ragged": {
+       "checked": 2939,
+       "confidence_only": null,
+       "punctuation_only": 0,
+       "punctuation_only_rate": 0.0,
+       "text_divergent": 297,
+       "text_divergent_rate": 0.10105,
+       "timing_only": 1139,
+       "timing_only_rate": 0.38755,
+       "timing_shift_ms": {
+        "largest_shift_counts": {
+         "160": 52,
+         "240": 102,
+         "320": 153,
+         "400": 58,
+         "480": 3,
+         "560": 3,
+         "640": 1,
+         "80": 767
+        },
+        "max": 640,
+        "median": 80,
+        "min": 80,
+        "p90": 320,
+        "paired": 1139,
+        "recordings": 1139,
+        "segments_in_paired_recordings": 23627,
+        "segments_shifted": 2632,
+        "unpairable": 0
+       },
+       "wer": {
+        "reference_words": 52343,
+        "wer_a": 0.06383,
+        "wer_b": 0.06446,
+        "word_errors_a": 3341,
+        "word_errors_b": 3374
+       },
+       "word_level": 297,
+       "word_level_rate": 0.10105,
+       "zero_reading": null
+      }
+     },
+     "positive_control": "present: ragged, equalised diverged, so the harness can see a difference on this run",
+     "repeat": {
+      "alone_identical": 8,
+      "batch_identical": 8,
+      "checked": 8
+     },
+     "repeat_verdict": "run-to-run identical in the same shape"
+    }
+   },
+   "settings": {
+    "att_context_size": [
+     70,
+     13
+    ],
+    "batch": 32,
+    "chunk_ms": 1120,
+    "machine": "NVIDIA RTX A6000",
+    "matmul_precision": "highest",
+    "model": "nvidia/stt_en_fastconformer_hybrid_large_streaming_multi",
+    "model_revision": "ae98143333690bd7ced4bc8ec16769bcb8918374",
+    "nemo": "3.1.0+cf724ac33",
+    "targets": 2939,
+    "torch": "2.11.0+cu128",
+    "use_cuda_graphs": false,
+    "verbatim_commit": "854d4b9b5af725b36ce7fc14e6dd5f9ab3e776ad",
+    "word_confidence": "off"
+   }
+  },
+  "nemotron-bf16-1120": {
+   "record": "stock-nemotron-bf16-1120.json.gz",
+   "runs": {
+    "bfloat16": {
+     "arms": {
+      "equalised": {
+       "checked": 2939,
+       "confidence_only": null,
+       "punctuation_only": 110,
+       "punctuation_only_rate": 0.03743,
+       "text_divergent": 229,
+       "text_divergent_rate": 0.07792,
+       "timing_only": 1103,
+       "timing_only_rate": 0.3753,
+       "timing_shift_ms": {
+        "largest_shift_counts": {
+         "160": 63,
+         "240": 98,
+         "320": 139,
+         "400": 28,
+         "480": 11,
+         "560": 7,
+         "640": 3,
+         "720": 3,
+         "80": 751
+        },
+        "max": 720,
+        "median": 80,
+        "min": 80,
+        "p90": 320,
+        "paired": 1103,
+        "recordings": 1103,
+        "segments_in_paired_recordings": 25078,
+        "segments_shifted": 2576,
+        "unpairable": 0
+       },
+       "wer": {
+        "reference_words": 52343,
+        "wer_a": 0.05166,
+        "wer_b": 0.05158,
+        "word_errors_a": 2704,
+        "word_errors_b": 2700
+       },
+       "word_level": 119,
+       "word_level_rate": 0.04049,
+       "zero_reading": null
+      },
+      "fixed": {
+       "checked": 2939,
+       "confidence_only": null,
+       "punctuation_only": 0,
+       "punctuation_only_rate": 0.0,
+       "text_divergent": 0,
+       "text_divergent_rate": 0.0,
+       "timing_only": 0,
+       "timing_only_rate": 0.0,
+       "timing_shift_ms": {
+        "largest_shift_counts": {},
+        "max": null,
+        "median": null,
+        "min": null,
+        "p90": null,
+        "paired": 0,
+        "recordings": 0,
+        "segments_in_paired_recordings": 0,
+        "segments_shifted": 0,
+        "unpairable": 0
+       },
+       "wer": {
+        "reference_words": 52343,
+        "wer_a": 0.05158,
+        "wer_b": 0.05158,
+        "word_errors_a": 2700,
+        "word_errors_b": 2700
+       },
+       "word_level": 0,
+       "word_level_rate": 0.0,
+       "zero_reading": "zero at one shape. The positive control is present but on the shape axis; nothing on this run shows the harness can see a change of neighbour content, the only thing this arm varies."
+      },
+      "ragged": {
+       "checked": 2939,
+       "confidence_only": null,
+       "punctuation_only": 99,
+       "punctuation_only_rate": 0.03368,
+       "text_divergent": 211,
+       "text_divergent_rate": 0.07179,
+       "timing_only": 1038,
+       "timing_only_rate": 0.35318,
+       "timing_shift_ms": {
+        "largest_shift_counts": {
+         "160": 58,
+         "240": 96,
+         "320": 120,
+         "400": 25,
+         "480": 8,
+         "560": 6,
+         "640": 4,
+         "720": 3,
+         "80": 718
+        },
+        "max": 720,
+        "median": 80,
+        "min": 80,
+        "p90": 320,
+        "paired": 1038,
+        "recordings": 1038,
+        "segments_in_paired_recordings": 23698,
+        "segments_shifted": 2452,
+        "unpairable": 0
+       },
+       "wer": {
+        "reference_words": 52343,
+        "wer_a": 0.05145,
+        "wer_b": 0.05154,
+        "word_errors_a": 2693,
+        "word_errors_b": 2698
+       },
+       "word_level": 112,
+       "word_level_rate": 0.03811,
+       "zero_reading": null
+      }
+     },
+     "positive_control": "present: ragged, equalised diverged, so the harness can see a difference on this run",
+     "repeat": {
+      "alone_identical": 8,
+      "batch_identical": 8,
+      "checked": 8
+     },
+     "repeat_verdict": "run-to-run identical in the same shape"
+    }
+   },
+   "settings": {
+    "att_context_size": [
+     70,
+     13
+    ],
+    "batch": 32,
+    "chunk_ms": 1120,
+    "machine": "NVIDIA RTX A6000",
+    "matmul_precision": "highest",
+    "model": "nvidia/nemotron-speech-streaming-en-0.6b",
+    "model_revision": "ebe59e5a817142986528bbbee5dba8db7b38ed50",
+    "nemo": "3.1.0+cf724ac33",
+    "targets": 2939,
+    "torch": "2.11.0+cu128",
+    "verbatim_commit": "6583a83802c46eea49dbf4871130ff0b2d8fe59b"
+   }
+  },
+  "nemotron-bf16-160-high-n1024": {
+   "record": "stock-nemotron-bf16-160-high-n1024.json.gz",
+   "runs": {
+    "bfloat16": {
+     "arms": {
+      "equalised": {
+       "checked": 1024,
+       "confidence_only": 0,
+       "punctuation_only": 44,
+       "punctuation_only_rate": 0.04297,
+       "text_divergent": 95,
+       "text_divergent_rate": 0.09277,
+       "timing_only": 369,
+       "timing_only_rate": 0.36035,
+       "timing_shift_ms": {
+        "largest_shift_counts": {
+         "160": 54,
+         "240": 33,
+         "320": 37,
+         "400": 13,
+         "480": 1,
+         "80": 231
+        },
+        "max": 480,
+        "median": 80,
+        "min": 80,
+        "p90": 320,
+        "paired": 369,
+        "recordings": 369,
+        "segments_in_paired_recordings": 8777,
+        "segments_shifted": 899,
+        "unpairable": 0
+       },
+       "wer": {
+        "reference_words": 19349,
+        "wer_a": 0.05675,
+        "wer_b": 0.05737,
+        "word_errors_a": 1098,
+        "word_errors_b": 1110
+       },
+       "word_level": 51,
+       "word_level_rate": 0.0498,
+       "zero_reading": null
+      },
+      "fixed": {
+       "checked": 1024,
+       "confidence_only": 0,
+       "punctuation_only": 0,
+       "punctuation_only_rate": 0.0,
+       "text_divergent": 0,
+       "text_divergent_rate": 0.0,
+       "timing_only": 0,
+       "timing_only_rate": 0.0,
+       "timing_shift_ms": {
+        "largest_shift_counts": {},
+        "max": null,
+        "median": null,
+        "min": null,
+        "p90": null,
+        "paired": 0,
+        "recordings": 0,
+        "segments_in_paired_recordings": 0,
+        "segments_shifted": 0,
+        "unpairable": 0
+       },
+       "wer": {
+        "reference_words": 19349,
+        "wer_a": 0.05737,
+        "wer_b": 0.05737,
+        "word_errors_a": 1110,
+        "word_errors_b": 1110
+       },
+       "word_level": 0,
+       "word_level_rate": 0.0,
+       "zero_reading": "zero at one shape. The positive control is present but on the shape axis; nothing on this run shows the harness can see a change of neighbour content, the only thing this arm varies."
+      },
+      "ragged": {
+       "checked": 1024,
+       "confidence_only": 0,
+       "punctuation_only": 49,
+       "punctuation_only_rate": 0.04785,
+       "text_divergent": 100,
+       "text_divergent_rate": 0.09766,
+       "timing_only": 375,
+       "timing_only_rate": 0.36621,
+       "timing_shift_ms": {
+        "largest_shift_counts": {
+         "160": 61,
+         "240": 31,
+         "320": 40,
+         "400": 15,
+         "480": 1,
+         "80": 227
+        },
+        "max": 480,
+        "median": 80,
+        "min": 80,
+        "p90": 320,
+        "paired": 375,
+        "recordings": 375,
+        "segments_in_paired_recordings": 9191,
+        "segments_shifted": 916,
+        "unpairable": 0
+       },
+       "wer": {
+        "reference_words": 19349,
+        "wer_a": 0.05742,
+        "wer_b": 0.05747,
+        "word_errors_a": 1111,
+        "word_errors_b": 1112
+       },
+       "word_level": 51,
+       "word_level_rate": 0.0498,
+       "zero_reading": null
+      }
+     },
+     "positive_control": "present: ragged, equalised diverged, so the harness can see a difference on this run",
+     "repeat": {
+      "alone_identical": 8,
+      "batch_identical": 8,
+      "checked": 8
+     },
+     "repeat_verdict": "run-to-run identical in the same shape"
+    }
+   },
+   "settings": {
+    "att_context_size": [
+     70,
+     1
+    ],
+    "batch": 32,
+    "chunk_ms": 160,
+    "machine": "NVIDIA RTX A6000",
+    "matmul_precision": "high",
+    "model": "nvidia/nemotron-speech-streaming-en-0.6b",
+    "model_revision": "ebe59e5a817142986528bbbee5dba8db7b38ed50",
+    "nemo": "3.1.0+cf724ac33",
+    "targets": 1024,
+    "torch": "2.11.0+cu128",
+    "use_cuda_graphs": false,
+    "verbatim_commit": "daae58745af1a9b942437714264bb48a991bdc90",
+    "word_confidence": "off"
+   }
+  },
+  "nemotron-fp32-1120": {
+   "record": "stock-nemotron-fp32-1120.json.gz",
+   "runs": {
+    "float32": {
+     "arms": {
+      "equalised": {
+       "checked": 2939,
+       "confidence_only": null,
+       "punctuation_only": 0,
+       "punctuation_only_rate": 0.0,
+       "text_divergent": 0,
+       "text_divergent_rate": 0.0,
+       "timing_only": 2,
+       "timing_only_rate": 0.00068,
+       "timing_shift_ms": {
+        "largest_shift_counts": {
+         "80": 2
+        },
+        "max": 80,
+        "median": 80,
+        "min": 80,
+        "p90": 80,
+        "paired": 2,
+        "recordings": 2,
+        "segments_in_paired_recordings": 24,
+        "segments_shifted": 2,
+        "unpairable": 0
+       },
+       "wer": {
+        "reference_words": 52343,
+        "wer_a": 0.05164,
+        "wer_b": 0.05164,
+        "word_errors_a": 2703,
+        "word_errors_b": 2703
+       },
+       "word_level": 0,
+       "word_level_rate": 0.0,
+       "zero_reading": null
+      },
+      "fixed": {
+       "checked": 2939,
+       "confidence_only": null,
+       "punctuation_only": 0,
+       "punctuation_only_rate": 0.0,
+       "text_divergent": 0,
+       "text_divergent_rate": 0.0,
+       "timing_only": 0,
+       "timing_only_rate": 0.0,
+       "timing_shift_ms": {
+        "largest_shift_counts": {},
+        "max": null,
+        "median": null,
+        "min": null,
+        "p90": null,
+        "paired": 0,
+        "recordings": 0,
+        "segments_in_paired_recordings": 0,
+        "segments_shifted": 0,
+        "unpairable": 0
+       },
+       "wer": {
+        "reference_words": 52343,
+        "wer_a": 0.05164,
+        "wer_b": 0.05164,
+        "word_errors_a": 2703,
+        "word_errors_b": 2703
+       },
+       "word_level": 0,
+       "word_level_rate": 0.0,
+       "zero_reading": "zero at one shape. The positive control is present but on the shape axis; nothing on this run shows the harness can see a change of neighbour content, the only thing this arm varies."
+      },
+      "ragged": {
+       "checked": 2939,
+       "confidence_only": null,
+       "punctuation_only": 0,
+       "punctuation_only_rate": 0.0,
+       "text_divergent": 0,
+       "text_divergent_rate": 0.0,
+       "timing_only": 2,
+       "timing_only_rate": 0.00068,
+       "timing_shift_ms": {
+        "largest_shift_counts": {
+         "80": 2
+        },
+        "max": 80,
+        "median": 80,
+        "min": 80,
+        "p90": 80,
+        "paired": 2,
+        "recordings": 2,
+        "segments_in_paired_recordings": 24,
+        "segments_shifted": 2,
+        "unpairable": 0
+       },
+       "wer": {
+        "reference_words": 52343,
+        "wer_a": 0.05156,
+        "wer_b": 0.05156,
+        "word_errors_a": 2699,
+        "word_errors_b": 2699
+       },
+       "word_level": 0,
+       "word_level_rate": 0.0,
+       "zero_reading": null
+      }
+     },
+     "positive_control": "present: ragged, equalised diverged, so the harness can see a difference on this run",
+     "repeat": {
+      "alone_identical": 8,
+      "batch_identical": 8,
+      "checked": 8
+     },
+     "repeat_verdict": "run-to-run identical in the same shape"
+    }
+   },
+   "settings": {
+    "att_context_size": [
+     70,
+     13
+    ],
+    "batch": 32,
+    "chunk_ms": 1120,
+    "machine": "NVIDIA RTX A6000",
+    "matmul_precision": "highest",
+    "model": "nvidia/nemotron-speech-streaming-en-0.6b",
+    "model_revision": "ebe59e5a817142986528bbbee5dba8db7b38ed50",
+    "nemo": "3.1.0+cf724ac33",
+    "targets": 2939,
+    "torch": "2.11.0+cu128",
+    "use_cuda_graphs": false,
+    "verbatim_commit": "854d4b9b5af725b36ce7fc14e6dd5f9ab3e776ad",
+    "word_confidence": "off"
+   }
+  }
+ },
+ "stock_160ms_scored": {
+  "nulls": {
+   "draws": 1000,
+   "seed": 20260924
+  },
+  "record": "stock-nemotron-bf16-160-high-n1024.json.gz",
+  "runs": {
+   "bfloat16": {
+    "arms": {
+     "equalised": {
+      "both_right": 2,
+      "confidence": {
+       "a": "confidence constant",
+       "b": "confidence constant"
+      },
+      "flag_a": {
+       "corpus_word_errors": 1098,
+       "empty_spans": 1,
+       "not_right": 41,
+       "not_right_by_analyse": 41,
+       "null": {
+        "draws": 1000,
+        "random_recordings": {
+         "not_right_mean": 4.585,
+         "not_right_rate_mean": 0.07771,
+         "observed_over_null_mean": 8.57466,
+         "p_value_not_right": 0.001,
+         "p_value_word_errors_removable": 0.001,
+         "recall_mean": 0.00563,
+         "recordings_drawn_from": 1024,
+         "word_errors_removable_mean": 6.181
+        },
+        "same_recordings": {
+         "not_right_mean": 9.04,
+         "not_right_rate_mean": 0.15322,
+         "observed_over_null_mean": 4.50604,
+         "p_value_not_right": 0.001,
+         "p_value_word_errors_removable": 0.001,
+         "recall_mean": 0.01071,
+         "recordings_drawn_from": 51,
+         "word_errors_removable_mean": 11.762
+        },
+        "seed": "20260924/bfloat16/equalised/places/a"
+       },
+       "precision": 0.69492,
+       "recall": 0.04827,
+       "recordings_flagged": 51,
+       "spans": 59,
+       "word_errors_removable": 53,
+       "words_flagged": 80
+      },
+      "flag_b": {
+       "corpus_word_errors": 1110,
+       "empty_spans": 2,
+       "not_right": 41,
+       "not_right_by_analyse": 43,
+       "null": {
+        "draws": 1000,
+        "random_recordings": {
+         "not_right_mean": 4.213,
+         "not_right_rate_mean": 0.07141,
+         "observed_over_null_mean": 11.37358,
+         "p_value_not_right": 0.001,
+         "p_value_word_errors_removable": 0.001,
+         "recall_mean": 0.00515,
+         "recordings_drawn_from": 1024,
+         "word_errors_removable_mean": 5.715
+        },
+        "same_recordings": {
+         "not_right_mean": 8.168,
+         "not_right_rate_mean": 0.13844,
+         "observed_over_null_mean": 6.18635,
+         "p_value_not_right": 0.001,
+         "p_value_word_errors_removable": 0.001,
+         "recall_mean": 0.00947,
+         "recordings_drawn_from": 51,
+         "word_errors_removable_mean": 10.507
+        },
+        "seed": "20260924/bfloat16/equalised/places/b"
+       },
+       "precision": 0.69492,
+       "recall": 0.05856,
+       "recordings_flagged": 51,
+       "spans": 59,
+       "word_errors_removable": 65,
+       "words_flagged": 71
+      },
+      "normalisation": {
+       "places_differing_only_by_a_contraction": 0,
+       "punctuation_or_case_only": 44,
+       "text_divergent_after_normalisation": 51,
+       "text_divergent_raw": 95
+      },
+      "places": 59,
+      "places_analysis": {
+       "alone_right": 18,
+       "alone_vs_batch_sign_test_p": 0.8642,
+       "batch_right": 16,
+       "both_right": 0,
+       "negation_or_number_places": 1,
+       "neither_right": 25,
+       "net_extra_errors_in_batch": 12,
+       "place_shapes": {
+        "multi_word": 20,
+        "one_for_one": 36,
+        "one_side_empty": 3
+       },
+       "places": 59,
+       "recordings_changed": 51,
+       "reference_words": 1322,
+       "wer_alone": 0.0885,
+       "wer_in_batch": 0.09758,
+       "word_errors_alone": 117,
+       "word_errors_in_batch": 129
+      }
+     },
+     "fixed": {
+      "both_right": 0,
+      "confidence": {
+       "a": "confidence constant",
+       "b": "confidence constant"
+      },
+      "flag_a": {
+       "corpus_word_errors": 1110,
+       "empty_spans": 0,
+       "not_right": 0,
+       "not_right_by_analyse": 0,
+       "null": null,
+       "precision": null,
+       "recall": 0.0,
+       "recordings_flagged": 0,
+       "spans": 0,
+       "word_errors_removable": 0,
+       "words_flagged": 0
+      },
+      "flag_b": {
+       "corpus_word_errors": 1110,
+       "empty_spans": 0,
+       "not_right": 0,
+       "not_right_by_analyse": 0,
+       "null": null,
+       "precision": null,
+       "recall": 0.0,
+       "recordings_flagged": 0,
+       "spans": 0,
+       "word_errors_removable": 0,
+       "words_flagged": 0
+      },
+      "normalisation": {
+       "places_differing_only_by_a_contraction": 0,
+       "punctuation_or_case_only": 0,
+       "text_divergent_after_normalisation": 0,
+       "text_divergent_raw": 0
+      },
+      "places": 0,
+      "places_analysis": null
+     },
+     "ragged": {
+      "both_right": 1,
+      "confidence": {
+       "a": "confidence constant",
+       "b": "confidence constant"
+      },
+      "flag_a": {
+       "corpus_word_errors": 1111,
+       "empty_spans": 2,
+       "not_right": 40,
+       "not_right_by_analyse": 40,
+       "null": {
+        "draws": 1000,
+        "random_recordings": {
+         "not_right_mean": 3.844,
+         "not_right_rate_mean": 0.07119,
+         "observed_over_null_mean": 8.6973,
+         "p_value_not_right": 0.001,
+         "p_value_word_errors_removable": 0.001,
+         "recall_mean": 0.00476,
+         "recordings_drawn_from": 1024,
+         "word_errors_removable_mean": 5.289
+        },
+        "same_recordings": {
+         "not_right_mean": 6.95,
+         "not_right_rate_mean": 0.1287,
+         "observed_over_null_mean": 5.31915,
+         "p_value_not_right": 0.001,
+         "p_value_word_errors_removable": 0.001,
+         "recall_mean": 0.00778,
+         "recordings_drawn_from": 51,
+         "word_errors_removable_mean": 8.648
+        },
+        "seed": "20260924/bfloat16/ragged/places/a"
+       },
+       "precision": 0.74074,
+       "recall": 0.0414,
+       "recordings_flagged": 51,
+       "spans": 54,
+       "word_errors_removable": 46,
+       "words_flagged": 63
+      },
+      "flag_b": {
+       "corpus_word_errors": 1112,
+       "empty_spans": 1,
+       "not_right": 36,
+       "not_right_by_analyse": 37,
+       "null": {
+        "draws": 1000,
+        "random_recordings": {
+         "not_right_mean": 3.709,
+         "not_right_rate_mean": 0.06869,
+         "observed_over_null_mean": 9.26839,
+         "p_value_not_right": 0.001,
+         "p_value_word_errors_removable": 0.001,
+         "recall_mean": 0.00456,
+         "recordings_drawn_from": 1024,
+         "word_errors_removable_mean": 5.071
+        },
+        "same_recordings": {
+         "not_right_mean": 6.379,
+         "not_right_rate_mean": 0.11813,
+         "observed_over_null_mean": 6.00485,
+         "p_value_not_right": 0.001,
+         "p_value_word_errors_removable": 0.001,
+         "recall_mean": 0.00704,
+         "recordings_drawn_from": 51,
+         "word_errors_removable_mean": 7.827
+        },
+        "seed": "20260924/bfloat16/ragged/places/b"
+       },
+       "precision": 0.66667,
+       "recall": 0.04227,
+       "recordings_flagged": 51,
+       "spans": 54,
+       "word_errors_removable": 47,
+       "words_flagged": 59
+      },
+      "normalisation": {
+       "places_differing_only_by_a_contraction": 0,
+       "punctuation_or_case_only": 49,
+       "text_divergent_after_normalisation": 51,
+       "text_divergent_raw": 100
+      },
+      "places": 54,
+      "places_analysis": {
+       "alone_right": 14,
+       "alone_vs_batch_sign_test_p": 0.7201,
+       "batch_right": 17,
+       "both_right": 0,
+       "negation_or_number_places": 1,
+       "neither_right": 23,
+       "net_extra_errors_in_batch": 1,
+       "place_shapes": {
+        "multi_word": 12,
+        "one_for_one": 39,
+        "one_side_empty": 3
+       },
+       "places": 54,
+       "recordings_changed": 51,
+       "reference_words": 1271,
+       "wer_alone": 0.09048,
+       "wer_in_batch": 0.09127,
+       "word_errors_alone": 115,
+       "word_errors_in_batch": 116
+      }
+     }
+    },
+    "repeat_verdict_accepted": true
+   }
+  }
+ }
+}

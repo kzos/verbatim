@@ -825,6 +825,58 @@ def test_ties_at_the_cutoff_are_reported() -> None:
     assert c["tied_at_cutoff"] == {"flagged": 1, "all": 3}
 
 
+#: Ten words of side a tie at the lowest confidence and K is 1: one of them (r0's "q") is side
+#: a's only error, so which of the ten the tie-break flags decides every figure.
+TIE_ROWS = [("a b c", "a q c", "a b c")] + [("a b c",) * 3] * 9
+TIE_CONFS = {"r0": ([0.9, 0.5, 0.9], [0.9] * 3)} | {
+    f"r{n}": ([0.5, 0.9, 0.9], [0.9] * 3) for n in range(1, 10)
+}
+
+
+def test_every_way_of_breaking_the_tie_is_scored_and_its_range_reported() -> None:
+    arm, refs = arm_of(*TIE_ROWS, confs=TIE_CONFS)
+    seen = set()
+    for seed in range(20):
+        c = sp.score_arm("ragged", arm, refs, NO_WORDS, draws=0, seed=str(seed))["confidence"]
+        ties = c["a"]["tie_range"]
+        assert (ties["tied"], ties["chosen"], ties["choices"]) == (10, 1, 10)
+        assert ties["range"] == {
+            "spans": [1, 1],
+            "not_right": [0, 1],
+            "precision": [0.0, 1.0],
+            "word_errors_removable": [0, 1],
+            "recall": [0.0, 1.0],
+        }
+        # The seeded pick is one of the choices, so each of its figures lies in the range.
+        for key in sp.TIE_FIGURES:
+            lo, hi = ties["range"][key]
+            assert lo <= c["a"]["flag"][key] <= hi
+        seen.add(c["a"]["flag"]["not_right"])
+    # ... and the seed alone moves the flag's own figure across that range.
+    assert seen == {0, 1}
+
+
+def test_a_cutoff_without_a_tie_has_one_choice_and_no_range() -> None:
+    rows = (
+        ("the cat sat on the mat", "The cat sat on the mat.", "The cat sat in a mat."),
+        CONF_ROWS[1],
+    )
+    confs = {"r0": ([0.9] * 6, [0.9] * 6), "r1": ([0.9, 0.9, 0.2, 0.3], [0.9] * 4)}
+    c = score(*rows, confs=confs)["confidence"]["a"]
+    assert c["tie_range"]["choices"] == 1
+    assert c["tie_range"]["range"] == {key: [c["flag"][key]] * 2 for key in sp.TIE_FIGURES}
+
+
+def test_a_tie_with_too_many_choices_is_not_enumerated_and_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sp, "TIE_CHOICES_MAX", 9)
+    arm, refs = arm_of(*TIE_ROWS, confs=TIE_CONFS)
+    ties = sp.score_arm("ragged", arm, refs, NO_WORDS, draws=0)["confidence"]["a"]["tie_range"]
+    assert ties["range"] is None
+    assert ties["not_enumerated"] == "10 choices, more than the 9 scored"
+
+
 def test_confidence_words_are_normalised_like_the_transcript() -> None:
     toks, confs = sp.confidence_tokens(
         [["It", 0, 80, 0.9], ["is", 80, 160, 0.7], ["well-known.", 160, 320, 0.1]],

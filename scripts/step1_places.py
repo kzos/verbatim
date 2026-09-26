@@ -180,7 +180,10 @@ Rules, stated because every number depends on them
   place, that side's words there (an empty span where the side has none). The **confidence
   flag** on side ``s`` marks the K lowest-confidence words of side ``s`` over every checked
   recording, K being the words the place flag marks on that same side ``s``; ties are broken by
-  a seeded shuffle and reported; consecutive flagged words of a recording form one span. The
+  a seeded shuffle and reported, and every other way of breaking them is scored too
+  (``tie_range``: each figure's lowest and highest over every choice of the tied words at the
+  cutoff, without nulls; not enumerated past ``TIE_CHOICES_MAX`` choices, and then it says so);
+  consecutive flagged words of a recording form one span. The
   place flag can also mark an empty span (a gap); the confidence flag cannot. When the place
   flag marks 0 words on a side, that side has nothing to compare.
 * **Not right**, for every span of every flag, the place flag included (``span_not_right``): a
@@ -257,6 +260,7 @@ import bisect
 import difflib
 import hashlib
 import importlib.util
+import itertools
 import json
 import math
 import os
@@ -288,6 +292,10 @@ FAKE_MARKERS = {
     "fake_pipeline": "a test double, not the model on a GPU or a running server, produced it",
 }
 DEFAULT_DRAWS = 1000
+#: The most ways of breaking a tie at the confidence cutoff ``tie_range`` scores one by one.
+TIE_CHOICES_MAX = 1000
+#: The figures ``tie_range`` gives the lowest and highest of.
+TIE_FIGURES = ("spans", "not_right", "precision", "word_errors_removable", "recall")
 DEFAULT_SEED = 20260924
 #: The places record's ``captures`` key of each side's capture.
 CAPTURE_OF_SIDE = {"a": "a_fixed", "b": "b_ragged"}
@@ -772,6 +780,43 @@ def runs_of(positions: list[int]) -> list[tuple[int, int]]:
     return spans
 
 
+def tie_range(
+    ranked: list[tuple[Any, ...]],
+    k: int,
+    recs: dict[str, Rec],
+    recall_withheld: str | None = None,
+) -> dict[str, Any]:
+    """Every way of breaking the tie at the cutoff, scored: the lowest and highest of each of
+    ``TIE_FIGURES``. ``ranked`` is the confidence flag's ranking (confidence first, the seeded
+    tie-break draw second, recording and position last); the flag takes its first ``k``. Every
+    word below the cutoff is flagged whichever way the tie is broken; the words at the cutoff
+    fill the rest, in each of their combinations. Scored without nulls."""
+    flagged = ranked[:k]
+    cutoff = flagged[-1][0]
+    below = [(rid, pos) for c, *_, rid, pos in flagged if c < cutoff]
+    tied = [(rid, pos) for c, *_, rid, pos in ranked if c == cutoff]
+    chosen = len(flagged) - len(below)
+    choices = math.comb(len(tied), chosen)
+    out: dict[str, Any] = {"tied": len(tied), "chosen": chosen, "choices": choices}
+    if choices > TIE_CHOICES_MAX:
+        out["range"] = None
+        out["not_enumerated"] = f"{choices} choices, more than the {TIE_CHOICES_MAX} scored"
+        return out
+    seen: dict[str, list[Any]] = {key: [] for key in TIE_FIGURES}
+    for pick in itertools.combinations(tied, chosen):
+        positions: dict[str, list[int]] = {}
+        for rid, pos in [*below, *pick]:
+            positions.setdefault(rid, []).append(pos)
+        spans_by_rid = {rid: runs_of(ps) for rid, ps in positions.items()}
+        score = score_flag(spans_by_rid, recs, 0, "", recall_withheld)
+        for key in TIE_FIGURES:
+            seen[key].append(score[key])
+    out["range"] = {
+        key: None if None in values else [min(values), max(values)] for key, values in seen.items()
+    }
+    return out
+
+
 def confidence_flag(
     side: str,
     confidence: dict[str, Any] | None,
@@ -860,6 +905,7 @@ def confidence_flag(
             "all": sum(c == cutoff for c, *_ in ranked),
         },
         "tie_break": f"seeded shuffle, seed {seed}/ties",
+        "tie_range": tie_range(ranked, k, recs, recall_withheld),
         "flag": score,
         "flagged_words": {rid: [list(span) for span in s] for rid, s in spans_by_rid.items()},
         "side_by_side": {"places": brief(places), "confidence": brief(score)},
