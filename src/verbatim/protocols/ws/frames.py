@@ -9,11 +9,18 @@ text ``{"type": "end"}`` to drain.
 JSON lives on this path and nowhere else. ``to_json`` produces compact,
 deterministic JSON: keys in wire order, ``audio_s`` rounded to 6 decimal places
 so the output is stable across platforms.
+
+A final's word objects are ``{"w", "s", "e"}``, plus ``"c"``, the word's confidence,
+only on a server whose word confidence is configured on (``confidence_on_wire``). With
+it off a final is byte for byte what it was before ``"c"`` existed:
+``tests/fixtures/ws_confidence_off_golden.json`` holds those bytes, captured from the
+code before the change.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass
 from typing import Final, Literal
@@ -36,6 +43,7 @@ __all__ = [
     "FinalFrame",
     "PartialFrame",
     "SessionFrame",
+    "confidence_on_wire",
     "parse_client_text",
     "parse_query",
 ]
@@ -94,18 +102,48 @@ class PartialFrame:
         )
 
 
+def confidence_on_wire(word_confidence: str | None) -> bool:
+    """Whether a server configured with ``word_confidence`` puts ``"c"`` on its words.
+
+    Only a configuration other than "off" does. ``None`` is a server that could not
+    read its own configuration, and it sends no ``"c"``: with the switch off NeMo's
+    RNNT decoder computes no confidence and every word says 0.0, which is not a
+    measurement, so a value is sent only when the configuration says one was computed.
+    """
+    return word_confidence is not None and word_confidence != "off"
+
+
+def _confidence(value: float) -> float | None:
+    """A word's confidence for the wire. ``json.dumps`` would write a non-finite float as
+    ``NaN`` or ``Infinity``, which is not JSON; such a value is sent as null instead."""
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
 @dataclass(frozen=True, slots=True)
 class FinalFrame:
-    """The utterance final. `words=None` omits the key; it is only sent when asked for."""
+    """The utterance final. `words=None` omits the key; it is only sent when asked for.
+
+    ``confidence`` adds each word's ``"c"``, its ``Word.confidence`` unrounded. It is the
+    server's decision (``confidence_on_wire``) and never the client's; False, the
+    default, writes exactly the bytes a final had before ``"c"`` existed.
+    """
 
     text: str
     audio_s: float
     words: tuple[Word, ...] | None = None  # None -> the key is omitted
+    confidence: bool = False
 
     def to_json(self) -> str:
         obj: dict[str, object] = {"type": "final", "text": self.text}
         if self.words is not None:
-            obj["words"] = [{"w": w.word, "s": w.start_ms, "e": w.end_ms} for w in self.words]
+            if self.confidence:
+                obj["words"] = [
+                    {"w": w.word, "s": w.start_ms, "e": w.end_ms, "c": _confidence(w.confidence)}
+                    for w in self.words
+                ]
+            else:
+                obj["words"] = [{"w": w.word, "s": w.start_ms, "e": w.end_ms} for w in self.words]
         obj["audio_s"] = round(float(self.audio_s), 6)
         return json.dumps(obj, separators=(",", ":"))
 

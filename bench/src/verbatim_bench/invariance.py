@@ -52,6 +52,7 @@ __all__ = [
     "EXIT_DIVERGENT",
     "EXIT_INVARIANT",
     "EXIT_NO_VERDICT",
+    "FINALS_RECORD",
     "PAIRS",
     "SLOTS",
     "BiasingControls",
@@ -91,6 +92,9 @@ DEFAULT_SYNTHETIC_S: Final = 0.4
 EXIT_INVARIANT: Final = 0
 EXIT_DIVERGENT: Final = 1
 EXIT_NO_VERDICT: Final = 2
+
+#: The kind of the file ``--finals-out`` writes: every level's finals, per stream.
+FINALS_RECORD: Final = "vb-invariance-finals/1"
 
 _CLASSIFICATION: Final = {"1": "batch dependence", "32a": "run-to-run at one concurrency"}
 
@@ -571,6 +575,47 @@ class GateReport:
             "verdict": self.verdict,
             "exit_code": self.exit_code,
             "wall_clock_s": self.wall_clock_s,
+        }
+
+    def finals_json_dict(self) -> dict[str, Any]:
+        """Every level's finals as the wire carried them: per stream, the final text and
+        the word timings, in the byte order of stream ids that ``canonical.py`` digests
+        them in, so a level's list re-digests to that level's digest in the record.
+
+        The record keeps the digests and only the first differing word of each stream;
+        this keeps the transcripts themselves, so the places that moved can be scored
+        against a reference afterwards. Nothing here is scored. A stream whose session
+        errored has no final and is listed under ``errors`` instead."""
+        return {
+            "record": FINALS_RECORD,
+            "endpoint": self.endpoint,
+            "chunk_ms": self.chunk_ms,
+            "corpus": dict(self.corpus),
+            "biasing": self.biasing,
+            "verdict": self.verdict,
+            "levels": [
+                {
+                    "slot": run.level.slot,
+                    "concurrency": run.level.concurrency,
+                    "churn_period_s": run.level.churn_period_s,
+                    "digest": run.digest,
+                    "errors": {
+                        stream_id: run.errors[stream_id]
+                        for stream_id in sorted(run.errors, key=lambda s: s.encode("utf-8"))
+                    },
+                    "finals": [
+                        {
+                            "stream_id": record.stream_id,
+                            "text": record.text,
+                            "words": [[word, start, end] for word, start, end in record.words],
+                        }
+                        for record in sorted(
+                            run.finals.values(), key=lambda r: r.stream_id.encode("utf-8")
+                        )
+                    ],
+                }
+                for run in self.runs
+            ],
         }
 
     def render(self) -> str:

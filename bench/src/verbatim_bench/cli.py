@@ -271,6 +271,18 @@ def _build_parser() -> argparse.ArgumentParser:
     gate.add_argument(
         "--out", type=Path, default=None, help="write the vb-invariance/1 record here"
     )
+    gate.add_argument(
+        "--finals-out",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            f"write every level's finals here ({invariance_gate.FINALS_RECORD}): per level "
+            "and stream, the final text and word timings exactly as the wire carried them. "
+            "The record keeps only digests and the first differing word; this keeps the "
+            "transcripts, so the places that moved can be scored against a reference later"
+        ),
+    )
 
     rare = sub.add_parser(
         "rare-terms",
@@ -876,6 +888,12 @@ def _invariance(args: argparse.Namespace) -> int:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(report.to_json_dict(), indent=2) + "\n", encoding="utf-8")
         print(f"record: {args.out}")
+    if args.finals_out is not None:
+        args.finals_out.parent.mkdir(parents=True, exist_ok=True)
+        args.finals_out.write_text(
+            json.dumps(report.finals_json_dict(), indent=2) + "\n", encoding="utf-8"
+        )
+        print(f"finals: {args.finals_out}")
     return report.exit_code
 
 

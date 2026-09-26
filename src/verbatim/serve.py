@@ -25,6 +25,12 @@ from dataclasses import dataclass
 from verbatim.config import ChunkMode, EngineConfig
 from verbatim.engine import Engine
 from verbatim.pipelines.base import PipelineAdapter
+from verbatim.pipelines.observed import (
+    built_pipeline,
+    configured_word_confidence,
+    disagreement,
+    observe,
+)
 from verbatim.protocols.health import HealthReporter, ServiceFacts
 from verbatim.protocols.riva.server import RivaServer, RivaServerConfig
 from verbatim.protocols.ws.server import WsServer, WsServerConfig
@@ -157,7 +163,30 @@ async def run_server(
     ``device`` -- which the CLI has already probed to decide the graph path. It reaches
     ``/readyz`` so a harness can put it on the row: two ladders of the same checkpoint on
     the same card are not comparable without it.
+
+    ``/readyz`` also carries the word confidence the pipeline was built with and what
+    the built model and decoder are (``verbatim.pipelines.observed``): the encoder's
+    attention context, whether the decoder computes step confidence, whether it runs
+    CUDA graphs. They are read off the built objects, never off the settings, and the
+    observed ones again on every request. A configured word confidence the built decoder
+    contradicts is refused here, before anything binds. Its ``code`` names the directories
+    of the ``verbatim`` and ``verbatim_bench`` packages this process imported
+    (``health.code_paths``), so a client can check it is talking to the checkout it means.
+
+    The WebSocket listener is handed that same word confidence, the one value ``/readyz``
+    reports, so a final carries each word's ``"c"`` exactly when ``/readyz`` names a mode
+    other than "off" (``frames.confidence_on_wire``); null, a configuration no mode
+    names, sends none.
     """
+    pipeline = built_pipeline(adapter)
+    word_confidence = configured_word_confidence(adapter)
+    contradiction = disagreement(word_confidence, observe(pipeline))
+    if contradiction is not None:
+        raise ConfigError(contradiction)
+
+    def observed() -> dict[str, object]:
+        return observe(pipeline).to_json_dict()
+
     engine = Engine(engine_config(settings), adapter)
     if execution is None:
         # Read from the capture controller, which decided the mode from the adapter's
@@ -179,6 +208,7 @@ async def run_server(
         nemo_version=(runtime or {}).get("nemo"),
         torch_version=(runtime or {}).get("torch"),
         device_name=(runtime or {}).get("device"),
+        word_confidence=word_confidence,
     )
     riva = RivaServer(
         engine,
@@ -191,8 +221,8 @@ async def run_server(
     )
     ws = WsServer(
         engine,
-        WsServerConfig(host=settings.host, port=settings.ws_port),
-        health=HealthReporter(engine, facts),
+        WsServerConfig(host=settings.host, port=settings.ws_port, word_confidence=word_confidence),
+        health=HealthReporter(engine, facts, observe=observed),
     )
     async with engine, riva, ws:
         if on_ready is not None:

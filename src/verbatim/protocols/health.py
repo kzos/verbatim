@@ -18,22 +18,93 @@ exposition for ``/metrics``) and never a WebSocket handshake. The reporter reads
 The README once said ``/readyz`` would also wait for every bucket key to be captured
 and an invariance self-test to pass. Neither exists; this reporter says what it
 checks, not what a document hoped.
+
+``/readyz`` ends with three keys added after every earlier one, whose keys and values
+are unchanged: ``word_confidence``, the ``--word-confidence`` value whose configuration
+matches the decoding configuration NeMo applied (null when none matches or it cannot be
+read; see ``ServiceFacts.word_confidence``), ``observed``, the facts in
+``OBSERVED_KEYS`` read off the built model and decoder at the moment of the request
+(``verbatim.pipelines.observed``), and ``code``, the directories of the packages this
+process imported (``code_paths``). A reporter given nothing to observe reports null
+for each observed fact, which is "not observed" and never a default.
+
+``code`` exists because a server answers with the code it imported, which is not always
+the code of the checkout it was started from: an editable install elsewhere in the same
+virtualenv shadows a checkout's ``src`` unless something puts that first on the path. A
+capture that names the checkout it meant to test names what was asked for; ``code``
+names what answered.
 """
 
 from __future__ import annotations
 
+import importlib
 import json
+import os
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from types import ModuleType
 from typing import Final, Protocol
 
 from verbatim.obs.metrics import MetricsSnapshot, render
 
-__all__ = ["STALE_TICKS", "HealthReporter", "HealthResponse", "HealthSource", "ServiceFacts"]
+__all__ = [
+    "CODE_KEYS",
+    "OBSERVED_KEYS",
+    "STALE_TICKS",
+    "HealthReporter",
+    "HealthResponse",
+    "HealthSource",
+    "ServiceFacts",
+    "code_paths",
+]
+
+#: The keys of ``/readyz``'s ``observed`` object, in wire order. Each is read off the
+#: built pipeline when ``/readyz`` is asked, not taken from a flag or a spec.
+#: ``decoder_word_confidence`` came last, after the other three, which keep their order.
+OBSERVED_KEYS: Final = (
+    "att_context_size",
+    "decoder_step_confidence",
+    "decoder_graphs",
+    "decoder_word_confidence",
+)
+
+#: Each key of ``/readyz``'s ``code`` object, in wire order, with the package it names.
+_CODE_PACKAGES: Final = (("verbatim_path", "verbatim"), ("bench_path", "verbatim_bench"))
+#: The keys of ``/readyz``'s ``code`` object, in wire order.
+CODE_KEYS: Final = tuple(key for key, _ in _CODE_PACKAGES)
 
 #: A tick loop whose last tick is older than this many periods is reported not alive.
 STALE_TICKS: Final = 3.0
 JSON: Final = "application/json; charset=utf-8"
 PROMETHEUS: Final = "text/plain; version=0.0.4; charset=utf-8"
+
+
+def _package_dir(module: ModuleType) -> str | None:
+    """``os.path.dirname(module.__file__)`` with every symlink resolved; None for a module
+    with no file, which names no directory."""
+    file = getattr(module, "__file__", None)
+    if not isinstance(file, str):
+        return None
+    return os.path.realpath(os.path.dirname(file))
+
+
+def code_paths() -> dict[str, str | None]:
+    """``/readyz``'s ``code`` object: the directory of each package this process imports.
+
+    ``verbatim_path`` is the ``verbatim`` package that is serving, and ``bench_path`` the
+    ``verbatim_bench`` package, or null when that cannot be imported: the server does not
+    need it. Both are read off the module objects the import system returns at the moment
+    of the request, never computed from a checkout, a flag or this file's own location.
+    """
+    paths: dict[str, str | None] = {}
+    for key, name in _CODE_PACKAGES:
+        try:
+            module = importlib.import_module(name)
+        except ImportError:
+            paths[key] = None
+            continue
+        paths[key] = _package_dir(module)
+    return paths
 
 
 class HealthSource(Protocol):
@@ -67,6 +138,12 @@ class ServiceFacts:
     nemo_version: str | None = None
     torch_version: str | None = None
     device_name: str | None = None
+    #: The ``--word-confidence`` value this server's pipeline was built with: "off",
+    #: "nemo-shipped" or "paper-best", read back from the decoding configuration NeMo
+    #: applied (``verbatim.pipelines.observed.configured_word_confidence``). None where it
+    #: could not be read. Finals carry each word's ``"c"`` only when it is not "off".
+    #: Not a metrics label: the label set of every series stays what it was.
+    word_confidence: str | None = None
 
     def labels(self) -> dict[str, str]:
         return {
@@ -88,13 +165,28 @@ class HealthResponse:
 class HealthReporter:
     ROUTES: Final = frozenset({"/healthz", "/readyz", "/admission", "/metrics"})
 
-    def __init__(self, source: HealthSource, facts: ServiceFacts) -> None:
+    def __init__(
+        self,
+        source: HealthSource,
+        facts: ServiceFacts,
+        *,
+        observe: Callable[[], Mapping[str, object]] | None = None,
+    ) -> None:
+        """``observe`` reads the built pipeline and returns the ``OBSERVED_KEYS``; it is
+        called on every ``/readyz``. Without it every observed key is null."""
         self._source = source
         self._facts = facts
+        self._observe = observe
 
     @property
     def facts(self) -> ServiceFacts:
         return self._facts
+
+    def observed(self) -> dict[str, object]:
+        """``/readyz``'s ``observed`` object: exactly ``OBSERVED_KEYS``, null for any
+        key the reading does not carry."""
+        reading = self._observe() if self._observe is not None else {}
+        return {key: reading.get(key) for key in OBSERVED_KEYS}
 
     def route(self, path: str) -> HealthResponse | None:
         """The response for a health path, or ``None`` when the path is not one."""
@@ -133,6 +225,10 @@ class HealthReporter:
                     "torch_version": self._facts.torch_version,
                     "device_name": self._facts.device_name,
                     "tick_id": snapshot.tick_id,
+                    # Added after every earlier key, which keep their order and values.
+                    "word_confidence": self._facts.word_confidence,
+                    "observed": self.observed(),
+                    "code": code_paths(),
                 },
             )
         counters = snapshot.counters
