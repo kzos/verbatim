@@ -1,0 +1,312 @@
+{
+ "commit": "the verbatim commit the record stamps, read from the field commit_stamp names; scripts/step1_summary.py refuses a record whose stamp is not this",
+ "gzip": "gzip -9 -n of the raw file (no name or time in the header). sha256_raw and bytes_raw are of the decompressed bytes, sha256_gz and bytes_gz of the file here.",
+ "not_a_row": "Exploratory records, not harness rows. scripts/step1_summary.py derives its figures from these files and nothing else; see rows/exploratory/README.md.",
+ "not_copied": "nemotron-bf16-160-high-n1024-conf-paperbest.json, the 160 ms run with paper-best word confidence: its record holds 272 of its 1,024 targets and no finish stamp, because NeMo raised on a recording mid-run (the decoder word-confidence pass commit 26eaebb turns off). It is incomplete and is not here.",
+ "original": "the file name the tool wrote, relative to the step-1 output directory of the machine that ran it",
+ "records": {
+  "places-22e8406.json.gz": {
+   "bytes_as_written": 5703720,
+   "bytes_gz": 636296,
+   "bytes_raw": 5703279,
+   "commit": "22e84061fdb228d4d858cdc9229f485a16a59ac2",
+   "commit_stamp": "verbatim_commit",
+   "kind": "places",
+   "original": "run-22e8406/places.json",
+   "scrub": {
+    "links_rewritten": 3,
+    "placeholders": {
+     "checkout": 6,
+     "step1-out": 3
+    }
+   },
+   "sha256_as_written": "bb776b99b38d6d432fff374e400734b6f48863d3ae90c528e7a0d581c648ddc4",
+   "sha256_gz": "ac1133d4ba85948184a70acd3e05a8a6547715db9889fd59ce87d84ffa8b0eec",
+   "sha256_raw": "ff7d22aafc6c530b7e58771534b311b588693a836b2a150b17a3a0a9242e2f59",
+   "what": "scripts/compare_captures.py --places-out: the recordings where the fixed-padding capture server-22e8406-fixed-c32.json.gz (side a, the served answer) and the ragged-padding capture server-22e8406-ragged-c32.json.gz (side b) differ, with server-22e8406-fixed-c8.json.gz as --repeat; the shape scripts/step1_places.py scores. It names each capture by sha256. Its verbatim_commit is the captures' commit; the comparator's own commit is not stamped."
+  },
+  "places-a207de6.json.gz": {
+   "bytes_as_written": 5641395,
+   "bytes_gz": 631582,
+   "bytes_raw": 5640954,
+   "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+   "commit_stamp": "verbatim_commit",
+   "kind": "places",
+   "original": "run-a207de6-captures-2/places.json",
+   "scrub": {
+    "links_rewritten": 3,
+    "placeholders": {
+     "checkout": 6,
+     "step1-out": 3
+    }
+   },
+   "sha256_as_written": "85852b998ab579c0c9ea89bebfd89c9224967bd6ffa2fd270926a262f9454559",
+   "sha256_gz": "e1f166a7cb575d55613750238972d8b280e92844637428e53de1f5d9196e2343",
+   "sha256_raw": "cb817c3868c1113de27224e472cb45ae56bf84f2f59775412ef5f06ac188688a",
+   "what": "scripts/compare_captures.py --places-out: the recordings where the fixed-padding capture server-a207de6-fixed-c32.json.gz (side a, the served answer) and the ragged-padding capture server-a207de6-ragged-c32.json.gz (side b) differ, with server-a207de6-fixed-c8.json.gz as --repeat; the shape scripts/step1_places.py scores. It names each capture by sha256. Its verbatim_commit is the captures' commit; the comparator's own commit is not stamped."
+  },
+  "replay-22e8406-nemotron-bf16-1120-n64.json.gz": {
+   "bytes_as_written": 906406,
+   "bytes_gz": 67363,
+   "bytes_raw": 906300,
+   "commit": "22e84061fdb228d4d858cdc9229f485a16a59ac2",
+   "commit_stamp": "verbatim_commit",
+   "kind": "replay",
+   "original": "run-22e8406/replay64-1120.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 2
+    }
+   },
+   "sha256_as_written": "097167c5aa3033eb7760c674531d191929e18f0feb30d5f5d2263e8ef90689e8",
+   "sha256_gz": "bcfc0d1f7ab8ed10504a54724252c28817d292bf4673f8bd07106a0fbac43674",
+   "sha256_raw": "70b18a73c5f80c738b2f3c8a76799aae055957447d6f562cbaa50f31fa1a7f59",
+   "what": "probes/stock_divergence.py as committed at 22e8406, replaying the first 64 targets of the bfloat16 1,120 ms run (stock-nemotron-bf16-1120) at its settings; scripts/compare_stock_replay.py compares the two."
+  },
+  "server-22e8406-fixed-c32.json.gz": {
+   "bytes_as_written": 6062287,
+   "bytes_gz": 916073,
+   "bytes_raw": 6060753,
+   "commit": "22e84061fdb228d4d858cdc9229f485a16a59ac2",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-22e8406/server-fixed-c32.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 18,
+     "home": 13,
+     "step1-out": 4,
+     "venv": 9
+    }
+   },
+   "sha256_as_written": "da9e2bba24faf1b164c081532dc51a5bd1f1a942c2aa494d0646fe32aba7d03e",
+   "sha256_gz": "e9c2cccf88fa68c3c3480ccf6497e0a18ca3d0d7e0a82d89d21b09d2280fca95",
+   "sha256_raw": "0079a84d02e60676044b897a1eb449a4c1e9adba223c9d162ffedf0b9bf5851d",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding fixed, word confidence off, the client admitting 32 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "server-22e8406-fixed-c8.json.gz": {
+   "bytes_as_written": 6062735,
+   "bytes_gz": 917006,
+   "bytes_raw": 6061201,
+   "commit": "22e84061fdb228d4d858cdc9229f485a16a59ac2",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-22e8406/server-fixed-c8.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 18,
+     "home": 13,
+     "step1-out": 4,
+     "venv": 9
+    }
+   },
+   "sha256_as_written": "263aaf9c4c5ce6706e5474aea9261ac8818d42b6ae4d634043942a8040a3344a",
+   "sha256_gz": "00df28e219dc61f2a9eb20d774c73df55d69b6923dcd66a25ef99b60592be630",
+   "sha256_raw": "6d1fd9e208d6915ed34669d7883e566d05a6da677b3ac62b880ba35edd77eca8",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding fixed, word confidence off, the client admitting 8 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "server-22e8406-ragged-c32.json.gz": {
+   "bytes_as_written": 6064076,
+   "bytes_gz": 915924,
+   "bytes_raw": 6062542,
+   "commit": "22e84061fdb228d4d858cdc9229f485a16a59ac2",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-22e8406/server-ragged-c32.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 18,
+     "home": 13,
+     "step1-out": 4,
+     "venv": 9
+    }
+   },
+   "sha256_as_written": "d36b2ac0dd83cda33c4b45435cd9ce5e5cecd795805c578fdfdb4c5b5114fc05",
+   "sha256_gz": "5d016f8d92fa26eabc0d107751322e1cabf733773e9df9f3cb5fe2d71c333fd6",
+   "sha256_raw": "098ae59b5a3263a3e2ded2747cdaae31d431811d2c8c90082399a6a496402d81",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding ragged, word confidence off, the client admitting 32 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "server-a207de6-fixed-c32.json.gz": {
+   "bytes_as_written": 6062453,
+   "bytes_gz": 915949,
+   "bytes_raw": 6060919,
+   "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-a207de6-captures-2/fixed-c32.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 18,
+     "home": 13,
+     "step1-out": 4,
+     "venv": 9
+    }
+   },
+   "sha256_as_written": "ba54361c54d6fe15190a0e7efb292dbf9cf3c2f2017c41dd5f3d7bb51e0d4e4e",
+   "sha256_gz": "07ae0804d856169f743dbed28d4a531848906435281f28c09f96de39df2883e3",
+   "sha256_raw": "87a3e0a76d5ae8f623efc26527462c1e732355d0010cecbd5dace04fbd346afb",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding fixed, word confidence off, the client admitting 32 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "server-a207de6-fixed-c8.json.gz": {
+   "bytes_as_written": 6063045,
+   "bytes_gz": 917032,
+   "bytes_raw": 6061511,
+   "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-a207de6-captures-2/fixed-c8.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 18,
+     "home": 13,
+     "step1-out": 4,
+     "venv": 9
+    }
+   },
+   "sha256_as_written": "b1e10f920158e42a9ec6dd2dd76f674f5bf4c13856ee1fd63f3f7bcfe70e1fd5",
+   "sha256_gz": "001afc8e23d035138f6c857cfe7e9edb9e8df72b7c0542982da0cea8413b3316",
+   "sha256_raw": "2ff72731645876f17fef35160d28a3fe5627b035776a104d77dd1451dc3f4d7f",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding fixed, word confidence off, the client admitting 8 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "server-a207de6-fixed-nemoshipped-c32.json.gz": {
+   "bytes_as_written": 7024277,
+   "bytes_gz": 1111742,
+   "bytes_raw": 7022743,
+   "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-a207de6-captures-2/fixed-nemoshipped-c32.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 18,
+     "home": 13,
+     "step1-out": 4,
+     "venv": 9
+    }
+   },
+   "sha256_as_written": "872492760af8689e4f14caffd3096449f641b092e0232e3cf00ca9b666be510d",
+   "sha256_gz": "eb4dac0a73260587eaa66f59cca224a614578f5a0ac4f87a704e5d7e9f9a97b5",
+   "sha256_raw": "ff4f3c24f398f7cad9ff1e957c11923d899c0d781cf8d36b0ce6ee9f0ebd23c2",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding fixed, word confidence nemo-shipped, the client admitting 32 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "server-a207de6-fixed-paperbest-c32.json.gz": {
+   "bytes_as_written": 7053317,
+   "bytes_gz": 1104255,
+   "bytes_raw": 7051783,
+   "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-a207de6-captures-2/fixed-paperbest-c32.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 18,
+     "home": 13,
+     "step1-out": 4,
+     "venv": 9
+    }
+   },
+   "sha256_as_written": "f12b6458657fe9f873f14a3654ad1e8d8e92bd54a7e0bdda41a9b681c7d9603c",
+   "sha256_gz": "19594d3e6b1070ea161d3702eadea19a19d718303e7b7326a81ff6c89d03d6cb",
+   "sha256_raw": "a1ba0ece94b5fe0f9cface453c2bebcea6fea064734f5df9dc75a78628534e61",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding fixed, word confidence paper-best, the client admitting 32 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "server-a207de6-ragged-c32-repeat.json.gz": {
+   "bytes_as_written": 6063440,
+   "bytes_gz": 915941,
+   "bytes_raw": 6061906,
+   "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-a207de6-ragged-repeat/ragged-c32-repeat.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 18,
+     "home": 13,
+     "step1-out": 4,
+     "venv": 9
+    }
+   },
+   "sha256_as_written": "9aa59d27bcd57ffe72a588f1d01492ce5c71d1d83ae9a8d7ffac2262028592be",
+   "sha256_gz": "84ea85ca5a3b38f9d7e16161a190c90c47161e9a4e36d4283dd9a7e3faef9447",
+   "sha256_raw": "169d2ff8a6886ca7c6e7d7d585e2e271cfd1335a290f5c33f0210dcda737b359",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding ragged, word confidence off, the client admitting 32 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run. A second ragged capture at the same commit and setting, taken after the others: ragged against ragged."
+  },
+  "server-a207de6-ragged-c32.json.gz": {
+   "bytes_as_written": 6060591,
+   "bytes_gz": 915785,
+   "bytes_raw": 6059057,
+   "commit": "a207de6db3fb2601b225425f515e4b0ab6f6f50e",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-a207de6-captures-2/ragged-c32.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 18,
+     "home": 13,
+     "step1-out": 4,
+     "venv": 9
+    }
+   },
+   "sha256_as_written": "6ac2204c782837bad369bc5707664d38f684c25085bc6ccf27ca31995db2d279",
+   "sha256_gz": "5042ccd2e23df5aa1257260fbae6d21dea9681c1cd3e6fe46544acb28a9ae3bc",
+   "sha256_raw": "d3fe0003d421e6adb1c38cc57fabb10b7a22bf53248f30b11c868263f41531ed",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding ragged, word confidence off, the client admitting 32 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "stock-hybrid-bf16-1120.json.gz": {
+   "bytes_gz": 1260415,
+   "bytes_raw": 13066647,
+   "commit": "854d4b9b5af725b36ce7fc14e6dd5f9ab3e776ad",
+   "commit_stamp": "verbatim_commit",
+   "kind": "stock",
+   "original": "hybrid-bf16-1120.json",
+   "sha256_gz": "1b886fbe05fe162ff522cbe130ce4227d6f0343b14dfe3fc0bc804b6e7b557b5",
+   "sha256_raw": "74a1e98017ac36df080f9e3b8381e0d24f5d4a0eb8933ef3560941d21125b236",
+   "what": "probes/stock_divergence.py: each of the 2,939 LibriSpeech test-other recordings transcribed alone and in slot 0 of a batch of 32 through NeMo's CacheAwareRNNTPipeline (the pipeline the server builds), arms ragged, equalised and fixed, compared on the final text and on the word timings. Model nvidia/stt_en_fastconformer_hybrid_large_streaming_multi revision ae981433, bfloat16, 1,120 ms chunks (att_context [70, 13]), matmul precision highest. Keeps every recording's two transcripts, and the texts and timings of the recordings that differ. The old model at the settings of stock-nemotron-bf16-1120.json.gz, on the same NeMo and torch, with the probe of stock-nemotron-fp32-1120.json.gz (the same commit)."
+  },
+  "stock-nemotron-bf16-1120.json.gz": {
+   "bytes_gz": 1216079,
+   "bytes_raw": 10842948,
+   "commit": "6583a83802c46eea49dbf4871130ff0b2d8fe59b",
+   "commit_stamp": "verbatim_commit",
+   "kind": "stock",
+   "original": "nemotron-bf16-1120.json",
+   "sha256_gz": "111c4d176d9c656a53b0c2359bda9392e27a39dd19b9d7084478d68ad9b9cfb0",
+   "sha256_raw": "db2c1b876143f1cac53a7eb1db0f48d4240a082d4e8a0de6fdb462c116649fff",
+   "what": "probes/stock_divergence.py: each of the 2,939 LibriSpeech test-other recordings transcribed alone and in slot 0 of a batch of 32 through NeMo's CacheAwareRNNTPipeline (the pipeline the server builds), arms ragged, equalised and fixed, compared on the final text and on the word timings. Model nvidia/nemotron-speech-streaming-en-0.6b revision ebe59e5a, bfloat16, 1,120 ms chunks (att_context [70, 13]), matmul precision highest. Keeps every recording's two transcripts, and the texts and timings of the recordings that differ. Written when the probe was one top-level script (6583a83); word timings are (word, start_s, end_s)."
+  },
+  "stock-nemotron-bf16-160-high-n1024.json.gz": {
+   "bytes_gz": 1164354,
+   "bytes_raw": 15281390,
+   "commit": "daae58745af1a9b942437714264bb48a991bdc90",
+   "commit_stamp": "verbatim_commit",
+   "kind": "stock",
+   "original": "nemotron-bf16-160-high-n1024.json",
+   "sha256_gz": "ff8f4ce4018a3295102253522311f49e88e465d101ba38d019db9c5c67308b0e",
+   "sha256_raw": "788a8aad1ad6b0fa32c619bf267f3555ca621712ae7fec9a54763b0b58945ad4",
+   "what": "probes/stock_divergence.py: each of the first 1,024 LibriSpeech test-other recordings (of 2,939) transcribed alone and in slot 0 of a batch of 32 through NeMo's CacheAwareRNNTPipeline (the pipeline the server builds), arms ragged, equalised and fixed, compared on the final text and on the word timings. Model nvidia/nemotron-speech-streaming-en-0.6b revision ebe59e5a, bfloat16, 160 ms chunks (att_context [70, 1]), matmul precision high. Keeps every recording's two transcripts and word lists (every_recording). Word confidence off."
+  },
+  "stock-nemotron-fp32-1120.json.gz": {
+   "bytes_gz": 502430,
+   "bytes_raw": 1640393,
+   "commit": "854d4b9b5af725b36ce7fc14e6dd5f9ab3e776ad",
+   "commit_stamp": "verbatim_commit",
+   "kind": "stock",
+   "original": "nemotron-fp32-1120.json",
+   "sha256_gz": "e0728bca5f68b4affb3a17f84e6f31717a4caee65a7bcf2cc35f52a71d98eae5",
+   "sha256_raw": "2cba7d5bcbbc4388752df595d63fad2b6eb1198ee3f8d395459733b17d540d16",
+   "what": "probes/stock_divergence.py: each of the 2,939 LibriSpeech test-other recordings transcribed alone and in slot 0 of a batch of 32 through NeMo's CacheAwareRNNTPipeline (the pipeline the server builds), arms ragged, equalised and fixed, compared on the final text and on the word timings. Model nvidia/nemotron-speech-streaming-en-0.6b revision ebe59e5a, float32, 1,120 ms chunks (att_context [70, 13]), matmul precision highest. Keeps every recording's two transcripts, and the texts and timings of the recordings that differ."
+  }
+ },
+ "scrubbed": "scripts/scrub_record_paths.py replaced the absolute paths each record's tool stamped by a placeholder: <checkout>, the verbatim checkout the tool and the server ran from; <home>, the home directory of the user who ran them; <step1-out>, the directory the step-1 tools wrote their records and logs to; <venv>, the Python virtual environment they ran in. A record that names another here by sha256 names the scrubbed one. sha256_as_written and bytes_as_written are the record as its tool wrote it; scrub says what was replaced. A record without them held no path and is as written.",
+ "what": "The raw records of step 1 on one NVIDIA RTX A6000 (2026-09-24 to 2026-09-26), each gzipped whole: decompressing a file gives the record its tool wrote, byte for byte."
+}

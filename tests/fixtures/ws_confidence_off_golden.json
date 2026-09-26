@@ -1,0 +1,201 @@
+{
+  "about": "Wire bytes produced by the code BEFORE contract C3 (word confidence on the wire, observed facts on /readyz). Captured once by a script run against the unmodified sources named below; tests/test_ws_confidence_and_readyz.py rebuilds every case and requires the same bytes with word confidence off.",
+  "captured_from": {
+    "git_head": "854d4b9b5af725b36ce7fc14e6dd5f9ab3e776ad",
+    "exported_with": "git archive HEAD src bench/src",
+    "sha256": {
+      "src/verbatim/protocols/ws/frames.py": "5553f7299c8129c2f2ffd6824fad9ba5598c7234ae2bbc46b93eae9a1b27dfc6",
+      "src/verbatim/protocols/ws/server.py": "cc3df5003e4c760854b496c17b98bb1ac6e372e787de5a460ccb7f220d6d280c",
+      "src/verbatim/protocols/health.py": "5bf6182af54e1c64683a9882f410677bd2eb924d998353872004a17f9aa1aac3",
+      "src/verbatim/serve.py": "4d7a87bc3e0f5ade062bceccf762d15c5ce4c9a0cc279ac06c61ef3ccda0fe7c"
+    }
+  },
+  "word_cases": {
+    "none": null,
+    "empty": [],
+    "mixed_confidence": [
+      [
+        "the",
+        0,
+        160,
+        0.0
+      ],
+      [
+        "quick",
+        160,
+        320,
+        0.5
+      ],
+      [
+        "brown",
+        320,
+        480,
+        0.987654321
+      ],
+      [
+        "naïve",
+        480,
+        640,
+        1.0
+      ],
+      [
+        "say \"hi\"",
+        640,
+        800,
+        0.25
+      ],
+      [
+        "back\\slash",
+        800,
+        960,
+        1e-07
+      ]
+    ]
+  },
+  "direct_finals": [
+    {
+      "case": "words_none",
+      "text": "the quick brown fox",
+      "audio_s": 1.28,
+      "words": "none",
+      "json": "{\"type\":\"final\",\"text\":\"the quick brown fox\",\"audio_s\":1.28}"
+    },
+    {
+      "case": "words_empty",
+      "text": "",
+      "audio_s": 0.0,
+      "words": "empty",
+      "json": "{\"type\":\"final\",\"text\":\"\",\"words\":[],\"audio_s\":0.0}"
+    },
+    {
+      "case": "words_mixed_confidence",
+      "text": "the quick brown naïve say \"hi\" back\\slash",
+      "audio_s": 0.30000000000000004,
+      "words": "mixed_confidence",
+      "json": "{\"type\":\"final\",\"text\":\"the quick brown na\\u00efve say \\\"hi\\\" back\\\\slash\",\"words\":[{\"w\":\"the\",\"s\":0,\"e\":160},{\"w\":\"quick\",\"s\":160,\"e\":320},{\"w\":\"brown\",\"s\":320,\"e\":480},{\"w\":\"na\\u00efve\",\"s\":480,\"e\":640},{\"w\":\"say \\\"hi\\\"\",\"s\":640,\"e\":800},{\"w\":\"back\\\\slash\",\"s\":800,\"e\":960}],\"audio_s\":0.3}"
+    }
+  ],
+  "other_frames": [
+    {
+      "case": "session",
+      "id": "fixed-id",
+      "chunk_ms": 160,
+      "invariance_class": "<unmeasured>",
+      "json": "{\"type\":\"session\",\"id\":\"fixed-id\",\"chunk_ms\":160,\"invariance_class\":\"<unmeasured>\"}"
+    },
+    {
+      "case": "partial",
+      "text": "the quick",
+      "audio_s": 0.32,
+      "json": "{\"type\":\"partial\",\"text\":\"the quick\",\"audio_s\":0.32}"
+    },
+    {
+      "case": "error",
+      "code": "INVALID_ARGUMENT",
+      "message": "bad",
+      "json": "{\"type\":\"error\",\"code\":\"INVALID_ARGUMENT\",\"message\":\"bad\"}"
+    }
+  ],
+  "readyz_reporter": [
+    {
+      "case": "fake",
+      "facts": {
+        "model": "fake-model",
+        "chunk_ms": 160,
+        "precision": "none",
+        "execution": "fake",
+        "pipeline": "fake"
+      },
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "body": "{\"ready\":true,\"reason\":null,\"model\":\"fake-model\",\"pipeline\":\"fake\",\"chunk_ms\":160,\"precision\":\"none\",\"execution\":\"fake\",\"biasing\":false,\"nemo_version\":null,\"torch_version\":null,\"device_name\":null,\"tick_id\":42}\n"
+    },
+    {
+      "case": "nemo_like",
+      "facts": {
+        "model": "nvidia/nemotron-speech-streaming-en-0.6b",
+        "chunk_ms": 1120,
+        "precision": "bfloat16",
+        "execution": "eager",
+        "pipeline": "cache_aware_rnnt",
+        "biasing": false,
+        "nemo_version": "3.1.0+cf724ac33",
+        "torch_version": "2.x",
+        "device_name": "NVIDIA RTX A6000"
+      },
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "body": "{\"ready\":true,\"reason\":null,\"model\":\"nvidia/nemotron-speech-streaming-en-0.6b\",\"pipeline\":\"cache_aware_rnnt\",\"chunk_ms\":1120,\"precision\":\"bfloat16\",\"execution\":\"eager\",\"biasing\":false,\"nemo_version\":\"3.1.0+cf724ac33\",\"torch_version\":\"2.x\",\"device_name\":\"NVIDIA RTX A6000\",\"tick_id\":42}\n"
+    }
+  ],
+  "serve_fake": {
+    "settings": {
+      "model": "fake-model",
+      "chunk_ms": 160,
+      "bucket": 4,
+      "pipeline": "fake"
+    },
+    "readyz_body": "{\"ready\":true,\"reason\":null,\"model\":\"fake-model\",\"pipeline\":\"fake\",\"chunk_ms\":160,\"precision\":\"none\",\"execution\":\"fake\",\"biasing\":false,\"nemo_version\":null,\"torch_version\":null,\"device_name\":null,\"tick_id\":1}\n",
+    "sessions": [
+      {
+        "case": "serve_fake_words_1",
+        "query": "words=1",
+        "chunks": 5,
+        "extra_bytes": 1000,
+        "seed": 7,
+        "frames": [
+          "{\"type\":\"partial\",\"text\":\"w0a9000fb\",\"audio_s\":0.16}",
+          "{\"type\":\"partial\",\"text\":\"w0a9000fb wc0bd04d1\",\"audio_s\":0.32}",
+          "{\"type\":\"partial\",\"text\":\"w0a9000fb wc0bd04d1 we39eebef\",\"audio_s\":0.48}",
+          "{\"type\":\"partial\",\"text\":\"w0a9000fb wc0bd04d1 we39eebef w53972e0d\",\"audio_s\":0.64}",
+          "{\"type\":\"partial\",\"text\":\"w0a9000fb wc0bd04d1 we39eebef w53972e0d wdba53c49\",\"audio_s\":0.8}",
+          "{\"type\":\"partial\",\"text\":\"w0a9000fb wc0bd04d1 we39eebef w53972e0d wdba53c49 wacbeb165\",\"audio_s\":0.83125}",
+          "{\"type\":\"final\",\"text\":\"w0a9000fb wc0bd04d1 we39eebef w53972e0d wdba53c49 wacbeb165\",\"words\":[{\"w\":\"w0a9000fb\",\"s\":0,\"e\":160},{\"w\":\"wc0bd04d1\",\"s\":160,\"e\":320},{\"w\":\"we39eebef\",\"s\":320,\"e\":480},{\"w\":\"w53972e0d\",\"s\":480,\"e\":640},{\"w\":\"wdba53c49\",\"s\":640,\"e\":800},{\"w\":\"wacbeb165\",\"s\":800,\"e\":960}],\"audio_s\":0.83125}"
+        ]
+      },
+      {
+        "case": "serve_fake_words_0",
+        "query": "words=0",
+        "chunks": 3,
+        "extra_bytes": 0,
+        "seed": 11,
+        "frames": [
+          "{\"type\":\"partial\",\"text\":\"w7ff0c4e2\",\"audio_s\":0.16}",
+          "{\"type\":\"partial\",\"text\":\"w7ff0c4e2 w06e004b9\",\"audio_s\":0.32}",
+          "{\"type\":\"partial\",\"text\":\"w7ff0c4e2 w06e004b9 w6949a296\",\"audio_s\":0.48}",
+          "{\"type\":\"final\",\"text\":\"w7ff0c4e2 w06e004b9 w6949a296\",\"audio_s\":0.48}"
+        ]
+      }
+    ]
+  },
+  "stub_scripted": [
+    {
+      "case": "stub_scripted_words_1",
+      "query": "words=1",
+      "chunks": 4,
+      "script": null,
+      "frames": [
+        "{\"type\":\"partial\",\"text\":\"the\",\"audio_s\":0.16}",
+        "{\"type\":\"partial\",\"text\":\"the quick\",\"audio_s\":0.32}",
+        "{\"type\":\"partial\",\"text\":\"the quick brown\",\"audio_s\":0.48}",
+        "{\"type\":\"partial\",\"text\":\"the quick brown fox\",\"audio_s\":0.64}",
+        "{\"type\":\"final\",\"text\":\"the quick brown fox jumps over the lazy dog\",\"words\":[{\"w\":\"the\",\"s\":0,\"e\":160},{\"w\":\"quick\",\"s\":160,\"e\":320},{\"w\":\"brown\",\"s\":320,\"e\":480},{\"w\":\"fox\",\"s\":480,\"e\":640},{\"w\":\"jumps\",\"s\":640,\"e\":800},{\"w\":\"over\",\"s\":800,\"e\":960},{\"w\":\"the\",\"s\":960,\"e\":1120},{\"w\":\"lazy\",\"s\":1120,\"e\":1280},{\"w\":\"dog\",\"s\":1280,\"e\":1440}],\"audio_s\":0.64}"
+      ]
+    },
+    {
+      "case": "stub_scripted_unicode_words_1",
+      "query": "words=1",
+      "chunks": 2,
+      "script": [
+        "café",
+        "say \"hi\"",
+        "back\\slash"
+      ],
+      "frames": [
+        "{\"type\":\"partial\",\"text\":\"caf\\u00e9\",\"audio_s\":0.16}",
+        "{\"type\":\"partial\",\"text\":\"caf\\u00e9 say \\\"hi\\\"\",\"audio_s\":0.32}",
+        "{\"type\":\"final\",\"text\":\"caf\\u00e9 say \\\"hi\\\" back\\\\slash\",\"words\":[{\"w\":\"caf\\u00e9\",\"s\":0,\"e\":160},{\"w\":\"say \\\"hi\\\"\",\"s\":160,\"e\":320},{\"w\":\"back\\\\slash\",\"s\":320,\"e\":480}],\"audio_s\":0.32}"
+      ]
+    }
+  ]
+}
