@@ -848,6 +848,9 @@ async def test_readyz_reports_what_the_built_pipeline_is_not_what_the_settings_i
         "att_context_size": list(BUILT_CONTEXT),
         "decoder_step_confidence": True,
         "decoder_graphs": True,
+        # The fake keeps no model decoding object; tests/test_confidence_word_aggregation_crash.py
+        # reads one.
+        "decoder_word_confidence": None,
     }
     assert doc["observed"]["att_context_size"] != SPEC_CONTEXT
     assert doc["word_confidence"] == "nemo-shipped"
@@ -883,11 +886,13 @@ async def test_readyz_reads_the_built_objects_on_every_request() -> None:
         "att_context_size": list(BUILT_CONTEXT),
         "decoder_step_confidence": False,
         "decoder_graphs": True,
+        "decoder_word_confidence": None,
     }
     assert after == {
         "att_context_size": [70, 13],
         "decoder_step_confidence": False,
         "decoder_graphs": False,
+        "decoder_word_confidence": None,
     }
 
 
@@ -905,6 +910,7 @@ async def test_a_ctc_server_observes_its_encoder_and_no_decoder() -> None:
         "att_context_size": list(BUILT_CONTEXT),
         "decoder_step_confidence": None,
         "decoder_graphs": None,
+        "decoder_word_confidence": None,
     }
 
 
@@ -1055,7 +1061,12 @@ def test_readyz_writes_the_observed_keys_in_wire_order_whatever_the_reading_give
     answer = reporter.route("/readyz")
     assert answer is not None
     observed = json.loads(answer.body)["observed"]
-    assert list(observed) == ["att_context_size", "decoder_step_confidence", "decoder_graphs"]
+    assert list(observed) == [
+        "att_context_size",
+        "decoder_step_confidence",
+        "decoder_graphs",
+        "decoder_word_confidence",
+    ]
     assert '"observed":{"att_context_size":[1,2],' in answer.body
 
 

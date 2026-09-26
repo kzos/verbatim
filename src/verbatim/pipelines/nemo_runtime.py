@@ -24,7 +24,10 @@ Three things live here, and NeMo is imported by exactly two of them, at call tim
   CTC wrapper is not something an installed wheel here can be read for.
 - ``build_pipeline`` runs NeMo's builder and turns whatever it raises into a
   ``PipelineBuildError`` an operator can act on: the checkpoint, the chunk mode and
-  its ``att_context_size``, the slots asked for, and NeMo's own words.
+  its ``att_context_size``, the slots asked for, and NeMo's own words. With word
+  confidence on, it then switches off the built decoding object's word-level
+  aggregation, which nothing on the streaming path reads and which raises on some
+  transcripts (``drop_unread_word_aggregation``).
 """
 
 from __future__ import annotations
@@ -39,6 +42,7 @@ from verbatim.config import SAMPLE_RATE_HZ, VALID_CHUNK_MS, ChunkMode
 from verbatim.scheduler.graph_budget import ConfigError
 
 __all__ = [
+    "DECODING_PATH",
     "KNOWN_LEFT_CONTEXT",
     "WORD_CONFIDENCE_MODES",
     "NeMoPipelineSpec",
@@ -46,6 +50,7 @@ __all__ = [
     "RuntimeReport",
     "att_context_size",
     "build_pipeline",
+    "drop_unread_word_aggregation",
     "graph_step_present",
     "inspect_runtime",
     "pipeline_config",
@@ -65,6 +70,19 @@ GRAPH_STEP_CLASS = "CudaGraphsStreamingEncoderStep"
 WRAPPER_MODULE = "nemo.collections.asr.inference.model_wrappers.cache_aware_rnnt_inference_wrapper"
 WRAPPER_CLASS = "CacheAwareRNNTInferenceWrapper"
 GRAPH_SWITCH = "set_streaming_cuda_graphs"
+
+#: The model's decoding object, from a built cache-aware pipeline. The pipeline's
+#: ``asr_model`` is NeMo's inference wrapper (``inference/pipelines/base_pipeline.py:309``),
+#: the wrapper's ``asr_model`` is the loaded model (``inference/model_wrappers/
+#: asr_inference_wrapper.py:70``), and the model's ``decoding`` is the ``RNNTBPEDecoding``
+#: that ``change_decoding_strategy`` rebuilt from the decoding configuration
+#: (``models/rnnt_bpe_models.py:408``). The wrapper calls its
+#: ``rnnt_decoder_predictions_tensor`` on every step
+#: (``inference/model_wrappers/cache_aware_rnnt_inference_wrapper.py:192``), and NeMo's own
+#: pipeline walks the same path to its decoding computer
+#: (``inference/pipelines/cache_aware_rnnt_pipeline.py:98-103``). Paths are relative to
+#: ``nemo/collections/asr/`` at NeMo main ``cf724ac``.
+DECODING_PATH: Final = ("asr_model", "asr_model", "decoding")
 
 Importer = Callable[[str], Any]
 
@@ -152,6 +170,12 @@ class NeMoPipelineSpec:
     #: are on, and a confidence pass on the host after every decode. So the transcript
     #: digests of a run with it on must be PROVEN identical to the "off" configuration,
     #: on the GPU, before anyone assumes they are. Until then they do not carry over.
+    #:
+    #: On, ``build_pipeline`` also switches off the decoding object's word-level
+    #: aggregation (``drop_unread_word_aggregation``). NeMo's builder turns it on with the
+    #: rest, nothing on the streaming path reads its result, and it raises on some
+    #: transcripts. The step and token confidences stay as NeMo computes them, and the
+    #: configuration ``pipeline_config`` writes is unchanged.
     #:
     #: RNNT only. NeMo's cache-aware CTC pipeline computes word confidence on every step
     #: from the top-level ``confidence`` block whatever this says (its
@@ -509,6 +533,52 @@ def inspect_runtime(import_module: Importer = importlib.import_module) -> Runtim
     )
 
 
+def drop_unread_word_aggregation(pipeline: Any) -> None:
+    """Switch off word-level confidence aggregation on a built RNNT pipeline's decoding
+    object, which nothing on the streaming path reads and which raises on some transcripts.
+
+    NeMo's streaming builder sets ``preserve_word_confidence`` whenever word confidence is
+    on (``inference/factory/base_builder.py:98-100``), so after every step
+    ``compute_confidence`` aggregates each hypothesis's token confidences into
+    ``hypothesis.word_confidence`` (``parts/submodules/rnnt_decoding.py:928-930``). Nothing
+    under ``inference/`` reads that field: the pipeline groups tokens into words itself and
+    aggregates each word's confidence from the step confidences
+    (``inference/utils/bpe_decoder.py:205``, with ``get_confidence_utils``' aggregator).
+
+    The aggregation also raises. It starts a word at every sentencepiece word start, and
+    checks the count against ``hypothesis.text``, from which the space before a
+    punctuation mark has been removed (``rnnt_decoding.py:1002-1004``). A lone "▁" token
+    (U+2581, sentencepiece's word start) before a punctuation mark is a word start with
+    no word in the text: tokens that read "and 'tis" become the text "and'tis", and
+    ``_aggregate_token_confidence_subwords_sentencepiece`` raises RuntimeError
+    (``parts/utils/asr_confidence_utils.py:471``) from inside the streaming step, so the
+    step fails for every stream in its batch.
+
+    Only ``preserve_word_confidence`` changes. ``preserve_frame_confidence`` and
+    ``preserve_token_confidence`` stay as NeMo set them, so ``compute_confidence`` still
+    runs (``rnnt_decoding.py:795-798``) and still fills ``token_confidence``; the step
+    confidences the pipeline reads come from the decoding computer, which this does not
+    touch. A pipeline with no decoding object at ``DECODING_PATH``, or one whose flag is
+    not a bool, is refused: a server that could not find the switch would run until the
+    first such transcript and then crash.
+    """
+    decoding: Any = pipeline
+    for name in DECODING_PATH:
+        decoding = getattr(decoding, name, None)
+    flag = getattr(decoding, "preserve_word_confidence", None)
+    if not isinstance(flag, bool):
+        raise PipelineBuildError(
+            "word confidence is on, and the built pipeline has no decoding object with a "
+            f"boolean preserve_word_confidence at {'.'.join(DECODING_PATH)} (found "
+            f"{type(decoding).__name__}, flag {flag!r}). NeMo's word-level aggregation, "
+            "which the streaming pipeline never reads, raises RuntimeError on transcripts "
+            "where a lone word-start token precedes a punctuation mark, so it must be "
+            "switched off before serving, and this NeMo keeps its decoding object "
+            "somewhere this does not look"
+        )
+    decoding.preserve_word_confidence = False
+
+
 def build_pipeline(
     spec: NeMoPipelineSpec, import_module: Importer = importlib.import_module
 ) -> Any:
@@ -518,6 +588,10 @@ def build_pipeline(
     can act on without a stack trace: what was asked (checkpoint, chunk mode and its
     attention context, slots and batch) and NeMo's own words. The trace is chained
     for ``--traceback``.
+
+    With word confidence on, the built decoding object's word-level aggregation is then
+    switched off (``drop_unread_word_aggregation``), and a pipeline where it cannot be
+    found is refused. With it "off", the pipeline is returned exactly as NeMo built it.
     """
     left, right = spec.att_context
     asked = (
@@ -540,7 +614,7 @@ def build_pipeline(
         ) from exc
     cfg = omegaconf.OmegaConf.create(pipeline_config(spec))
     try:
-        return builder_module.PipelineBuilder.build_pipeline(cfg)
+        pipeline = builder_module.PipelineBuilder.build_pipeline(cfg)
     except Exception as exc:
         raise PipelineBuildError(
             f"NeMo could not build the pipeline for {asked}: {type(exc).__name__}: {exc}. "
@@ -548,3 +622,8 @@ def build_pipeline(
             "chunk mode is one the checkpoint's att_context_size family supports, and that "
             "the GPU has the memory for num_slots"
         ) from exc
+    # "off" returns the object NeMo built untouched: NeMo computes no confidence there,
+    # and a write to it would make "off" something other than what it has always been.
+    if spec.word_confidence != "off":
+        drop_unread_word_aggregation(pipeline)
+    return pipeline

@@ -60,7 +60,13 @@ __all__ = [
 
 #: The keys of ``/readyz``'s ``observed`` object, in wire order. Each is read off the
 #: built pipeline when ``/readyz`` is asked, not taken from a flag or a spec.
-OBSERVED_KEYS: Final = ("att_context_size", "decoder_step_confidence", "decoder_graphs")
+#: ``decoder_word_confidence`` came last, after the other three, which keep their order.
+OBSERVED_KEYS: Final = (
+    "att_context_size",
+    "decoder_step_confidence",
+    "decoder_graphs",
+    "decoder_word_confidence",
+)
 
 #: Each key of ``/readyz``'s ``code`` object, in wire order, with the package it names.
 _CODE_PACKAGES: Final = (("verbatim_path", "verbatim"), ("bench_path", "verbatim_bench"))

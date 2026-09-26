@@ -1229,7 +1229,12 @@ def test_the_nemo_shaped_readyz_is_what_the_servers_reader_reports_for_this_arm(
         ),
         decoding_computer=NS(preserve_step_confidence=False, cuda_graphs_mode=None),
     )
-    assert observe(pipeline).to_json_dict() == _readyz()["observed"]
+    # The pipeline stand-in has no decoding object, so its word flag reads as None; the
+    # readyz fixture predates that fact.
+    assert observe(pipeline).to_json_dict() == {
+        **_readyz()["observed"],
+        "decoder_word_confidence": None,
+    }
     assert configured_word_confidence(NS(_boundary=NS(pipeline=pipeline))) == "off"
     assert _readyz()["word_confidence"] == "off"
 
@@ -3601,7 +3606,12 @@ def test_a_rehearsal_over_the_fake_runs_the_whole_mechanism(tmp_path: Path) -> N
         # word confidence off.
         assert doc["readyz_before"]["word_confidence"] == "off"
         assert doc["readyz_before"]["observed"] == dict.fromkeys(
-            ("att_context_size", "decoder_step_confidence", "decoder_graphs")
+            (
+                "att_context_size",
+                "decoder_step_confidence",
+                "decoder_graphs",
+                "decoder_word_confidence",
+            )
         )
         assert doc["admission_before"]["bucket"] == 64
         assert doc["serve_spec"]["spec"]["att_context"] == [70, 1]

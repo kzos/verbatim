@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 Zaheer Sheriff K
 """What a built pipeline is, read off the objects NeMo built. Read-only.
 
-``/readyz`` reports three facts under ``observed`` and one configuration beside them,
+``/readyz`` reports four facts under ``observed`` and one configuration beside them,
 and none of them is taken from a flag, a spec or a banner. A value derived from what
 was asked for agrees with what was asked for by construction, so it can never report
 the case it exists to catch: a checkpoint whose encoder kept another attention context,
@@ -41,6 +41,21 @@ paths relative to ``nemo/collections/asr/``):
   fallback on a driver without conditional nodes) replay captured graphs; ``no_graphs``
   runs the same stateful loop with no graph at all (``rnnt_label_looping.py:769-776``,
   ``:919-932``), so it is False, as is None. A mode this does not know is None.
+- ``decoder_word_confidence``: the model's decoding object, at
+  ``nemo_runtime.DECODING_PATH`` (``pipeline.asr_model.asr_model.decoding``, the object
+  whose ``rnnt_decoder_predictions_tensor`` the wrapper calls every step,
+  ``inference/model_wrappers/cache_aware_rnnt_inference_wrapper.py:192``), and its
+  ``preserve_word_confidence``, set by ``ConfidenceMixin._init_confidence``
+  (``parts/utils/asr_confidence_utils.py:352``) and read by ``compute_confidence`` to
+  decide whether to aggregate words (``parts/submodules/rnnt_decoding.py:928``). That
+  aggregation raises on some transcripts and nothing on the streaming path reads it, so
+  ``nemo_runtime.build_pipeline`` switches it off when word confidence is on: this is
+  False there after a build through it, and whatever NeMo set when "off". It is read,
+  not inferred from the mode, so a pipeline with word confidence on that was built some
+  other way, or a flag something turned back on, shows as True. The cache-aware CTC
+  pipeline never calls the model's ``decoding`` (it decodes with its own greedy CTC
+  decoder), so there the value only reports the flag on whatever object the model keeps
+  under that name.
 - the configured word confidence: the wrapper keeps the decoding configuration it
   applied as ``decoding_cfg`` (``asr_inference_wrapper.py:66``, applied at ``:213-221``).
   ``CacheAwarePipelineBuilder.get_rnnt_decoding_cfg`` builds it from ``asr.decoding``
@@ -72,6 +87,7 @@ from typing import Any, Final
 from verbatim.config import ChunkMode
 from verbatim.pipelines.fake import FakePipelineAdapter
 from verbatim.pipelines.nemo_runtime import (
+    DECODING_PATH,
     WORD_CONFIDENCE_MODES,
     NeMoPipelineSpec,
     pipeline_config,
@@ -108,6 +124,7 @@ class ObservedFacts:
     att_context_size: tuple[int, int] | None = None
     decoder_step_confidence: bool | None = None
     decoder_graphs: bool | None = None
+    decoder_word_confidence: bool | None = None
 
     def to_json_dict(self) -> dict[str, object]:
         return {
@@ -116,6 +133,7 @@ class ObservedFacts:
             ),
             "decoder_step_confidence": self.decoder_step_confidence,
             "decoder_graphs": self.decoder_graphs,
+            "decoder_word_confidence": self.decoder_word_confidence,
         }
 
 
@@ -159,7 +177,7 @@ def _graphs(mode: Any) -> bool | None:
 
 
 def observe(pipeline: Any) -> ObservedFacts:
-    """Read the three facts off ``pipeline`` now, by plain attribute reads. A reading that
+    """Read the four facts off ``pipeline`` now, by plain attribute reads. A reading that
     is not where this expects, or is not the expected type, is None, which is "not
     observed", never a default."""
     if pipeline is None:
@@ -180,10 +198,12 @@ def observe(pipeline: Any) -> ObservedFacts:
         flag = getattr(computer, "preserve_step_confidence", None)
         step_confidence = flag if isinstance(flag, bool) else None
         graphs = _graphs(getattr(computer, "cuda_graphs_mode", _ABSENT))
+    word = getattr(_walk(pipeline, DECODING_PATH), "preserve_word_confidence", None)
     return ObservedFacts(
         att_context_size=context,
         decoder_step_confidence=step_confidence,
         decoder_graphs=graphs,
+        decoder_word_confidence=word if isinstance(word, bool) else None,
     )
 
 
