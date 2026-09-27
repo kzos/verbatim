@@ -1,0 +1,1294 @@
+{
+ "a6000": {
+  "card": {
+   "cards": 1,
+   "device_names": [
+    "NVIDIA RTX A6000"
+   ],
+   "records": 24,
+   "records_naming_a_card": 18
+  },
+  "ragged_c32_pair": {
+   "captures": [
+    "server-a207de6-ragged-c32.json.gz",
+    "server-a207de6-ragged-c32-repeat.json.gz"
+   ],
+   "concurrency_configured": 32,
+   "server_processes": 2
+  }
+ },
+ "a6000_c8": {
+  "captures": {
+   "server-ba20c49-ragged-c8-run1.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+    "concurrency_configured": 8,
+    "finals_digest": "b37cae6c783092f9ff2cac0960781bbb7dd6a31d2cc65216723a1576c08d9c07",
+    "observed_peak_in_flight": 8,
+    "p95_tick_ms_after": 118.22364013642073,
+    "p95_tick_ms_before": 0.0,
+    "padding": "ragged",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06134535659018398,
+     "errors": 3211,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T17:49:08+0300",
+    "ticks_during_run": 15613,
+    "ticks_late_during_run": 30,
+    "ticks_over_budget_during_run": 985,
+    "ticks_over_budget_rate": 0.06309,
+    "wall_clock_s": 2497.923,
+    "warnings": [
+     "985 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-ba20c49-ragged-c8-run2.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+    "concurrency_configured": 8,
+    "finals_digest": "ef0d2f01974b6dee0a2a46dfbfcb6d183cc599f5b732f98ae37caf2d6689a928",
+    "observed_peak_in_flight": 8,
+    "p95_tick_ms_after": 116.13857094198465,
+    "p95_tick_ms_before": 35.87811999022961,
+    "padding": "ragged",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06088684255774411,
+     "errors": 3187,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T18:31:46+0300",
+    "ticks_during_run": 15607,
+    "ticks_late_during_run": 4,
+    "ticks_over_budget_during_run": 1003,
+    "ticks_over_budget_rate": 0.06427,
+    "wall_clock_s": 2497.006,
+    "warnings": [
+     "1003 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   }
+  },
+  "finals_digests": {
+   "b37cae6c783092f9ff2cac0960781bbb7dd6a31d2cc65216723a1576c08d9c07": [
+    "server-ba20c49-ragged-c8-run1.json.gz"
+   ],
+   "ef0d2f01974b6dee0a2a46dfbfcb6d183cc599f5b732f98ae37caf2d6689a928": [
+    "server-ba20c49-ragged-c8-run2.json.gz"
+   ]
+  },
+  "ragged_vs_ragged": {
+   "captures": [
+    "server-ba20c49-ragged-c8-run1.json.gz",
+    "server-ba20c49-ragged-c8-run2.json.gz"
+   ],
+   "confidence_only_differs": 0,
+   "digests_match": false,
+   "identical": 2044,
+   "punctuation_only": 100,
+   "recordings": 2939,
+   "server_processes": 1,
+   "text_differs": 204,
+   "text_differs_rate": 0.06941,
+   "timing_only": 691,
+   "timing_only_rate": 0.23511,
+   "verdict": "RAGGED VS RAGGED: of 2939 recordings, 204 in text and 691 in word timings only; frozen is not assessable",
+   "word_level": 104,
+   "word_level_rate": 0.03539
+  },
+  "setting": {
+   "att_context": [
+    70,
+    1
+   ],
+   "biasing": false,
+   "bucket": 128,
+   "chunk_ms": 160,
+   "decoder_graphs": false,
+   "device_name": "NVIDIA RTX A6000",
+   "dtype": "bfloat16",
+   "matmul": "high",
+   "model": "nvidia/nemotron-speech-streaming-en-0.6b",
+   "nemo_version": "3.1.0+cf724ac33",
+   "pipeline": "cache_aware_rnnt",
+   "revision": "ebe59e5a817142986528bbbee5dba8db7b38ed50",
+   "torch_version": "2.11.0+cu128"
+  }
+ },
+ "a6000_gate_smoke": {
+  "b32": {
+   "bucket": 32,
+   "budget_ms": 112.0,
+   "device_name": "NVIDIA RTX A6000",
+   "execution": "eager",
+   "max_degradation_level": 0,
+   "max_p95_tick_ms": 123.95566795021296,
+   "padding": "fixed",
+   "problems": [
+    "p95_tick_ms reached 123.95566795021296 ms against a budget of 112.0 ms: this card does not step this bucket inside the tick budget"
+   ],
+   "refused_total_after": 0,
+   "stopped_before_the_gate": true
+  },
+  "b64": {
+   "bucket": 64,
+   "budget_ms": 112.0,
+   "device_name": "NVIDIA RTX A6000",
+   "execution": "eager",
+   "max_degradation_level": 0,
+   "max_p95_tick_ms": 156.7510929889977,
+   "padding": "fixed",
+   "problems": [
+    "p95_tick_ms reached 156.7510929889977 ms against a budget of 112.0 ms: this card does not step this bucket inside the tick budget"
+   ],
+   "refused_total_after": 0,
+   "stopped_before_the_gate": true
+  }
+ },
+ "b300": {
+  "captures": {
+   "server-26eaebb-fixed-eager-c32.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+    "concurrency_configured": 32,
+    "finals_digest": "5a672de4fe0cb9242ab9234f9cade570c29985b2496986842650fc9a443cb322",
+    "observed_peak_in_flight": 32,
+    "p95_tick_ms_after": 86.61796245723963,
+    "p95_tick_ms_before": 36.28883883357048,
+    "padding": "fixed",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06123072808207401,
+     "errors": 3205,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T12:14:21+0000",
+    "ticks_during_run": 3935,
+    "ticks_late_during_run": 35,
+    "ticks_over_budget_during_run": 17,
+    "ticks_over_budget_rate": 0.00432,
+    "wall_clock_s": 629.492,
+    "warnings": [
+     "17 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-26eaebb-fixed-eager-c8.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+    "concurrency_configured": 8,
+    "finals_digest": "5a672de4fe0cb9242ab9234f9cade570c29985b2496986842650fc9a443cb322",
+    "observed_peak_in_flight": 8,
+    "p95_tick_ms_after": 71.47526275366545,
+    "p95_tick_ms_before": 60.57254783809185,
+    "padding": "fixed",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06123072808207401,
+     "errors": 3205,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T12:25:17+0000",
+    "ticks_during_run": 15610,
+    "ticks_late_during_run": 83,
+    "ticks_over_budget_during_run": 42,
+    "ticks_over_budget_rate": 0.00269,
+    "wall_clock_s": 2497.405,
+    "warnings": [
+     "42 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-26eaebb-fixed-graphs-c32.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+    "concurrency_configured": 32,
+    "finals_digest": "5a672de4fe0cb9242ab9234f9cade570c29985b2496986842650fc9a443cb322",
+    "observed_peak_in_flight": 32,
+    "p95_tick_ms_after": 77.11473200470209,
+    "p95_tick_ms_before": 33.21166895329952,
+    "padding": "fixed",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06123072808207401,
+     "errors": 3205,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T13:29:55+0000",
+    "ticks_during_run": 3937,
+    "ticks_late_during_run": 40,
+    "ticks_over_budget_during_run": 14,
+    "ticks_over_budget_rate": 0.00356,
+    "wall_clock_s": 629.713,
+    "warnings": [
+     "14 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-26eaebb-fixed-graphs-c8.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+    "concurrency_configured": 8,
+    "finals_digest": "5a672de4fe0cb9242ab9234f9cade570c29985b2496986842650fc9a443cb322",
+    "observed_peak_in_flight": 8,
+    "p95_tick_ms_after": 67.45777698233724,
+    "p95_tick_ms_before": 38.54118986055255,
+    "padding": "fixed",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06123072808207401,
+     "errors": 3205,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T13:40:52+0000",
+    "ticks_during_run": 15609,
+    "ticks_late_during_run": 81,
+    "ticks_over_budget_during_run": 39,
+    "ticks_over_budget_rate": 0.0025,
+    "wall_clock_s": 2497.358,
+    "warnings": [
+     "39 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-26eaebb-ragged-eager-c32-repeat.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+    "concurrency_configured": 32,
+    "finals_digest": "aa8c878330ba99d87eea5a33b6faa301c23917d1522ca7800c7329a5b52c3e0e",
+    "observed_peak_in_flight": 32,
+    "p95_tick_ms_after": 73.49485997110605,
+    "p95_tick_ms_before": 50.03735702484846,
+    "padding": "ragged",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06142177559559062,
+     "errors": 3215,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T13:18:37+0000",
+    "ticks_during_run": 3932,
+    "ticks_late_during_run": 3,
+    "ticks_over_budget_during_run": 1,
+    "ticks_over_budget_rate": 0.00025,
+    "wall_clock_s": 628.969,
+    "warnings": [
+     "1 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-26eaebb-ragged-eager-c32.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+    "concurrency_configured": 32,
+    "finals_digest": "54712a85968ae35d752632990b7bdf0761c91e9637f5f1f6cee333906310b078",
+    "observed_peak_in_flight": 32,
+    "p95_tick_ms_after": 73.517095297575,
+    "p95_tick_ms_before": 0.0,
+    "padding": "ragged",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06142177559559062,
+     "errors": 3215,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T13:07:39+0000",
+    "ticks_during_run": 3953,
+    "ticks_late_during_run": 65,
+    "ticks_over_budget_during_run": 4,
+    "ticks_over_budget_rate": 0.00101,
+    "wall_clock_s": 632.341,
+    "warnings": [
+     "4 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-ba20c49-ragged-c128-overload-run1.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+    "concurrency_configured": 128,
+    "finals_digest": "aabc30353949c2f8836babc2d071886f083e2024ed6f64462139a1152357ebb6",
+    "observed_peak_in_flight": 128,
+    "p95_tick_ms_after": 156.63126530125737,
+    "p95_tick_ms_before": 0.0,
+    "padding": "ragged",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06123072808207401,
+     "errors": 3205,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-26T17:05:19+0000",
+    "ticks_during_run": 1079,
+    "ticks_late_during_run": 171,
+    "ticks_over_budget_during_run": 553,
+    "ticks_over_budget_rate": 0.51251,
+    "wall_clock_s": 172.442,
+    "warnings": [
+     "553 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-ba20c49-ragged-c64-run1.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+    "concurrency_configured": 64,
+    "finals_digest": "f7b19c8b48e703d484c4c31dd535b7d5eac66a1a1a83226b7d2e39d7f26f975e",
+    "observed_peak_in_flight": 64,
+    "p95_tick_ms_after": 124.75270731374621,
+    "p95_tick_ms_before": 0.0,
+    "padding": "ragged",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06105878531990906,
+     "errors": 3196,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-27T09:45:23+0000",
+    "ticks_during_run": 2016,
+    "ticks_late_during_run": 97,
+    "ticks_over_budget_during_run": 285,
+    "ticks_over_budget_rate": 0.14137,
+    "wall_clock_s": 322.371,
+    "warnings": [
+     "285 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   },
+   "server-ba20c49-ragged-c64-run2.json.gz": {
+    "admitted_during_run": 2939,
+    "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+    "concurrency_configured": 64,
+    "finals_digest": "143ad7ac0c7e4f364d80bac2d1a77d7391ffe351337fb6d64780f666c44dcfa7",
+    "observed_peak_in_flight": 64,
+    "p95_tick_ms_after": 109.14954403415322,
+    "p95_tick_ms_before": 47.6904078386724,
+    "padding": "ragged",
+    "padding_known": "observed in the server's command line",
+    "reading": {
+     "corpus_wer": 0.06105878531990906,
+     "errors": 3196,
+     "note": "pooled WER under verbatim_bench.wer.normalise against the lowercased references: a reading that the server recognises this audio at all, not a result and not a gate",
+     "reference_words": 52343
+    },
+    "recordings": 2939,
+    "refused_during_run": 0,
+    "started": "2026-09-27T09:51:13+0000",
+    "ticks_during_run": 2001,
+    "ticks_late_during_run": 33,
+    "ticks_over_budget_during_run": 248,
+    "ticks_over_budget_rate": 0.12394,
+    "wall_clock_s": 320.069,
+    "warnings": [
+     "248 tick(s) went over budget during the run: the card did not keep real time on every tick"
+    ],
+    "word_confidence": "off"
+   }
+  },
+  "card": {
+   "cards": 1,
+   "device_names": [
+    "NVIDIA B300 SXM6 AC"
+   ],
+   "model": "nvidia/nemotron-speech-streaming-en-0.6b",
+   "nemo_sha256": "283638054c44f6794e74fe9af9048d78a6d9d6c058c12131856c7859a62ac9cd",
+   "records": 36,
+   "records_naming_a_card": 15,
+   "revision": "ebe59e5a817142986528bbbee5dba8db7b38ed50"
+  },
+  "finals_digests": {
+   "54712a85968ae35d752632990b7bdf0761c91e9637f5f1f6cee333906310b078": [
+    "server-26eaebb-ragged-eager-c32.json.gz"
+   ],
+   "5a672de4fe0cb9242ab9234f9cade570c29985b2496986842650fc9a443cb322": [
+    "server-26eaebb-fixed-eager-c32.json.gz",
+    "server-26eaebb-fixed-eager-c8.json.gz",
+    "server-26eaebb-fixed-graphs-c32.json.gz",
+    "server-26eaebb-fixed-graphs-c8.json.gz"
+   ],
+   "aa8c878330ba99d87eea5a33b6faa301c23917d1522ca7800c7329a5b52c3e0e": [
+    "server-26eaebb-ragged-eager-c32-repeat.json.gz"
+   ]
+  },
+  "fixed_eager_vs_fixed_graphs": {
+   "c32": {
+    "captures": [
+     "server-26eaebb-fixed-eager-c32.json.gz",
+     "server-26eaebb-fixed-graphs-c32.json.gz"
+    ],
+    "comparator_finds_apart": [
+     "the captures differ in execution: 'eager' and 'graph path'"
+    ],
+    "confidence_only_differs": 0,
+    "digests_match": true,
+    "identical": 2939,
+    "punctuation_only": 0,
+    "recordings": 2939,
+    "text_differs": 0,
+    "text_differs_rate": 0.0,
+    "timing_only": 0,
+    "timing_only_rate": 0.0,
+    "word_level": 0,
+    "word_level_rate": 0.0
+   },
+   "c8": {
+    "captures": [
+     "server-26eaebb-fixed-eager-c8.json.gz",
+     "server-26eaebb-fixed-graphs-c8.json.gz"
+    ],
+    "comparator_finds_apart": [
+     "the captures differ in execution: 'eager' and 'graph path'"
+    ],
+    "confidence_only_differs": 0,
+    "digests_match": true,
+    "identical": 2939,
+    "punctuation_only": 0,
+    "recordings": 2939,
+    "text_differs": 0,
+    "text_differs_rate": 0.0,
+    "timing_only": 0,
+    "timing_only_rate": 0.0,
+    "word_level": 0,
+    "word_level_rate": 0.0
+   }
+  },
+  "frozen": {
+   "eager": {
+    "captures": [
+     "server-26eaebb-fixed-eager-c32.json.gz",
+     "server-26eaebb-fixed-eager-c8.json.gz"
+    ],
+    "control": "server-26eaebb-ragged-eager-c32.json.gz",
+    "finals_digest": "5a672de4fe0cb9242ab9234f9cade570c29985b2496986842650fc9a443cb322",
+    "fixed_c32_vs_control": {
+     "confidence_only_differs": 0,
+     "digests_match": false,
+     "identical": 1858,
+     "punctuation_only": 138,
+     "recordings": 2939,
+     "text_differs": 266,
+     "text_differs_rate": 0.09051,
+     "timing_only": 815,
+     "timing_only_rate": 0.27731,
+     "word_level": 128,
+     "word_level_rate": 0.04355
+    },
+    "fixed_c32_vs_fixed_c8": {
+     "confidence_only_differs": 0,
+     "digests_match": true,
+     "identical": 2939,
+     "punctuation_only": 0,
+     "recordings": 2939,
+     "text_differs": 0,
+     "text_differs_rate": 0.0,
+     "timing_only": 0,
+     "timing_only_rate": 0.0,
+     "word_level": 0,
+     "word_level_rate": 0.0
+    },
+    "frozen": true,
+    "verdict": "FROZEN: the fixed captures at concurrency 32 and 8 (observed peak in flight 32 and 8) match on all 2939 recordings (digest 5a672de4fe0cb924), and the ragged capture differs on 266 in text and 815 in word timings only"
+   },
+   "graphs": {
+    "captures": [
+     "server-26eaebb-fixed-graphs-c32.json.gz",
+     "server-26eaebb-fixed-graphs-c8.json.gz"
+    ],
+    "control": null,
+    "finals_digest": "5a672de4fe0cb9242ab9234f9cade570c29985b2496986842650fc9a443cb322",
+    "fixed_c32_vs_fixed_c8": {
+     "confidence_only_differs": 0,
+     "digests_match": true,
+     "identical": 2939,
+     "punctuation_only": 0,
+     "recordings": 2939,
+     "text_differs": 0,
+     "text_differs_rate": 0.0,
+     "timing_only": 0,
+     "timing_only_rate": 0.0,
+     "word_level": 0,
+     "word_level_rate": 0.0
+    },
+    "frozen": false,
+    "graphs_control_refused": [
+     "the captures differ in execution: 'graph path' and 'eager'"
+    ],
+    "verdict": "IDENTICAL, FROZEN NOT CLAIMED: the fixed captures at concurrency 32 and 8 (observed peak in flight 32 and 8) match on all 2939 recordings, and no ragged control was given"
+   }
+  },
+  "frozen_rule": "two fixed captures whose clients observed a different peak number of sessions in flight on the wire, with identical answers on both channels, AND a ragged capture of the same setting that differs, AND the padding of all three observed, AND none of them from a test double, AND none taken from a modified tree unless --allow-modified-tree is given",
+  "gate": {
+   "arms": {
+    "fixed-churn": {
+     "differing": {
+      "32a_vs_1": {
+       "missing": 0,
+       "punctuation_only": 0,
+       "streams": 0,
+       "text": 0,
+       "timing_only": 0,
+       "word_level": 0
+      },
+      "32b_vs_1": {
+       "missing": 0,
+       "punctuation_only": 0,
+       "streams": 0,
+       "text": 0,
+       "timing_only": 0,
+       "word_level": 0
+      },
+      "32b_vs_32a": {
+       "missing": 0,
+       "punctuation_only": 0,
+       "streams": 0,
+       "text": 0,
+       "timing_only": 0,
+       "word_level": 0
+      },
+      "max_vs_1": {
+       "missing": 0,
+       "punctuation_only": 0,
+       "streams": 0,
+       "text": 0,
+       "timing_only": 0,
+       "word_level": 0
+      }
+     },
+     "distinct_digests": 1,
+     "distinct_streams_vs_1": 0,
+     "execution": "eager",
+     "exit_code": 0,
+     "levels": {
+      "1": {
+       "churn_period_s": null,
+       "concurrency": 1,
+       "digest": "0109ab694be4341fc204099ad2884cdfe0ad1e406987010d02f3dfa01c136b90",
+       "errors": 0,
+       "streams": 256
+      },
+      "32a": {
+       "churn_period_s": null,
+       "concurrency": 32,
+       "digest": "0109ab694be4341fc204099ad2884cdfe0ad1e406987010d02f3dfa01c136b90",
+       "errors": 0,
+       "streams": 256
+      },
+      "32b": {
+       "churn_period_s": null,
+       "concurrency": 32,
+       "digest": "0109ab694be4341fc204099ad2884cdfe0ad1e406987010d02f3dfa01c136b90",
+       "errors": 0,
+       "streams": 256
+      },
+      "max": {
+       "churn_period_s": 20.0,
+       "concurrency": 42,
+       "digest": "0109ab694be4341fc204099ad2884cdfe0ad1e406987010d02f3dfa01c136b90",
+       "errors": 0,
+       "streams": 256
+      }
+     },
+     "monitor": {
+      "max_consecutive_overruns": 1,
+      "max_degradation_level": 0,
+      "max_live": 32,
+      "max_p95_tick_ms": 112.52736300230026,
+      "max_refused_total": 0
+     },
+     "occupancy": "churn",
+     "padding": "fixed",
+     "smoke": {
+      "budget_ms": 112.0,
+      "max_consecutive_overruns": 3,
+      "max_degradation_level": 0,
+      "max_p95_tick_ms": 109.94921438395977,
+      "refused_total_after": 0
+     },
+     "verdict": "invariant"
+    },
+    "fixed-const": {
+     "differing": {
+      "32a_vs_1": {
+       "missing": 0,
+       "punctuation_only": 0,
+       "streams": 0,
+       "text": 0,
+       "timing_only": 0,
+       "word_level": 0
+      },
+      "32b_vs_1": {
+       "missing": 0,
+       "punctuation_only": 0,
+       "streams": 0,
+       "text": 0,
+       "timing_only": 0,
+       "word_level": 0
+      },
+      "32b_vs_32a": {
+       "missing": 0,
+       "punctuation_only": 0,
+       "streams": 0,
+       "text": 0,
+       "timing_only": 0,
+       "word_level": 0
+      },
+      "max_vs_1": {
+       "missing": 0,
+       "punctuation_only": 0,
+       "streams": 0,
+       "text": 0,
+       "timing_only": 0,
+       "word_level": 0
+      }
+     },
+     "distinct_digests": 1,
+     "distinct_streams_vs_1": 0,
+     "execution": "eager",
+     "exit_code": 0,
+     "levels": {
+      "1": {
+       "churn_period_s": null,
+       "concurrency": 1,
+       "digest": "0109ab694be4341fc204099ad2884cdfe0ad1e406987010d02f3dfa01c136b90",
+       "errors": 0,
+       "streams": 256
+      },
+      "32a": {
+       "churn_period_s": null,
+       "concurrency": 32,
+       "digest": "0109ab694be4341fc204099ad2884cdfe0ad1e406987010d02f3dfa01c136b90",
+       "errors": 0,
+       "streams": 256
+      },
+      "32b": {
+       "churn_period_s": null,
+       "concurrency": 32,
+       "digest": "0109ab694be4341fc204099ad2884cdfe0ad1e406987010d02f3dfa01c136b90",
+       "errors": 0,
+       "streams": 256
+      },
+      "max": {
+       "churn_period_s": null,
+       "concurrency": 42,
+       "digest": "0109ab694be4341fc204099ad2884cdfe0ad1e406987010d02f3dfa01c136b90",
+       "errors": 0,
+       "streams": 256
+      }
+     },
+     "monitor": {
+      "max_consecutive_overruns": 0,
+      "max_degradation_level": 0,
+      "max_live": 42,
+      "max_p95_tick_ms": 96.15075774490833,
+      "max_refused_total": 0
+     },
+     "occupancy": "const",
+     "padding": "fixed",
+     "smoke": {
+      "budget_ms": 112.0,
+      "max_consecutive_overruns": 0,
+      "max_degradation_level": 0,
+      "max_p95_tick_ms": 88.3168550208211,
+      "refused_total_after": 0
+     },
+     "verdict": "invariant"
+    },
+    "ragged-churn": {
+     "differing": {
+      "32a_vs_1": {
+       "missing": 0,
+       "punctuation_only": 12,
+       "streams": 78,
+       "text": 21,
+       "timing_only": 57,
+       "word_level": 9
+      },
+      "32b_vs_1": {
+       "missing": 0,
+       "punctuation_only": 12,
+       "streams": 78,
+       "text": 21,
+       "timing_only": 57,
+       "word_level": 9
+      },
+      "32b_vs_32a": {
+       "missing": 0,
+       "punctuation_only": 0,
+       "streams": 0,
+       "text": 0,
+       "timing_only": 0,
+       "word_level": 0
+      },
+      "max_vs_1": {
+       "missing": 0,
+       "punctuation_only": 10,
+       "streams": 65,
+       "text": 15,
+       "timing_only": 50,
+       "word_level": 5
+      }
+     },
+     "distinct_digests": 3,
+     "distinct_streams_vs_1": 84,
+     "execution": "eager",
+     "exit_code": 1,
+     "levels": {
+      "1": {
+       "churn_period_s": null,
+       "concurrency": 1,
+       "digest": "9fa3c04a04984448b9db98f14bfa6b9a74d4bb2f19f5b6d9ede8ec76399fcfd3",
+       "errors": 0,
+       "streams": 256
+      },
+      "32a": {
+       "churn_period_s": null,
+       "concurrency": 32,
+       "digest": "e26dc1fe5f6ed0218207f75329b0e35208b5829cb37214eca8b5c78f2e1085c8",
+       "errors": 0,
+       "streams": 256
+      },
+      "32b": {
+       "churn_period_s": null,
+       "concurrency": 32,
+       "digest": "e26dc1fe5f6ed0218207f75329b0e35208b5829cb37214eca8b5c78f2e1085c8",
+       "errors": 0,
+       "streams": 256
+      },
+      "max": {
+       "churn_period_s": 20.0,
+       "concurrency": 42,
+       "digest": "472997e9ad7f9ee1d3d6feab37273ca899aaf1182a5da1b33fbd319dc93ec004",
+       "errors": 0,
+       "streams": 256
+      }
+     },
+     "monitor": {
+      "max_consecutive_overruns": 0,
+      "max_degradation_level": 0,
+      "max_live": 32,
+      "max_p95_tick_ms": 85.30653873458505,
+      "max_refused_total": 0
+     },
+     "occupancy": "churn",
+     "padding": "ragged",
+     "smoke": {
+      "budget_ms": 112.0,
+      "max_consecutive_overruns": 1,
+      "max_degradation_level": 0,
+      "max_p95_tick_ms": 85.30653873458505,
+      "refused_total_after": 0
+     },
+     "verdict": "divergent"
+    },
+    "ragged-const": {
+     "differing": {
+      "32a_vs_1": {
+       "missing": 0,
+       "punctuation_only": 12,
+       "streams": 78,
+       "text": 21,
+       "timing_only": 57,
+       "word_level": 9
+      },
+      "32b_vs_1": {
+       "missing": 0,
+       "punctuation_only": 12,
+       "streams": 78,
+       "text": 21,
+       "timing_only": 57,
+       "word_level": 9
+      },
+      "32b_vs_32a": {
+       "missing": 0,
+       "punctuation_only": 0,
+       "streams": 0,
+       "text": 0,
+       "timing_only": 0,
+       "word_level": 0
+      },
+      "max_vs_1": {
+       "missing": 0,
+       "punctuation_only": 6,
+       "streams": 36,
+       "text": 14,
+       "timing_only": 22,
+       "word_level": 8
+      }
+     },
+     "distinct_digests": 3,
+     "distinct_streams_vs_1": 96,
+     "execution": "eager",
+     "exit_code": 1,
+     "levels": {
+      "1": {
+       "churn_period_s": null,
+       "concurrency": 1,
+       "digest": "9fa3c04a04984448b9db98f14bfa6b9a74d4bb2f19f5b6d9ede8ec76399fcfd3",
+       "errors": 0,
+       "streams": 256
+      },
+      "32a": {
+       "churn_period_s": null,
+       "concurrency": 32,
+       "digest": "e26dc1fe5f6ed0218207f75329b0e35208b5829cb37214eca8b5c78f2e1085c8",
+       "errors": 0,
+       "streams": 256
+      },
+      "32b": {
+       "churn_period_s": null,
+       "concurrency": 32,
+       "digest": "e26dc1fe5f6ed0218207f75329b0e35208b5829cb37214eca8b5c78f2e1085c8",
+       "errors": 0,
+       "streams": 256
+      },
+      "max": {
+       "churn_period_s": null,
+       "concurrency": 42,
+       "digest": "b1cce50ffa4b354901d61fabd11fb5b7a44fe7d16107f5f61f7985d3cf04180f",
+       "errors": 0,
+       "streams": 256
+      }
+     },
+     "monitor": {
+      "max_consecutive_overruns": 0,
+      "max_degradation_level": 0,
+      "max_live": 42,
+      "max_p95_tick_ms": 92.2354613430798,
+      "max_refused_total": 0
+     },
+     "occupancy": "const",
+     "padding": "ragged",
+     "smoke": {
+      "budget_ms": 112.0,
+      "max_consecutive_overruns": 1,
+      "max_degradation_level": 0,
+      "max_p95_tick_ms": 84.76510737091303,
+      "refused_total_after": 0
+     },
+     "verdict": "divergent"
+    }
+   },
+   "bucket": {
+    "fixed-churn": 128,
+    "fixed-const": 128,
+    "ragged-churn": 128,
+    "ragged-const": 128
+   },
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "corpus": {
+    "id": "sha256:1254f0e16cb9257373532b0c99a36354f324f0f467873037551f1c89ee371b15",
+    "utterances": 256
+   },
+   "cross_restart": {
+    "fixed": {
+     "1": true,
+     "32a": true,
+     "32b": true,
+     "max": true
+    },
+    "ragged": {
+     "1": true,
+     "32a": true,
+     "32b": true,
+     "max": false
+    }
+   },
+   "max_level": {
+    "fixed-churn": "42",
+    "fixed-const": "42",
+    "ragged-churn": "42",
+    "ragged-const": "42"
+   },
+   "runbook_exit_code": 0
+  },
+  "overload": {
+   "repeatability_measured": false,
+   "run1": "server-ba20c49-ragged-c128-overload-run1.json.gz",
+   "run2_refused": {
+    "admitted_during_run": 388,
+    "comparator_refuses_it": [
+     "server-ba20c49-ragged-c128-overload-run2.FAILED.json.gz: not a complete capture (success False)"
+    ],
+    "counts": {
+     "recordings": 2939,
+     "recordings_missing_final": 2551,
+     "recordings_sent": 388,
+     "recordings_with_terminal_final": 388,
+     "sessions_acknowledged": 388
+    },
+    "last_refusal_reason": "session refused: admissions held at degradation level 1",
+    "p95_tick_ms_after": 177.0320748910308,
+    "p95_tick_ms_before": 22.225121967494488,
+    "record": "server-ba20c49-ragged-c128-overload-run2.FAILED.json.gz",
+    "recount": {
+     "recordings": 2939,
+     "recordings_sent": 388,
+     "recordings_with_terminal_final": 388,
+     "refused_by_the_server": 2551
+    },
+    "refused_during_run": 2551,
+    "same_server_process_as_run1": true,
+    "status": "FAILED",
+    "success": false,
+    "ticks_during_run": 260,
+    "ticks_late_during_run": 139,
+    "ticks_over_budget_during_run": 110
+   }
+  },
+  "ragged_vs_fixed": {
+   "captures": [
+    "server-26eaebb-fixed-eager-c32.json.gz",
+    "server-26eaebb-ragged-eager-c32.json.gz"
+   ],
+   "confidence_only_differs": 0,
+   "digests_match": false,
+   "identical": 1858,
+   "places": "places-26eaebb-eager.json.gz",
+   "punctuation_only": 138,
+   "recordings": 2939,
+   "repeat": "server-26eaebb-fixed-eager-c8.json.gz",
+   "sides": {
+    "a": "the served answer: the server capture with --padding fixed",
+    "b": "a server capture of the same recordings with --padding ragged"
+   },
+   "text_differs": 266,
+   "text_differs_rate": 0.09051,
+   "timing_only": 815,
+   "timing_only_rate": 0.27731,
+   "timing_shift_ms": {
+    "largest_shift_counts": {
+     "160": 149,
+     "240": 80,
+     "320": 94,
+     "400": 33,
+     "480": 4,
+     "560": 3,
+     "640": 1,
+     "80": 451
+    },
+    "max": 640,
+    "median": 80,
+    "min": 80,
+    "p90": 320,
+    "paired": 815,
+    "recordings": 815,
+    "segments_in_paired_recordings": 19439,
+    "segments_shifted": 1799,
+    "unpairable": 0
+   },
+   "verdict": "POSITIVE CONTROL PRESENT: ragged padding differs from fixed on 266 in text and 815 in word timings only, of 2939 recordings; those are the places. FROZEN: the fixed captures at concurrency 32 and 8 (observed peak in flight 32 and 8) match on all 2939 recordings (digest 5a672de4fe0cb924), and the ragged capture differs on 266 in text and 815 in word timings only",
+   "wer": {
+    "reference_words": 52343,
+    "wer_a": 0.06167,
+    "wer_b": 0.06186,
+    "word_errors_a": 3228,
+    "word_errors_b": 3238
+   },
+   "word_level": 128,
+   "word_level_rate": 0.04355
+  },
+  "ragged_vs_ragged": {
+   "captures": [
+    "server-26eaebb-ragged-eager-c32.json.gz",
+    "server-26eaebb-ragged-eager-c32-repeat.json.gz"
+   ],
+   "confidence_only_differs": 0,
+   "digests_match": false,
+   "identical": 2936,
+   "punctuation_only": 1,
+   "recordings": 2939,
+   "server_processes": 1,
+   "text_differs": 1,
+   "text_differs_rate": 0.00034,
+   "timing_only": 2,
+   "timing_only_rate": 0.00068,
+   "verdict": "RAGGED VS RAGGED: of 2939 recordings, 1 in text and 2 in word timings only; frozen is not assessable",
+   "word_level": 0,
+   "word_level_rate": 0.0
+  },
+  "retest_c64": {
+   "finals_digests": {
+    "143ad7ac0c7e4f364d80bac2d1a77d7391ffe351337fb6d64780f666c44dcfa7": [
+     "server-ba20c49-ragged-c64-run2.json.gz"
+    ],
+    "f7b19c8b48e703d484c4c31dd535b7d5eac66a1a1a83226b7d2e39d7f26f975e": [
+     "server-ba20c49-ragged-c64-run1.json.gz"
+    ]
+   },
+   "first_attempt": {
+    "admitted_during_run": 128,
+    "comparator_refuses_it": [
+     "server-ba20c49-ragged-c64-first-attempt.FAILED.json.gz: not a complete capture (success False)"
+    ],
+    "counts": {
+     "recordings": 2939,
+     "recordings_missing_final": 2927,
+     "recordings_sent": 128,
+     "recordings_with_terminal_final": 12,
+     "recordings_without_partials": 2907,
+     "sessions_acknowledged": 128
+    },
+    "last_refusal_reason": "session refused: 128 live sessions fill the largest bucket",
+    "live_after": 0,
+    "observed_peak_in_flight": 14,
+    "p95_tick_ms_after": 27.74269413203001,
+    "p95_tick_ms_before": 0.0,
+    "record": "server-ba20c49-ragged-c64-first-attempt.FAILED.json.gz",
+    "refused_by_the_server": 2811,
+    "refused_during_run": 2811,
+    "sent": {
+     "client_timed_out": 114,
+     "with_a_final_not_covering_the_audio": 2,
+     "with_terminal_final": 12,
+     "without_terminal_final": 116,
+     "without_terminal_final_or_partial": 96
+    },
+    "sessions_timed": 14,
+    "status": "FAILED",
+    "success": false,
+    "ticks_during_run": 339,
+    "ticks_late_during_run": 335,
+    "ticks_over_budget_during_run": 6
+   },
+   "fixed_refused": {
+    "admitted_during_run": 350,
+    "comparator_refuses_it": [
+     "server-ba20c49-fixed-c64.FAILED.json.gz: not a complete capture (success False)"
+    ],
+    "counts": {
+     "recordings": 2939,
+     "recordings_missing_final": 2589,
+     "recordings_sent": 350,
+     "recordings_with_terminal_final": 350,
+     "sessions_acknowledged": 350
+    },
+    "last_refusal_reason": "session refused: admissions held at degradation level 1",
+    "p95_tick_ms_after": 135.709579102695,
+    "p95_tick_ms_before": 49.09118823707104,
+    "record": "server-ba20c49-fixed-c64.FAILED.json.gz",
+    "recount": {
+     "recordings": 2939,
+     "recordings_sent": 350,
+     "recordings_with_terminal_final": 350,
+     "refused_by_the_server": 2589
+    },
+    "refused_during_run": 2589,
+    "status": "FAILED",
+    "success": false,
+    "ticks_during_run": 247,
+    "ticks_late_during_run": 54,
+    "ticks_over_budget_during_run": 136
+   },
+   "ragged_vs_ragged": {
+    "captures": [
+     "server-ba20c49-ragged-c64-run1.json.gz",
+     "server-ba20c49-ragged-c64-run2.json.gz"
+    ],
+    "confidence_only_differs": 0,
+    "digests_match": false,
+    "identical": 2931,
+    "punctuation_only": 4,
+    "recordings": 2939,
+    "server_processes": 1,
+    "text_differs": 4,
+    "text_differs_rate": 0.00136,
+    "timing_only": 4,
+    "timing_only_rate": 0.00136,
+    "verdict": "RAGGED VS RAGGED: of 2939 recordings, 4 in text and 4 in word timings only; frozen is not assessable",
+    "word_level": 0,
+    "word_level_rate": 0.0
+   },
+   "seconds_from_first_attempt_end_to_run1_start": 236,
+   "server_processes": 3,
+   "timeline": [
+    {
+     "admitted_before_run": 0,
+     "finished": "2026-09-27T09:41:27+0000",
+     "record": "server-ba20c49-ragged-c64-first-attempt.FAILED.json.gz",
+     "server_process": 1,
+     "started": "2026-09-27T09:40:33+0000"
+    },
+    {
+     "admitted_before_run": 0,
+     "finished": "2026-09-27T09:50:45+0000",
+     "record": "server-ba20c49-ragged-c64-run1.json.gz",
+     "server_process": 2,
+     "started": "2026-09-27T09:45:23+0000"
+    },
+    {
+     "admitted_before_run": 2939,
+     "finished": "2026-09-27T09:56:33+0000",
+     "record": "server-ba20c49-ragged-c64-run2.json.gz",
+     "server_process": 2,
+     "started": "2026-09-27T09:51:13+0000"
+    },
+    {
+     "admitted_before_run": 0,
+     "finished": "2026-09-27T09:58:04+0000",
+     "record": "server-ba20c49-fixed-c64.FAILED.json.gz",
+     "server_process": 3,
+     "started": "2026-09-27T09:57:24+0000"
+    }
+   ]
+  },
+  "setting": {
+   "att_context": [
+    70,
+    1
+   ],
+   "biasing": false,
+   "bucket": 128,
+   "chunk_ms": 160,
+   "decoder_graphs": false,
+   "device_name": "NVIDIA B300 SXM6 AC",
+   "dtype": "bfloat16",
+   "matmul": "high",
+   "model": "nvidia/nemotron-speech-streaming-en-0.6b",
+   "nemo_version": "3.1.0",
+   "pipeline": "cache_aware_rnnt",
+   "revision": "ebe59e5a817142986528bbbee5dba8db7b38ed50",
+   "torch_version": "2.11.0+cu128"
+  }
+ },
+ "inputs": {
+  "a6000": {
+   "directory": "step1-a6000-2026-09-26",
+   "manifest_sha256": "06d1661f3ec9673427e63f5758fea8dd5cee14dc9967714eb8de3b6c618bb8ac",
+   "sha256_raw": {
+    "places-22e8406.json.gz": "ff7d22aafc6c530b7e58771534b311b588693a836b2a150b17a3a0a9242e2f59",
+    "places-a207de6.json.gz": "cb817c3868c1113de27224e472cb45ae56bf84f2f59775412ef5f06ac188688a",
+    "replay-22e8406-nemotron-bf16-1120-n64.json.gz": "70b18a73c5f80c738b2f3c8a76799aae055957447d6f562cbaa50f31fa1a7f59",
+    "server-22e8406-fixed-c32.json.gz": "0079a84d02e60676044b897a1eb449a4c1e9adba223c9d162ffedf0b9bf5851d",
+    "server-22e8406-fixed-c8.json.gz": "6d1fd9e208d6915ed34669d7883e566d05a6da677b3ac62b880ba35edd77eca8",
+    "server-22e8406-ragged-c32.json.gz": "098ae59b5a3263a3e2ded2747cdaae31d431811d2c8c90082399a6a496402d81",
+    "server-a207de6-fixed-c32.json.gz": "87a3e0a76d5ae8f623efc26527462c1e732355d0010cecbd5dace04fbd346afb",
+    "server-a207de6-fixed-c8.json.gz": "2ff72731645876f17fef35160d28a3fe5627b035776a104d77dd1451dc3f4d7f",
+    "server-a207de6-fixed-nemoshipped-c32.json.gz": "ff4f3c24f398f7cad9ff1e957c11923d899c0d781cf8d36b0ce6ee9f0ebd23c2",
+    "server-a207de6-fixed-paperbest-c32.json.gz": "a1ba0ece94b5fe0f9cface453c2bebcea6fea064734f5df9dc75a78628534e61",
+    "server-a207de6-ragged-c32-repeat.json.gz": "169d2ff8a6886ca7c6e7d7d585e2e271cfd1335a290f5c33f0210dcda737b359",
+    "server-a207de6-ragged-c32.json.gz": "d3fe0003d421e6adb1c38cc57fabb10b7a22bf53248f30b11c868263f41531ed",
+    "stock-hybrid-bf16-1120.json.gz": "74a1e98017ac36df080f9e3b8381e0d24f5d4a0eb8933ef3560941d21125b236",
+    "stock-nemotron-bf16-1120.json.gz": "db2c1b876143f1cac53a7eb1db0f48d4240a082d4e8a0de6fdb462c116649fff",
+    "stock-nemotron-bf16-160-high-n1024.json.gz": "788a8aad1ad6b0fa32c619bf267f3555ca621712ae7fec9a54763b0b58945ad4",
+    "stock-nemotron-fp32-1120.json.gz": "2cba7d5bcbbc4388752df595d63fad2b6eb1198ee3f8d395459733b17d540d16"
+   }
+  },
+  "a6000_c8": {
+   "directory": "step1-a6000-c8-2026-09-26",
+   "manifest_sha256": "b7653de12fc1ba0fece4635007c1c9ded26065e31c2d6eb1bc0fd617dfb85bae",
+   "sha256_raw": {
+    "server-ba20c49-ragged-c8-run1.json.gz": "3610ddcce60dbcf900328e2d64d78c78db5eee7d4e821d81c37d5313528ad218",
+    "server-ba20c49-ragged-c8-run2.json.gz": "0e8086d866c087b3d7afff7ad073a8f989bb38b4b8f81a55f419c174436584e4"
+   }
+  },
+  "a6000_gate_smoke": {
+   "directory": "step1-a6000-gate-smoke-2026-09-26",
+   "manifest_sha256": "1d4bef9fb32528267faf2a1837099d8f735dfd08b6643966107b1030ac105bc5",
+   "sha256_raw": {
+    "gate-5eda079-b32-readyz-fixed-churn.json.gz": "f1a913671819f2391794e0faf0a15675422a953cf36cd0afb77e0e75fbdd8f23",
+    "gate-5eda079-b32-serve-spec-fixed-churn.json.gz": "8b10e168df22bcf8f454399a004548c7bbe6b3b599c03539af4b621f5e0190f2",
+    "gate-5eda079-b32-smoke-check-fixed-churn.json.gz": "3e165cf80c95a13f2723a5501fb809c967fed299b5362b5292e1fbb5d46bf2df",
+    "gate-5eda079-b64-readyz-fixed-churn.json.gz": "93254b9f5075d44722822794429bc172c61344629a20981dcdd6ad696d3e6a80",
+    "gate-5eda079-b64-serve-spec-fixed-churn.json.gz": "764a466564473f59b9c7bfe1d6ac6344193e4990f335df3438a300c04b2b91d0",
+    "gate-5eda079-b64-smoke-check-fixed-churn.json.gz": "51c433b1e5a094beda3e012c5a8a0f1d9e5be79cd5d434bac03b3657e00cde97"
+   }
+  },
+  "b300": {
+   "directory": "step1-b300-2026-09-26",
+   "manifest_sha256": "21051e9e633a49c68ee2be03fdad42d61dfd809b26857b17904026f7b1aed55c",
+   "sha256_raw": {
+    "gate-ba20c49-card.json.gz": "2360bcb932a5e79d743552f3e89d9435f0eaff58e72c0cdec61a6623fc07589e",
+    "gate-ba20c49-finals-fixed-churn.json.gz": "5345100bb7b4c6a9dbfe9f25225f618c1434f53b48849071075988c350b384c7",
+    "gate-ba20c49-finals-fixed-const.json.gz": "5d98401ea401f5bcdea8e9f8767ca7cb72fb76daa3269f8a6abfed23d881b0cd",
+    "gate-ba20c49-finals-ragged-churn.json.gz": "4844b0d0fe484b77d5e2643775423f962d29f06a8d2b081dade984a77795dec7",
+    "gate-ba20c49-finals-ragged-const.json.gz": "99ad3f424442e62b16ed6de0e22fa5501524ed5f29956b79ea0f5ba00512059d",
+    "gate-ba20c49-invariance-fixed-churn.json.gz": "a3e5d116a842eb0bccaac38b30436d8a66261bb8ed46b95383e5684f5ae97e1d",
+    "gate-ba20c49-invariance-fixed-const.json.gz": "dbbe654a676bccfdb57364ef0636eb4ef76c068682f943d145a9bd383a19b7cc",
+    "gate-ba20c49-invariance-ragged-churn.json.gz": "cf18196d9ca05582b594b43f6e913b9dfe3846b6e4005d836ad1521a59ee0ba0",
+    "gate-ba20c49-invariance-ragged-const.json.gz": "4221b875c1702eb0f7b784f242f290cb942f2c29b88ca05aed50ca74d0db7acd",
+    "gate-ba20c49-model.json.gz": "fc314247af95a031b30bc9bf37a33a3e5d1c0dc18d2f3c1fdf28b220cd6b000f",
+    "gate-ba20c49-record-summary-fixed-churn.json.gz": "7a57f0a8041d68c3ca0a391562fd3266cae97f252a2ba8617ec974041025f319",
+    "gate-ba20c49-record-summary-fixed-const.json.gz": "ae7c8730a50c06b073c6dc94d3d72d6eaa7394d49a64ae20a09084fe872c686d",
+    "gate-ba20c49-record-summary-ragged-churn.json.gz": "2b2d6415c716cefa702e8b5c85dcac411507b127aad111e1b12e6d98b75d283e",
+    "gate-ba20c49-record-summary-ragged-const.json.gz": "c591534d996188b0fe16e6b8a6ca92a253b57f07c01f886569155ce4fbe6d69e",
+    "gate-ba20c49-serve-spec-fixed-churn.json.gz": "c8b322171e093fd500b5863c0263206f92c7aa1b4aeeed75046a33a393393e40",
+    "gate-ba20c49-serve-spec-fixed-const.json.gz": "c8b322171e093fd500b5863c0263206f92c7aa1b4aeeed75046a33a393393e40",
+    "gate-ba20c49-serve-spec-ragged-churn.json.gz": "cb21f90a690226450edd3128c86914a75feda693c7765942e82fb77ada361d26",
+    "gate-ba20c49-serve-spec-ragged-const.json.gz": "cb21f90a690226450edd3128c86914a75feda693c7765942e82fb77ada361d26",
+    "gate-ba20c49-smoke-check-fixed-churn.json.gz": "971733796a14a65ca9f25c6681ad43f98638dcf3762d4d451bd4239e70cdb1f1",
+    "gate-ba20c49-smoke-check-fixed-const.json.gz": "18630559db610a1d37f9874736dbf17060ab9d3deddee2d3ae3b0117794ff3fe",
+    "gate-ba20c49-smoke-check-ragged-churn.json.gz": "9fa36ab3b15005ed7adb721c8c6e203b703d1ecbe91e44afa72769703e1bf664",
+    "gate-ba20c49-smoke-check-ragged-const.json.gz": "1d474ff98aa01ae748919e6b9e1ec352a09159d233e85f9e1f846827380d3a9b",
+    "gate-ba20c49-summary.json.gz": "f7c07b6d1583761b409b1b1b8ecc93e7034a1bb1108f8059acff5b23883e5b82",
+    "places-26eaebb-eager.json.gz": "c79bc2f7c176dfb09d037ec2f4f646e33297ae5a0b8d8597d513af755114ebe8",
+    "server-26eaebb-fixed-eager-c32.json.gz": "d777ee42cec92e37e8691af71e78579b2314f6e806f42dfebe9eb035d7537233",
+    "server-26eaebb-fixed-eager-c8.json.gz": "bff56bb2528864124dc7d52d0e088905df284dde3d67bead20910049e1ce1600",
+    "server-26eaebb-fixed-graphs-c32.json.gz": "bc1c3a9a213543b7291d861ab4bc0983b3b6a95377d4b46eebb8f6f793e68c53",
+    "server-26eaebb-fixed-graphs-c8.json.gz": "4d74d5eedf35072ed436c0ad7366ac5f23e23548539f87e7e1e64d0c0c5aa9d3",
+    "server-26eaebb-ragged-eager-c32-repeat.json.gz": "5625511450fb1d7504a195d3369855ab316b358644fae561d35dcbe6139a5369",
+    "server-26eaebb-ragged-eager-c32.json.gz": "5bb28a2a34c701cfed2428d44dfd264145758b582b6499644bee5aca4596e867",
+    "server-ba20c49-fixed-c64.FAILED.json.gz": "b45c5fe0448dd4761d52eb74222079d7cdd395c65d675c3549d5ce08a1d0da3b",
+    "server-ba20c49-ragged-c128-overload-run1.json.gz": "a1182b3baee0215baf4348d51e63cdf8513bb1d203a8deea631139c5491a4373",
+    "server-ba20c49-ragged-c128-overload-run2.FAILED.json.gz": "d08096b01a92148a0be7145f9d43d8ead8fadfe1fcbcdca4c1d85e80582c5d47",
+    "server-ba20c49-ragged-c64-first-attempt.FAILED.json.gz": "3e4fbd72dae4d085e2542140e8fa6c5d5a9fbd90900120fffcd27088250a8243",
+    "server-ba20c49-ragged-c64-run1.json.gz": "1f9a0819ba1a6d02f52e2ebc0b9b5d41ed3f43cbc65f49170fb4d42e207456b8",
+    "server-ba20c49-ragged-c64-run2.json.gz": "db03de898693aa0b6c65af773cf7bdbfa2c3d6e013cc3cc8ea481206375cc989"
+   }
+  }
+ },
+ "not_a_row": "Derived by scripts/step1_b300_summary.py from the exploratory records in rows/exploratory/step1-b300-2026-09-26/, step1-a6000-c8-2026-09-26/, step1-a6000-2026-09-26/ and step1-a6000-gate-smoke-2026-09-26/. Not a harness row: nothing here is a benchmark result or reads a gate.",
+ "question": "Step 1 on nvidia/nemotron-speech-streaming-en-0.6b on one B300 (with a retest at concurrency 64), and the A6000's unpadded server run twice at concurrency 8: does the fixed-shape server give one answer at every occupancy, in eager and graph execution, and does the unpadded server give the same answer twice?",
+ "rules": {
+  "a6000_gate_smoke": "the invariance runbook on the A6000 at buckets 64 and 32: each attempt's smoke check before its first arm (fixed-churn), its serve spec and the server's /readyz before the smoke. stopped_before_the_gate is whether the smoke check lists a problem, which makes scripts/step1_gate_runbook.sh stop before the long gate; bucket is the serve spec's argv and NeMo batch size, refused unless both agree with the record's name",
+  "card": "card_uuids: every GPU UUID a record names under a key whose name holds 'uuid' (the 'GPU-' prefix dropped); cards is how many distinct ones the section's records name, records_naming_a_card how many of its records name any, records how many it read. The B300 section's records are the B300 directory's; the A6000 section's are those of step1-a6000-2026-09-26, step1-a6000-c8-2026-09-26 and step1-a6000-gate-smoke-2026-09-26",
+  "cross_restart": "for each padding, whether the churn arm's and the const arm's digests are equal at a level: two server processes, the same corpus. Levels 1, 32a and 32b are the same condition in both arms; at max the churn arm churned and the const arm did not",
+  "execution": "as the server reported it (compare_captures settings_of): 'eager' is the eager encoder step, 'graph path' the encoder step on the CUDA-graph path; decoder graphs off in every capture",
+  "frozen": "compare_captures compare: FROZEN_RULE. With no ragged capture on the graph path, the graph-path pair is identical at two observed peaks but not called frozen; graphs_control_refused is why the comparator will not take the eager ragged capture as its control",
+  "gate": "verbatim_bench.invariance assess over each arm's finals, checked against the invariance record, the finals, the runbook's record summary and gate summary. Against '1' is batch dependence; 32b against 32a is run to run at one concurrency. text/timing_only are the divergence kinds 'text' and 'words'; word_level as above, on the two levels' final texts",
+  "punctuation_only": "a text-divergent recording whose two transcripts agree after words()",
+  "ragged_vs_ragged": "compare_captures compare of two complete ragged captures at one configured concurrency, refused unless the invariance gate's diff_records over every recording's two finals (text first, then the word timings) gives the same identical, text and timing-only counts",
+  "rates": "over the recordings checked, rounded to 5 decimals (scripts/step1_places.py rate)",
+  "refused_run": "the overload test's second run, which the server's admission control refused: compare_captures capture_problems refuses it, so it is no capture and nothing is compared with it; its counts are recounted from its recordings (sent, and a client error naming RESOURCE_EXHAUSTED). repeatability_measured is whether it is a complete capture",
+  "retest_c64": "the retest at concurrency 64 at ba20c49, on the card of the other B300 records. first_attempt is the ragged run's first attempt, which failed: not a capture, nothing is compared with it, and its counts are recounted from its recordings (sent, a final that covers the audio, partials, a client error naming RESOURCE_EXHAUSTED or TimeoutError). fixed_refused is the fixed run, refused as run2_refused of the overload test is. timeline orders the four records by the start each stamps; server_process numbers the server processes in that order, by the process id each record stamps (not printed); admitted_before_run is the server's admitted_total before the run, 0 for a process that had served no session before it",
+  "server_processes": "how many distinct server process ids the pair's two captures stamp (server.process before and after each run); the ids are compared, never printed",
+  "sessions_timed": "the client's in-flight count times a session from its first audio frame to its last final, so it covers only the sessions that received a final: sessions_timed is how many recordings carry an in_flight_s, recounted, and observed_peak_in_flight is the most of those in flight at once",
+  "ticks": "server.load as each capture recorded it: the ticks during the run, over budget and late, and the p95 tick the server reported before and after. The captures do not stamp the tick budget; the gate's serve spec and smoke check stamp the budget of the gate's server",
+  "ticks_over_budget_rate": "ticks over budget during the run over the ticks during the run, rounded to 5 decimals",
+  "timing_only": "the two texts are equal and the word timings (word, start, end) are not",
+  "wer": "scripts/step1_places.py corpus figures: word Levenshtein distance to the reference, summed over every checked recording, over the reference words, after its normalise(); side a and side b as the arm names them",
+  "word_level": "a text-divergent recording whose two transcripts differ after the probe's words() (probes/stock_divergence.py: lowercased, every run of characters other than word characters, apostrophes and spaces made a space)"
+ }
+}

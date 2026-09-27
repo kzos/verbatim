@@ -1,0 +1,93 @@
+{
+ "commit": "the verbatim commit the run's preflight recorded (git head); none of these records stamps a commit, and scripts/step1_b300_summary.py neither checks nor reports it.",
+ "gzip": "gzip -9 -n of the raw file (no name or time in the header). sha256_raw and bytes_raw are of the decompressed bytes, sha256_gz and bytes_gz of the file here.",
+ "not_a_row": "Exploratory records, not harness rows. scripts/step1_b300_summary.py reads them for its a6000_gate_smoke section; see rows/exploratory/README.md.",
+ "not_copied": "Each attempt's arm.json-style files that hold a process environment (server-environ.json, serve-env.json), its argv files, admission and smoke readings, server and smoke logs, the runbook log, and the preflight (the card list, the code and corpus paths, git head and status). The runbook stops before the long gate when the smoke check lists a problem (scripts/step1_gate_runbook.sh run_smoke), so neither attempt has a gate record.",
+ "original": "the file name the tool wrote, relative to the step-1 output directory of the machine that ran it",
+ "records": {
+  "gate-5eda079-b32-readyz-fixed-churn.json.gz": {
+   "bytes_as_written": 620,
+   "bytes_gz": 346,
+   "bytes_raw": 514,
+   "commit": "5eda0792396b360725d91385f5b293d47c0ff680",
+   "commit_stamp": null,
+   "kind": "gate-readyz",
+   "original": "run-5eda079-gate-b32-m32/gate-nemotron-card3-20260926T084501Z/fixed-churn/readyz-before.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 2
+    }
+   },
+   "sha256_as_written": "9955e78ff5d616254526d0b6c25ece9d04b9dbfaa5f4ee6e34313c382b120b3f",
+   "sha256_gz": "3e099bc1c9f46cec6fdbc39b2dbb6aa077af3c34955ac5a89cfc0ce8ded3cf2b",
+   "sha256_raw": "f1a913671819f2391794e0faf0a15675422a953cf36cd0afb77e0e75fbdd8f23",
+   "what": "The server's /readyz before the smoke of arm fixed-churn (bucket 32): the model, the chunk, the precision, the execution, the NeMo and torch versions and the device name it reports. It stamps no commit. The run's preflight recorded git head 5eda079 (its git-head.txt, not copied); no record here stamps it, and scripts/step1_b300_summary.py does not report it."
+  },
+  "gate-5eda079-b32-serve-spec-fixed-churn.json.gz": {
+   "bytes_gz": 1111,
+   "bytes_raw": 2454,
+   "commit": "5eda0792396b360725d91385f5b293d47c0ff680",
+   "commit_stamp": null,
+   "kind": "gate-serve-spec",
+   "original": "run-5eda079-gate-b32-m32/gate-nemotron-card3-20260926T084501Z/fixed-churn/serve-spec.json",
+   "sha256_gz": "72743e030fe7ca9c2d094222a738544e9f6e6743590cb917ef0301fcfbcbc5f1",
+   "sha256_raw": "8b10e168df22bcf8f454399a004548c7bbe6b3b599c03539af4b621f5e0190f2",
+   "what": "What `verbatim serve` builds from arm fixed-churn's command line (bucket 32), by the server's own code on the CPU: the argv, the execution, the tick budget and the NeMo spec. It stamps no commit. The run's preflight recorded git head 5eda079 (its git-head.txt, not copied); no record here stamps it, and scripts/step1_b300_summary.py does not report it."
+  },
+  "gate-5eda079-b32-smoke-check-fixed-churn.json.gz": {
+   "bytes_gz": 238,
+   "bytes_raw": 373,
+   "commit": "5eda0792396b360725d91385f5b293d47c0ff680",
+   "commit_stamp": null,
+   "kind": "gate-smoke-check",
+   "original": "run-5eda079-gate-b32-m32/gate-nemotron-card3-20260926T084501Z/fixed-churn/smoke-check.json",
+   "sha256_gz": "98dfee050b24901921f2b8d7ddfb7dc0369fd7c21743d5dc7cfedeef322846c1",
+   "sha256_raw": "3e165cf80c95a13f2723a5501fb809c967fed299b5362b5292e1fbb5d46bf2df",
+   "what": "The runbook's smoke check before arm fixed-churn's gate (bucket 32): the tick budget, the highest p95 tick the server reported during the smoke, overruns, refusals, and the problems that stopped the runbook before the long gate. It stamps no commit. The run's preflight recorded git head 5eda079 (its git-head.txt, not copied); no record here stamps it, and scripts/step1_b300_summary.py does not report it."
+  },
+  "gate-5eda079-b64-readyz-fixed-churn.json.gz": {
+   "bytes_as_written": 620,
+   "bytes_gz": 346,
+   "bytes_raw": 514,
+   "commit": "5eda0792396b360725d91385f5b293d47c0ff680",
+   "commit_stamp": null,
+   "kind": "gate-readyz",
+   "original": "run-5eda079-gate-b64-m42/gate-nemotron-card3-20260926T084239Z/fixed-churn/readyz-before.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 2
+    }
+   },
+   "sha256_as_written": "ef229d3d65c18f8c714fc1ca50c5fbbf96195efb5743197d14e6df7229269dc9",
+   "sha256_gz": "047d6f5666dc52e0d976db12e11350bd500acdc13e7cc7a087220f9dafe8bf91",
+   "sha256_raw": "93254b9f5075d44722822794429bc172c61344629a20981dcdd6ad696d3e6a80",
+   "what": "The server's /readyz before the smoke of arm fixed-churn (bucket 64): the model, the chunk, the precision, the execution, the NeMo and torch versions and the device name it reports. It stamps no commit. The run's preflight recorded git head 5eda079 (its git-head.txt, not copied); no record here stamps it, and scripts/step1_b300_summary.py does not report it."
+  },
+  "gate-5eda079-b64-serve-spec-fixed-churn.json.gz": {
+   "bytes_gz": 1112,
+   "bytes_raw": 2456,
+   "commit": "5eda0792396b360725d91385f5b293d47c0ff680",
+   "commit_stamp": null,
+   "kind": "gate-serve-spec",
+   "original": "run-5eda079-gate-b64-m42/gate-nemotron-card3-20260926T084239Z/fixed-churn/serve-spec.json",
+   "sha256_gz": "cf26baa0befff3bc3a524379bd4b0fd15df319577b441e7075675f319c147f17",
+   "sha256_raw": "764a466564473f59b9c7bfe1d6ac6344193e4990f335df3438a300c04b2b91d0",
+   "what": "What `verbatim serve` builds from arm fixed-churn's command line (bucket 64), by the server's own code on the CPU: the argv, the execution, the tick budget and the NeMo spec. It stamps no commit. The run's preflight recorded git head 5eda079 (its git-head.txt, not copied); no record here stamps it, and scripts/step1_b300_summary.py does not report it."
+  },
+  "gate-5eda079-b64-smoke-check-fixed-churn.json.gz": {
+   "bytes_gz": 236,
+   "bytes_raw": 371,
+   "commit": "5eda0792396b360725d91385f5b293d47c0ff680",
+   "commit_stamp": null,
+   "kind": "gate-smoke-check",
+   "original": "run-5eda079-gate-b64-m42/gate-nemotron-card3-20260926T084239Z/fixed-churn/smoke-check.json",
+   "sha256_gz": "cee85a35fbdc936f2ad2526aa911df6a7c3d743c3d62e90fdf6e74a0276b0611",
+   "sha256_raw": "51c433b1e5a094beda3e012c5a8a0f1d9e5be79cd5d434bac03b3657e00cde97",
+   "what": "The runbook's smoke check before arm fixed-churn's gate (bucket 64): the tick budget, the highest p95 tick the server reported during the smoke, overruns, refusals, and the problems that stopped the runbook before the long gate. It stamps no commit. The run's preflight recorded git head 5eda079 (its git-head.txt, not copied); no record here stamps it, and scripts/step1_b300_summary.py does not report it."
+  }
+ },
+ "scrubbed": "scripts/scrub_record_paths.py replaced the absolute paths each record's tool stamped by a placeholder: <checkout>, the verbatim checkout the tool and the server ran from. A record that names another here by sha256 names the scrubbed one. sha256_as_written and bytes_as_written are the record as its tool wrote it; scrub says what was replaced. A record without them held no path and is as written.",
+ "what": "The invariance runbook (scripts/step1_gate_runbook.sh) on one NVIDIA RTX A6000 (card 3 of its machine), 2026-09-26, at buckets 64 and 32: in each attempt the smoke check before the first arm (fixed-churn) found the tick budget not kept and the runbook stopped. Each file gzipped whole."
+}

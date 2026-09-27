@@ -11,8 +11,10 @@
 * A gz file whose sha256 is not the manifest's is refused.
 * ``machine_paths`` finds a path wherever it stands in a string (a PYTHONPATH's second entry
   included) and passes a placeholder's tail, a URL, a model id and the kernel's ``/proc/``.
+* ``<workdir>`` takes only what the narrower placeholders leave, and the manifest's note defines
+  only the placeholders its records hold.
 * The committed step-1 records hold no machine path; every one the scrub rewrote says so in the
-  manifest, and the four that held none are as written.
+  manifest, and those that held none are as written.
 """
 
 from __future__ import annotations
@@ -29,6 +31,16 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 RECORDS = ROOT / "rows" / "exploratory" / "step1-a6000-2026-09-26"
+#: Each committed directory of step-1 records: how many records the scrub rewrote, and the name
+#: prefixes of those it left as written (they held no path).
+COMMITTED = {
+    "step1-a6000-2026-09-26": (12, ("stock-",)),
+    "step1-a6000-c8-2026-09-26": (2, ()),
+    "step1-b300-2026-09-26": (
+        27,
+        ("gate-ba20c49-card.", "gate-ba20c49-serve-spec-", "gate-ba20c49-smoke-check-"),
+    ),
+}
 
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
@@ -170,12 +182,63 @@ def test_machine_paths_finds_a_path_anywhere_and_passes_what_is_not_one() -> Non
         assert scrub.machine_paths({"k": [text]}) == [f"/k[0]: {text!r}"]
 
 
-def test_the_committed_records_hold_no_machine_path() -> None:
-    manifest = json.loads((RECORDS / scrub.MANIFEST).read_text(encoding="utf-8"))
+def test_workdir_takes_only_what_the_narrower_placeholders_leave(tmp_path: Path) -> None:
+    work = "/data/run7"
+    capture = {
+        "checkout": f"{work}/verbatim/src",
+        "venv": f"{work}/env/bin/python",
+        "hub": f"{work}/hf/hub",
+        "corpus": f"{work}/corpus/a.jsonl",
+        "sibling": f"{work}-old/x",
+    }
+    entries = {"capture.json.gz": put(tmp_path, "capture.json.gz", capture)}
+    manifest = {"gzip": "gzip -9 -n", "records": entries}
+    (tmp_path / scrub.MANIFEST).write_text(json.dumps(manifest, indent=1), encoding="utf-8")
+    given = [f"checkout={work}/verbatim", f"venv={work}/env", f"workdir={work}"]
+    # A path outside every prefix (the sibling) is refused, and nothing is written ...
+    before = snapshot(tmp_path)
+    assert scrub.main([str(tmp_path), *(f"--prefix={p}" for p in given)]) == 2
+    assert snapshot(tmp_path) == before
+    # ... and with it given as the home, each path takes its narrowest placeholder.
+    given.append(f"home={work}-old")
+    assert scrub.main([str(tmp_path), *(f"--prefix={p}" for p in given)]) == 0
+    _, got = read(tmp_path, "capture.json.gz")
+    assert got == {
+        "checkout": "<checkout>/src",
+        "venv": "<venv>/bin/python",
+        "hub": "<workdir>/hf/hub",
+        "corpus": "<workdir>/corpus/a.jsonl",
+        "sibling": "<home>/x",
+    }
+    written = json.loads((tmp_path / scrub.MANIFEST).read_text(encoding="utf-8"))
+    assert written["records"]["capture.json.gz"]["scrub"]["placeholders"] == {
+        "checkout": 1,
+        "home": 1,
+        "venv": 1,
+        "workdir": 2,
+    }
+    assert "<workdir>, the directory that held" in written["scrubbed"]
+    assert "<step1-out>" not in written["scrubbed"]
+
+
+def test_the_scrub_note_defines_only_the_placeholders_its_records_hold(tmp_path: Path) -> None:
+    build(tmp_path)
+    assert scrub.main([str(tmp_path), *(f"--prefix={p}" for p in PREFIXES)]) == 0
+    note = json.loads((tmp_path / scrub.MANIFEST).read_text(encoding="utf-8"))["scrubbed"]
+    assert "<checkout>," in note and "<home>," in note
+    for unused in ("<venv>", "<step1-out>", "<workdir>"):
+        assert unused not in note
+
+
+@pytest.mark.parametrize("directory", sorted(COMMITTED))
+def test_the_committed_records_hold_no_machine_path(directory: str) -> None:
+    records = RECORDS.parent / directory
+    want, as_written = COMMITTED[directory]
+    manifest = json.loads((records / scrub.MANIFEST).read_text(encoding="utf-8"))
     assert scrub.machine_paths(manifest) == []
     scrubbed = 0
     for name, entry in manifest["records"].items():
-        raw = gzip.decompress((RECORDS / name).read_bytes())
+        raw = gzip.decompress((records / name).read_bytes())
         assert sha(raw) == entry["sha256_raw"], name
         assert scrub.machine_paths(json.loads(raw)) == [], name
         if "scrub" in entry:
@@ -183,5 +246,5 @@ def test_the_committed_records_hold_no_machine_path() -> None:
             assert entry["sha256_as_written"] != entry["sha256_raw"], name
             assert sum(entry["scrub"]["placeholders"].values()) > 0, name
         else:
-            assert name.startswith("stock-"), name
-    assert scrubbed == 12
+            assert name.startswith(as_written), name
+    assert scrubbed == want

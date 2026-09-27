@@ -1,0 +1,55 @@
+{
+ "commit": "the verbatim commit the record stamps, read from the field commit_stamp names; scripts/step1_b300_summary.py refuses a record whose stamp is not this.",
+ "gzip": "gzip -9 -n of the raw file (no name or time in the header). sha256_raw and bytes_raw are of the decompressed bytes, sha256_gz and bytes_gz of the file here.",
+ "not_a_row": "Exploratory records, not harness rows. scripts/step1_b300_summary.py derives its figures from these files and those of step1-b300-2026-09-26/ and nothing else; see rows/exploratory/README.md.",
+ "not_copied": "The text logs and the server log.",
+ "original": "the file name the tool wrote, relative to the step-1 output directory of the machine that ran it",
+ "records": {
+  "server-ba20c49-ragged-c8-run1.json.gz": {
+   "bytes_as_written": 6063903,
+   "bytes_gz": 916871,
+   "bytes_raw": 6062567,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-ba20c49-a6000-ragged-c8-repeat/ragged-c8-run1.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 18,
+     "home": 13,
+     "step1-out": 4,
+     "venv": 9
+    }
+   },
+   "sha256_as_written": "b5892a9c47b863d784a83d585f837a9ff891ef9d76a9305924a19c73503e972b",
+   "sha256_gz": "88fac29c37d2f00be7833f5cebf988deb3339926a3560d0e18c2aa53e4d0f04f",
+   "sha256_raw": "3610ddcce60dbcf900328e2d64d78c78db5eee7d4e821d81c37d5313528ad218",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server on one NVIDIA RTX A6000 (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding ragged, word confidence off, the client admitting 8 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run. The first of two ragged captures on one server process."
+  },
+  "server-ba20c49-ragged-c8-run2.json.gz": {
+   "bytes_as_written": 6061972,
+   "bytes_gz": 916933,
+   "bytes_raw": 6060636,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-ba20c49-a6000-ragged-c8-repeat/ragged-c8-run2.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 18,
+     "home": 13,
+     "step1-out": 4,
+     "venv": 9
+    }
+   },
+   "sha256_as_written": "decec173164d022cd42786c279e7ac7233c184b94f53a4023c88040e2fc73677",
+   "sha256_gz": "b16e62dc11227170683cd177ca3dbc0a186232faabc326b8cd3cec2281f07aa5",
+   "sha256_raw": "0e8086d866c087b3d7afff7ad073a8f989bb38b4b8f81a55f419c174436584e4",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server on one NVIDIA RTX A6000 (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding ragged, word confidence off, the client admitting 8 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run. The second, taken right after the first: ragged against ragged."
+  }
+ },
+ "scrubbed": "scripts/scrub_record_paths.py replaced the absolute paths each record's tool stamped by a placeholder: <checkout>, the verbatim checkout the tool and the server ran from; <home>, the home directory of the user who ran them; <step1-out>, the directory the step-1 tools wrote their records and logs to; <venv>, the Python virtual environment they ran in. A record that names another here by sha256 names the scrubbed one. sha256_as_written and bytes_as_written are the record as its tool wrote it; scrub says what was replaced. A record without them held no path and is as written.",
+ "what": "Two ragged captures at concurrency 8 on one NVIDIA RTX A6000 (card 3 of its machine) at ba20c49, 2026-09-26, one after the other on one server process, each gzipped whole. Kept apart from step1-a6000-2026-09-26/ so that directory's manifest, and the summary that names it by sha256, stay byte for byte as merged."
+}
