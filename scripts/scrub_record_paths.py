@@ -25,7 +25,10 @@
    is left byte for byte; running the scrub again changes nothing.
 
 The placeholder names are the ones ``PLACEHOLDERS`` defines, so a scrubbed record says what each
-stood for without saying where it was. The prefixes are given on the command line and are
+stood for without saying where it was; the manifest's ``scrubbed`` note defines the ones its
+records hold. ``<workdir>`` is for a machine whose checkout, environment, caches, corpus and
+outputs sit under one directory: given with the narrower prefixes, it takes only what they leave
+(the longest prefix is replaced first). The prefixes are given on the command line and are
 written nowhere. Anyone holding the records as written reruns this with the same prefixes and
 gets the same bytes, which ``sha256_as_written`` lets them check. Nothing here touches a GPU.
 """
@@ -54,6 +57,8 @@ PLACEHOLDERS: dict[str, str] = {
     "venv": "the Python virtual environment they ran in",
     "home": "the home directory of the user who ran them",
     "step1-out": "the directory the step-1 tools wrote their records and logs to",
+    "workdir": "the directory that held the checkout, the environment, the model cache, the "
+    "corpus and the outputs, where no narrower placeholder applies",
 }
 
 #: An absolute path: a slash that does not follow a word, a dot, a tilde, a placeholder's
@@ -203,10 +208,16 @@ def scrub(directory: Path, prefixes: Mapping[str, str]) -> dict[str, Any]:
         scrubbed["links_rewritten"] += relinked[name]
         files[name] = packed
     if files:
+        # Only the placeholders some record here holds: a manifest names no path it never used.
+        used = {
+            key
+            for entry in out["records"].values()
+            for key in (entry.get("scrub") or {}).get("placeholders", {})
+        }
         out["scrubbed"] = (
             "scripts/scrub_record_paths.py replaced the absolute paths each record's tool "
             "stamped by a placeholder: "
-            + "; ".join(f"<{k}>, {v}" for k, v in sorted(PLACEHOLDERS.items()))
+            + "; ".join(f"<{k}>, {v}" for k, v in sorted(PLACEHOLDERS.items()) if k in used)
             + ". A record that names another here by sha256 names the scrubbed one. "
             "sha256_as_written and bytes_as_written are the record as its tool wrote it; scrub "
             "says what was replaced. A record without them held no path and is as written."

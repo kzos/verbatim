@@ -111,3 +111,111 @@ word-confidence change in `src/verbatim/pipelines/nemo_runtime.py`, `observed.py
 Not here: the 160 ms run with `paper-best` word confidence, whose record holds 272 of its 1,024
 targets and no finish stamp because NeMo raised mid-run in the decoder word-confidence pass that
 `26eaebb` turns off; the smoke capture, the profiles and the invariance runbook's runs.
+
+## Step 1 on Nemotron, one B300, and the A6000's unpadded server twice at concurrency 8 (2026-09-26)
+
+`step1-b300-2026-09-26/` holds the records of step 1 on one NVIDIA B300 SXM6 AC (one card: every
+record here that names a card, 15 of the 36, names the same one), NeMo `3.1.0` and torch `2.11.0+cu128`, the same model and
+revision as above, bucket 128, 160 ms, bfloat16, decoder graphs off, and of a retest at
+concurrency 64 on the same card the next day (2026-09-27, UTC). None is a row.
+
+| file | commit | what it is |
+|---|---|---|
+| `server-26eaebb-fixed-eager-c32.json.gz`, `-fixed-eager-c8` | `26eaebb` | `probes/server_frozen_answers.py`, all 2,939 recordings, padding fixed, eager encoder step, the client at concurrency 32 and 8. |
+| `server-26eaebb-fixed-graphs-c32.json.gz`, `-fixed-graphs-c8` | `26eaebb` | The same with the encoder step on the CUDA-graph path (the server reports `graph path`). |
+| `server-26eaebb-ragged-eager-c32.json.gz`, `-ragged-eager-c32-repeat` | `26eaebb` | Padding ragged, eager, concurrency 32, twice on one server: ragged against ragged. |
+| `places-26eaebb-eager.json.gz` | `26eaebb` | `scripts/compare_captures.py --places-out`: fixed eager c32 (served) against ragged, fixed eager c8 as the repeat; names each capture by sha256. |
+| `server-ba20c49-ragged-c128-overload-run1.json.gz` | `ba20c49` | An overload test: padding ragged, eager, the client at concurrency 128. Complete. |
+| `server-ba20c49-ragged-c128-overload-run2.FAILED.json.gz` | `ba20c49` | **Not a capture.** The second run of the overload test, right after the first on the same server process: its admission control refused most sessions, so the probe wrote this record of the failure instead of a capture. Kept only as evidence of the refusal. |
+| `server-ba20c49-ragged-c64-first-attempt.FAILED.json.gz` | `ba20c49` | **Not a capture.** The retest's first attempt at the ragged run at concurrency 64, on a server process started for it: most recordings got no final and the server refused most sessions, so the probe wrote this record of the failure instead of a capture. Its cause was not found. Kept only as evidence that the attempt failed; nothing is compared with it. |
+| `server-ba20c49-ragged-c64-run1.json.gz`, `-ragged-c64-run2` | `ba20c49` | The retest: padding ragged, eager, the client at concurrency 64, twice, one right after the other on another server process started for it. Both complete: ragged against ragged at concurrency 64. |
+| `server-ba20c49-fixed-c64.FAILED.json.gz` | `ba20c49` | **Not a capture.** Padding fixed at concurrency 64, on a third server process started for it after the two ragged runs: its admission control refused most sessions, so the probe wrote this record of the failure. Kept only as evidence of the refusal. |
+| `gate-ba20c49-summary.json.gz` | `ba20c49` | `scripts/step1_gate_runbook.sh` (`RUNBOOK_GPU_INDEX` 0, bucket 128, max level 42, 256 LibriSpeech test-other streams, eager): the runbook's summary of its four arms and its exit code. |
+| `gate-ba20c49-invariance-<arm>.json.gz`, `-finals-<arm>`, `-record-summary-<arm>`, `-smoke-check-<arm>`, `-serve-spec-<arm>` | `ba20c49` | For each arm (`fixed-churn`, `fixed-const`, `ragged-churn`, `ragged-const`): the invariance record, every level's finals, the runbook's check of the record (which names the record and the finals by sha256), its smoke check (tick budget and p95 during the smoke), and what `verbatim serve` builds from the arm's command line. These stamp no commit; the gate summary stamps `ba20c49` for every arm. |
+| `gate-ba20c49-card.json.gz`, `gate-ba20c49-model.json.gz` | `ba20c49` | The runbook's preflight: the card, and the model revision and `.nemo` sha256. |
+
+`step1-a6000-c8-2026-09-26/` holds two ragged captures at concurrency 8 on the RTX A6000 of the
+section above (card index 3), at `ba20c49`, one right after the other on one server process (NeMo
+`3.1.0+cf724ac33`: a different NeMo build from the B300's). They are kept out of
+`step1-a6000-2026-09-26/` so that directory's manifest, and the summary that names it by sha256,
+stay byte for byte as merged.
+
+`step1-a6000-gate-smoke-2026-09-26/` holds what is left on record of the invariance runbook on that
+A6000 (card index 3) at `5eda079`: two attempts, at bucket 64 and at bucket 32, each stopped by the
+smoke check before its first arm's gate (`scripts/step1_gate_runbook.sh` stops when the smoke check
+lists a problem). For each attempt: the smoke check (`gate-5eda079-b<bucket>-smoke-check-fixed-churn`:
+the 112 ms budget, the highest p95 tick, 156.75 ms at bucket 64 and 123.96 ms at bucket 32, and the
+problem that stopped the runbook), the serve spec (`-serve-spec-`: what `verbatim serve` builds from
+the arm's command line, bucket included) and the server's `/readyz` before the smoke (`-readyz-`: the
+device name, `NVIDIA RTX A6000`). None of them stamps a commit; the manifest gives the run's preflight
+git head, which nothing checks. Not copied: the attempts' process-environment files, argv files,
+admission and smoke readings, logs and the rest of the preflight.
+
+As above, each file is the record its tool wrote, gzipped whole (`gzip -9 -n`), with the absolute
+paths its tool stamped replaced by `scripts/scrub_record_paths.py` (`<checkout>`, `<venv>`, `<home>`,
+`<step1-out>`, and on the B300 `<workdir>`, the directory that held the checkout, the environment,
+the model cache, the corpus and the outputs), links rewritten to the scrubbed sha256, and each
+manifest keeping `sha256_as_written`. Not copied: each gate arm's
+`arm.json` and `server-environ.json`, which hold the server process's whole environment (host
+names, network addresses, account names, paths outside any placeholder); the facts the summary
+reads from an arm are in its record summary, smoke check and serve spec, which are here. Also not
+copied: `compare_captures.py`'s own reports (the summary derives them again) and the text logs.
+
+`step1-b300-summary-2026-09-26.json` is `scripts/step1_b300_summary.py`'s output over these three
+directories and `step1-a6000-2026-09-26/`, and nothing else; it reads the last only for the cards
+its records name and for the server processes of its unpadded pair at concurrency 32. It refuses a record whose sha256 or commit is not its manifest's, a
+places record or record summary that does not name the records here by sha256, a record holding a
+machine path, and a capture whose name says a padding, execution or concurrency it did not record.
+Every figure comes through the repo's own tools: `compare_captures.py` (FROZEN, identity, the
+comparator's refusals), `step1_places.derive` (word error rate, timing shifts), the stock probe's
+`words()` (word-level), and `verbatim_bench.invariance.assess`, rerun on each gate arm's finals and
+required to give the verdict, digests and divergences the invariance record, the finals and both
+runbook summaries give. A card is counted by its GPU UUID wherever a record names one, under any
+key whose name holds `uuid` (`card_uuids`), not by its device name: on the B300 one card, named by
+15 of its 36 records; on the A6000 one card, named by 18 of the 24 records of its three
+directories. Each unpadded pair's server processes are counted by the process ids its captures stamp:
+the A6000's pair at concurrency 32 ran on two processes, each other pair on one.
+`tests/test_step1_b300_summary.py` rebuilds it from the committed records and requires the same
+bytes. What it gives:
+
+| | B300 | A6000 |
+|---|---|---|
+| fixed, eager: c32 against c8, ragged as control | FROZEN, 2,939 of 2,939 identical, digest `5a672de4fe0cb924` | (section above: `45e1ddba…`) |
+| fixed, graph path: c32 against c8 | identical on 2,939 of 2,939, same digest; FROZEN not claimed (no ragged graph-path control) | not measured |
+| fixed eager against fixed graphs, c32 and c8 | identical on 2,939 of 2,939 each | not measured |
+| ragged against fixed, c32 | 266 text (128 word-level), 815 timing-only | (section above) |
+| ragged against ragged | c32: 1 text (0 word-level), 2 timing-only; c64: 4 text (0 word-level), 4 timing-only | c8: 204 text (104 word-level), 691 timing-only |
+| ticks over budget during the ragged runs | 4 of 3,953 and 1 of 3,932 (c32); 285 of 2,016 and 248 of 2,001 (c64) | 985 of 15,613 and 1,003 of 15,607 (c8) |
+| p95 tick after the ragged runs | 73.5 ms and 73.5 ms (c32); 124.8 ms and 109.1 ms (c64) | 118.2 ms and 116.1 ms |
+
+The gate on the B300: `fixed-churn` and `fixed-const` invariant at 1 / 32a / 32b / max (one digest,
+and the same digest in both arms at every level); `ragged-churn` divergent, 78 / 78 / 65 streams
+against level 1 (84 distinct), `ragged-const` divergent, 78 / 78 / 36 (96 distinct), 0 between 32a
+and 32b in both; runbook exit 0. The smoke checks' highest p95 tick was 109.9 ms (`fixed-churn`)
+and 88.3 ms (`fixed-const`) against the 112 ms budget their serve spec derived; during the gate
+itself the `fixed-churn` arm's monitor reached 112.53 ms, just over it, and admission control never
+degraded. The captures do not stamp their server's tick budget.
+
+The overload test is incomplete and does not say whether overload breaks run-to-run repeatability:
+the first run at concurrency 128 is complete (553 of 1,079 ticks over budget), and the second was
+refused (the server admitted 388 of 2,939 sessions and refused 2,551), so there is no second run
+to compare it with.
+
+The retest at concurrency 64 (`ba20c49`) measures run-to-run repeatability there instead. Its two
+ragged runs, on one server process, are complete (2,939 admitted, none refused, in each). Their
+modelled tick cost went over the budget on 285 of 2,016 and 248 of 2,001 ticks, and 97 and 33 ticks
+ran late (ended after the next tick was due), which is where the card fell behind real time. They
+differ on 4 texts (none at word level: punctuation only) and on 4 word timings only; digests
+`f7b19c8b…` and `143ad7ac…`. The fixed server at the same concurrency, on a fresh process, did not
+hold it: 136 of 247 ticks over budget during the run, and the server admitted 350 sessions and
+refused 2,589 ("admissions held at degradation level 1"), so there is no fixed capture at 64.
+Before the ragged runs, a first attempt on another fresh process failed: the server admitted 128
+sessions and refused 2,811 ("128 live sessions fill the largest bucket"); of the 128 sent, 12 got a
+final that covers their audio and 116 did not (96 of them no partial either; the client gave up on
+114); 2,927 of the 2,939 recordings have no final that covers their audio (2 of them got a final
+that does not cover it) and 2,907 no partial; 335 of 339 ticks were late and 6 over budget. Its
+cause was not found. The client's in-flight count times a session from its first audio frame to its
+last final, so it covers only the 14 sessions that received a final (`sessions_timed`), not the 128
+sent, and its peak of 14 does not say how many of the 128 were in flight at once. The retest's
+first ragged run started 236 s after the failed attempt ended. `step1_b300_summary.py` recounts each
+failed record's counts from its recordings and refuses any it does not give.

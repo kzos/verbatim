@@ -1,0 +1,672 @@
+{
+ "commit": "the verbatim commit the record stamps, read from the field commit_stamp names; scripts/step1_b300_summary.py refuses a record whose stamp is not this. A gate record whose commit_stamp is null stamps no commit: its commit is the one the gate summary of the same run stamps for every arm, which the script checks instead.",
+ "gzip": "gzip -9 -n of the raw file (no name or time in the header). sha256_raw and bytes_raw are of the decompressed bytes, sha256_gz and bytes_gz of the file here.",
+ "not_a_row": "Exploratory records, not harness rows. scripts/step1_b300_summary.py derives its figures from these files and those of step1-a6000-c8-2026-09-26/ and nothing else; see rows/exploratory/README.md.",
+ "not_copied": "From the captures' run directory: compare_captures.py's reports (frozen-eager.json, frozen-graphs.json, places-eager-report.json), which scripts/step1_b300_summary.py derives again from the captures, and the text logs. From the overload runs' directories (concurrency 128 and 64): the probe's text logs and the server logs. From the gate: each arm's arm.json and server-environ.json, which hold the server process's whole environment (host names, network addresses, account names and paths outside any placeholder) and are not committed; the facts the summary reads from an arm are in its record-summary.json, smoke-check.json and serve-spec.json, copied here. Also not copied: the arms' admission, readyz, monitor and smoke logs, and the rest of the preflight.",
+ "original": "the file name the tool wrote, relative to the step-1 output directory of the machine that ran it",
+ "records": {
+  "gate-ba20c49-card.json.gz": {
+   "bytes_gz": 101,
+   "bytes_raw": 138,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-preflight",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/preflight-20260926T144558.666876748Z/card.json",
+   "sha256_gz": "cff221dc0f8a4097e2ec74fb95fc70da5c5fa5ee2d44133b6ea098ee43698b8b",
+   "sha256_raw": "2360bcb932a5e79d743552f3e89d9435f0eaff58e72c0cdec61a6623fc07589e",
+   "what": "The runbook's preflight: the card the gate ran on (index and UUID). It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-finals-fixed-churn.json.gz": {
+   "bytes_as_written": 1967315,
+   "bytes_gz": 192217,
+   "bytes_raw": 1967305,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-finals",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/finals-fixed-churn.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "workdir": 1
+    }
+   },
+   "sha256_as_written": "a9edb063de050f33866e836c31ae0adf8dc299626bfc3d4bed594e82b5805c0a",
+   "sha256_gz": "4ceec263b54e5cabf9d0ceecdd48297aaa96aa4a4aeb47a2f19f38ea9d81a379",
+   "sha256_raw": "5345100bb7b4c6a9dbfe9f25225f618c1434f53b48849071075988c350b384c7",
+   "what": "verbatim-bench invariance --finals-out, arm fixed-churn: every level's final text and word timings for every stream, as the wire carried them. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-finals-fixed-const.json.gz": {
+   "bytes_as_written": 1967315,
+   "bytes_gz": 192216,
+   "bytes_raw": 1967305,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-finals",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/finals-fixed-const.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "workdir": 1
+    }
+   },
+   "sha256_as_written": "dd2cf53881e11c6b1b2d8d91ef790477acd52a5fb3e2405ec91a8133c23f8b7a",
+   "sha256_gz": "5ac14b87f8a7eedf8e2fd185a62a2b8f380c224dbda3300d86ff69b64e74f083",
+   "sha256_raw": "5d98401ea401f5bcdea8e9f8767ca7cb72fb76daa3269f8a6abfed23d881b0cd",
+   "what": "verbatim-bench invariance --finals-out, arm fixed-const: every level's final text and word timings for every stream, as the wire carried them. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-finals-ragged-churn.json.gz": {
+   "bytes_as_written": 1966889,
+   "bytes_gz": 192184,
+   "bytes_raw": 1966879,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-finals",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/finals-ragged-churn.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "workdir": 1
+    }
+   },
+   "sha256_as_written": "596b87b5bc69faf69bc0c7d229d759c08217a2500f86238f44d1f16ad1ff3c98",
+   "sha256_gz": "83f94700f79e3c6be6e8dc1fcee81231e81f2c03f5adb794affb7d701d1779a4",
+   "sha256_raw": "4844b0d0fe484b77d5e2643775423f962d29f06a8d2b081dade984a77795dec7",
+   "what": "verbatim-bench invariance --finals-out, arm ragged-churn: every level's final text and word timings for every stream, as the wire carried them. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-finals-ragged-const.json.gz": {
+   "bytes_as_written": 1967072,
+   "bytes_gz": 192213,
+   "bytes_raw": 1967062,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-finals",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/finals-ragged-const.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "workdir": 1
+    }
+   },
+   "sha256_as_written": "ee53efe9fcb11d61c97f0cdb59d7c9a292a33409831feb377804f160c558b87b",
+   "sha256_gz": "df35cf7ab8677514e4372c91682b58941590c7546baa0ec1a3005690d3bea875",
+   "sha256_raw": "99ad3f424442e62b16ed6de0e22fa5501524ed5f29956b79ea0f5ba00512059d",
+   "what": "verbatim-bench invariance --finals-out, arm ragged-const: every level's final text and word timings for every stream, as the wire carried them. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-invariance-fixed-churn.json.gz": {
+   "bytes_as_written": 11329,
+   "bytes_gz": 1842,
+   "bytes_raw": 11319,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-invariance",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/invariance-fixed-churn.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "workdir": 1
+    }
+   },
+   "sha256_as_written": "527839d390d823bf5ef7acc5df25a6e80a440f1e6429dad1548b287c8400cae3",
+   "sha256_gz": "820ae52b873d436d9ec398755ca028e7829e8a2d7de474d932f3bcb5a0677400",
+   "sha256_raw": "a3e5d116a842eb0bccaac38b30436d8a66261bb8ed46b95383e5684f5ae97e1d",
+   "what": "verbatim-bench invariance (bench/src/verbatim_bench/invariance.py), arm fixed-churn of scripts/step1_gate_runbook.sh at ba20c49 on one NVIDIA B300 SXM6 AC (RUNBOOK_GPU_INDEX 0), bucket 128, max level 42, eager encoder step, 256 LibriSpeech test-other streams, --padding fixed, the max level (42) churned on a 20 s triangle wave: each level's digest, the first difference of every stream that differs between levels, and the verdict. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-invariance-fixed-const.json.gz": {
+   "bytes_as_written": 2692,
+   "bytes_gz": 684,
+   "bytes_raw": 2682,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-invariance",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/invariance-fixed-const.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "workdir": 1
+    }
+   },
+   "sha256_as_written": "b2b3ff33bbf50b3497add4adb52e0ca15332b5d39c5b2bdbe9d0bbf32af4350c",
+   "sha256_gz": "8900c32815b9b7674e4741e482b0cf67846d4318e8205bb48b35f1fa11f785b4",
+   "sha256_raw": "dbbe654a676bccfdb57364ef0636eb4ef76c068682f943d145a9bd383a19b7cc",
+   "what": "verbatim-bench invariance (bench/src/verbatim_bench/invariance.py), arm fixed-const of scripts/step1_gate_runbook.sh at ba20c49 on one NVIDIA B300 SXM6 AC (RUNBOOK_GPU_INDEX 0), bucket 128, max level 42, eager encoder step, 256 LibriSpeech test-other streams, --padding fixed, the max level (42) held constant: each level's digest, the first difference of every stream that differs between levels, and the verdict. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-invariance-ragged-churn.json.gz": {
+   "bytes_as_written": 66292,
+   "bytes_gz": 4638,
+   "bytes_raw": 66282,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-invariance",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/invariance-ragged-churn.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "workdir": 1
+    }
+   },
+   "sha256_as_written": "4791ed19788a92e8b6e7cdfee2234922193089d6f60d0cb7ab3d4b238c68652a",
+   "sha256_gz": "de0789dde7e6d4a5ade0e10696980738fa9de12f9561c01fd2e18edb6ff30801",
+   "sha256_raw": "cf18196d9ca05582b594b43f6e913b9dfe3846b6e4005d836ad1521a59ee0ba0",
+   "what": "verbatim-bench invariance (bench/src/verbatim_bench/invariance.py), arm ragged-churn of scripts/step1_gate_runbook.sh at ba20c49 on one NVIDIA B300 SXM6 AC (RUNBOOK_GPU_INDEX 0), bucket 128, max level 42, eager encoder step, 256 LibriSpeech test-other streams, --padding ragged, the max level (42) churned on a 20 s triangle wave: each level's digest, the first difference of every stream that differs between levels, and the verdict. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-invariance-ragged-const.json.gz": {
+   "bytes_as_written": 50264,
+   "bytes_gz": 3440,
+   "bytes_raw": 50254,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-invariance",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/invariance-ragged-const.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "workdir": 1
+    }
+   },
+   "sha256_as_written": "7b8e69b791120f59beb03928761dbd179b11d434f9005416b10c5d76d8d55330",
+   "sha256_gz": "3a4ebfbccda1cd29e316af15e250245ffb26a90e86921c28dec834711b54a48f",
+   "sha256_raw": "4221b875c1702eb0f7b784f242f290cb942f2c29b88ca05aed50ca74d0db7acd",
+   "what": "verbatim-bench invariance (bench/src/verbatim_bench/invariance.py), arm ragged-const of scripts/step1_gate_runbook.sh at ba20c49 on one NVIDIA B300 SXM6 AC (RUNBOOK_GPU_INDEX 0), bucket 128, max level 42, eager encoder step, 256 LibriSpeech test-other streams, --padding ragged, the max level (42) held constant: each level's digest, the first difference of every stream that differs between levels, and the verdict. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-model.json.gz": {
+   "bytes_as_written": 422,
+   "bytes_gz": 236,
+   "bytes_raw": 402,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-preflight",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/preflight-20260926T144558.666876748Z/model.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "workdir": 2
+    }
+   },
+   "sha256_as_written": "54fb5c566727e67bdc65b673723d4c0573e8dc4c52b01949ba4902d0ab0ab06d",
+   "sha256_gz": "bd882b3241a8bcfc5525c32f34ae4519a4d36124a8b0259ad3dd8da0017679c5",
+   "sha256_raw": "fc314247af95a031b30bc9bf37a33a3e5d1c0dc18d2f3c1fdf28b220cd6b000f",
+   "what": "The runbook's preflight: the model, its revision and the sha256 of the .nemo file in the cache the server read. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-record-summary-fixed-churn.json.gz": {
+   "bytes_as_written": 2588,
+   "bytes_gz": 910,
+   "bytes_raw": 2564,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-record-summary",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/fixed-churn/record-summary.json",
+   "scrub": {
+    "links_rewritten": 2,
+    "placeholders": {
+     "step1-out": 2
+    }
+   },
+   "sha256_as_written": "717105a7c44d318422d1c7e47b15540258003e7d71a52076bb2df8b0dd93fc97",
+   "sha256_gz": "cbf5051059400edb021b7fa66d335b8b942445534a898a0d99a181f3d1661b6a",
+   "sha256_raw": "7a57f0a8041d68c3ca0a391562fd3266cae97f252a2ba8617ec974041025f319",
+   "what": "The runbook's check of arm fixed-churn's invariance record: it names the invariance record and the finals by sha256, and gives the verdict and the streams differing that it read. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-record-summary-fixed-const.json.gz": {
+   "bytes_as_written": 2540,
+   "bytes_gz": 873,
+   "bytes_raw": 2516,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-record-summary",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/fixed-const/record-summary.json",
+   "scrub": {
+    "links_rewritten": 2,
+    "placeholders": {
+     "step1-out": 2
+    }
+   },
+   "sha256_as_written": "2a4ea4b348db256c5d6e6535b89eaf31eba414ac25996c954e4900fa06bc76fd",
+   "sha256_gz": "0b5a26a1a1bd4bd1dbfa662463fad0b648a56f99abb55dee5022c2f11bab430d",
+   "sha256_raw": "ae7c8730a50c06b073c6dc94d3d72d6eaa7394d49a64ae20a09084fe872c686d",
+   "what": "The runbook's check of arm fixed-const's invariance record: it names the invariance record and the finals by sha256, and gives the verdict and the streams differing that it read. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-record-summary-ragged-churn.json.gz": {
+   "bytes_as_written": 2619,
+   "bytes_gz": 1006,
+   "bytes_raw": 2595,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-record-summary",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/ragged-churn/record-summary.json",
+   "scrub": {
+    "links_rewritten": 2,
+    "placeholders": {
+     "step1-out": 2
+    }
+   },
+   "sha256_as_written": "f15c0524d541d30dddc016b6ccf71d8e06c61b61a61992d78333f543b12ca7d3",
+   "sha256_gz": "4a565c32f64298e24761a37961ef707134d7474c305b28a9f77c62e7c1e0944e",
+   "sha256_raw": "2b2d6415c716cefa702e8b5c85dcac411507b127aad111e1b12e6d98b75d283e",
+   "what": "The runbook's check of arm ragged-churn's invariance record: it names the invariance record and the finals by sha256, and gives the verdict and the streams differing that it read. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-record-summary-ragged-const.json.gz": {
+   "bytes_as_written": 2572,
+   "bytes_gz": 972,
+   "bytes_raw": 2548,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-record-summary",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/ragged-const/record-summary.json",
+   "scrub": {
+    "links_rewritten": 2,
+    "placeholders": {
+     "step1-out": 2
+    }
+   },
+   "sha256_as_written": "f952fd517697e9b2dc33a5ce80a82cde627b3ff251f42f07ad9d8ac142e68546",
+   "sha256_gz": "9c974d0308780761a89678d7d45e7bf0ffce439a393c791822b6cf02379ef50b",
+   "sha256_raw": "c591534d996188b0fe16e6b8a6ca92a253b57f07c01f886569155ce4fbe6d69e",
+   "what": "The runbook's check of arm ragged-const's invariance record: it names the invariance record and the finals by sha256, and gives the verdict and the streams differing that it read. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-serve-spec-fixed-churn.json.gz": {
+   "bytes_gz": 1112,
+   "bytes_raw": 2461,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-serve-spec",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/fixed-churn/serve-spec.json",
+   "sha256_gz": "ef2364f2d7440aa7ff9b29689383abde0cdadb37ac2af3d1f9758f75bb16144c",
+   "sha256_raw": "c8b322171e093fd500b5863c0263206f92c7aa1b4aeeed75046a33a393393e40",
+   "what": "What `verbatim serve` builds from arm fixed-churn's command line, by the server's own code on the CPU: the argv, the execution, the tick budget and the NeMo spec. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-serve-spec-fixed-const.json.gz": {
+   "bytes_gz": 1112,
+   "bytes_raw": 2461,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-serve-spec",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/fixed-const/serve-spec.json",
+   "sha256_gz": "ef2364f2d7440aa7ff9b29689383abde0cdadb37ac2af3d1f9758f75bb16144c",
+   "sha256_raw": "c8b322171e093fd500b5863c0263206f92c7aa1b4aeeed75046a33a393393e40",
+   "what": "What `verbatim serve` builds from arm fixed-const's command line, by the server's own code on the CPU: the argv, the execution, the tick budget and the NeMo spec. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-serve-spec-ragged-churn.json.gz": {
+   "bytes_gz": 1192,
+   "bytes_raw": 2698,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-serve-spec",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/ragged-churn/serve-spec.json",
+   "sha256_gz": "63cbeca87b76afe0273ccfedfe0a1cbeda469befc76548eea2980139c0b3db8a",
+   "sha256_raw": "cb21f90a690226450edd3128c86914a75feda693c7765942e82fb77ada361d26",
+   "what": "What `verbatim serve` builds from arm ragged-churn's command line, by the server's own code on the CPU: the argv, the execution, the tick budget and the NeMo spec. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-serve-spec-ragged-const.json.gz": {
+   "bytes_gz": 1192,
+   "bytes_raw": 2698,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-serve-spec",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/ragged-const/serve-spec.json",
+   "sha256_gz": "63cbeca87b76afe0273ccfedfe0a1cbeda469befc76548eea2980139c0b3db8a",
+   "sha256_raw": "cb21f90a690226450edd3128c86914a75feda693c7765942e82fb77ada361d26",
+   "what": "What `verbatim serve` builds from arm ragged-const's command line, by the server's own code on the CPU: the argv, the execution, the tick budget and the NeMo spec. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-smoke-check-fixed-churn.json.gz": {
+   "bytes_gz": 171,
+   "bytes_raw": 233,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-smoke-check",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/fixed-churn/smoke-check.json",
+   "sha256_gz": "cbb86b08e468f7a6c5f3e7e4a79f4c4cfbd1c04e5cb011e3d8f25263e42e02b4",
+   "sha256_raw": "971733796a14a65ca9f25c6681ad43f98638dcf3762d4d451bd4239e70cdb1f1",
+   "what": "The runbook's smoke check before arm fixed-churn's gate: the tick budget, the highest p95 tick the server reported during the smoke, overruns and refusals. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-smoke-check-fixed-const.json.gz": {
+   "bytes_gz": 167,
+   "bytes_raw": 231,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-smoke-check",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/fixed-const/smoke-check.json",
+   "sha256_gz": "f80144f9967ce9e6981a5d9e13d7ad07430d6eac8da22d215010b91249595ddd",
+   "sha256_raw": "18630559db610a1d37f9874736dbf17060ab9d3deddee2d3ae3b0117794ff3fe",
+   "what": "The runbook's smoke check before arm fixed-const's gate: the tick budget, the highest p95 tick the server reported during the smoke, overruns and refusals. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-smoke-check-ragged-churn.json.gz": {
+   "bytes_gz": 170,
+   "bytes_raw": 232,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-smoke-check",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/ragged-churn/smoke-check.json",
+   "sha256_gz": "754f23846639b10e07ffba4c950dd9a6011d9476f8c18e59449f7695166d9e2b",
+   "sha256_raw": "9fa36ab3b15005ed7adb721c8c6e203b703d1ecbe91e44afa72769703e1bf664",
+   "what": "The runbook's smoke check before arm ragged-churn's gate: the tick budget, the highest p95 tick the server reported during the smoke, overruns and refusals. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-smoke-check-ragged-const.json.gz": {
+   "bytes_gz": 169,
+   "bytes_raw": 232,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": null,
+   "kind": "gate-smoke-check",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/ragged-const/smoke-check.json",
+   "sha256_gz": "299efc6c858cb2455ac19a9bd9c70f7733fb816d6cfce260ca80a7a18ccb9430",
+   "sha256_raw": "1d474ff98aa01ae748919e6b9e1ec352a09159d233e85f9e1f846827380d3a9b",
+   "what": "The runbook's smoke check before arm ragged-const's gate: the tick budget, the highest p95 tick the server reported during the smoke, overruns and refusals. It stamps no commit; the gate summary of the same run (gate-ba20c49-summary.json.gz) stamps git_head ba20c49 for every arm."
+  },
+  "gate-ba20c49-summary.json.gz": {
+   "bytes_as_written": 13016,
+   "bytes_gz": 2080,
+   "bytes_raw": 13004,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": "settings_by_arm.fixed-churn.git_head",
+   "kind": "gate-summary",
+   "original": "gate-ba20c49-b128-m42/gate-nemotron-card0-20260926T144558Z/summary.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "step1-out": 1
+    }
+   },
+   "sha256_as_written": "e623c2cf05a98e644fb0502adc29f4bec73f19a8a906310f0af2c03db4dc28c7",
+   "sha256_gz": "7e3e4978990b1859b19be17c711794068b6cdff72719c9a2a8de4e498fd1bf2d",
+   "sha256_raw": "f7c07b6d1583761b409b1b1b8ecc93e7034a1bb1108f8059acff5b23883e5b82",
+   "what": "scripts/step1_gate_runbook.sh at ba20c49 on one NVIDIA B300 SXM6 AC (RUNBOOK_GPU_INDEX 0), bucket 128, max level 42, eager encoder step, 256 LibriSpeech test-other streams: the runbook's summary of its four arms (per-arm verdict, streams differing at each level, the admission monitor, the digests' agreement across the restart between arms, and its exit code)."
+  },
+  "places-26eaebb-eager.json.gz": {
+   "bytes_as_written": 4808792,
+   "bytes_gz": 566004,
+   "bytes_raw": 4808648,
+   "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+   "commit_stamp": "verbatim_commit",
+   "kind": "places",
+   "original": "run-26eaebb-b300-captures/places-eager.json",
+   "scrub": {
+    "links_rewritten": 3,
+    "placeholders": {
+     "checkout": 6,
+     "step1-out": 3
+    }
+   },
+   "sha256_as_written": "7d937adf40956982b5f5be123e4d8dc604ae31c71d4d85371a9d035a2ad3d510",
+   "sha256_gz": "ba0d0b38a80049c9fa8aeb9cf60b7f4d94135f794fdd7c6fb28b053cba79f77b",
+   "sha256_raw": "c79bc2f7c176dfb09d037ec2f4f646e33297ae5a0b8d8597d513af755114ebe8",
+   "what": "scripts/compare_captures.py --places-out: the recordings where the fixed-padding capture server-26eaebb-fixed-eager-c32.json.gz (side a, the served answer) and the ragged-padding capture server-26eaebb-ragged-eager-c32.json.gz (side b) differ, with server-26eaebb-fixed-eager-c8.json.gz as --repeat; the shape scripts/step1_places.py scores. It names each capture by sha256. Its verbatim_commit is the captures' commit; the comparator's own commit is not stamped."
+  },
+  "server-26eaebb-fixed-eager-c32.json.gz": {
+   "bytes_as_written": 6061195,
+   "bytes_gz": 915259,
+   "bytes_raw": 6060605,
+   "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-26eaebb-b300-captures/fixed-eager-c32.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 12,
+     "home": 3,
+     "step1-out": 3,
+     "venv": 9,
+     "workdir": 17
+    }
+   },
+   "sha256_as_written": "d05885de6369f393d35fd702d46ab353c099c3290389fe901d1756c6b71086b7",
+   "sha256_gz": "8dad068f0c00a362410fb796271a69ec03c2e26e03561cdd512bde2428ff0a41",
+   "sha256_raw": "d777ee42cec92e37e8691af71e78579b2314f6e806f42dfebe9eb035d7537233",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server on one NVIDIA B300 SXM6 AC (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding fixed, word confidence off, the client admitting 32 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "server-26eaebb-fixed-eager-c8.json.gz": {
+   "bytes_as_written": 6061723,
+   "bytes_gz": 916284,
+   "bytes_raw": 6061133,
+   "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-26eaebb-b300-captures/fixed-eager-c8.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 12,
+     "home": 3,
+     "step1-out": 3,
+     "venv": 9,
+     "workdir": 17
+    }
+   },
+   "sha256_as_written": "06eb2fc2d14608105ec2faa67b1778b04bab35961f845410a1170143e1b22365",
+   "sha256_gz": "8a3e263170ebb3c86470a22d1a014f9bed0a7b70fe956e9f936d93abc7a3db28",
+   "sha256_raw": "bff56bb2528864124dc7d52d0e088905df284dde3d67bead20910049e1ce1600",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server on one NVIDIA B300 SXM6 AC (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding fixed, word confidence off, the client admitting 8 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "server-26eaebb-fixed-graphs-c32.json.gz": {
+   "bytes_as_written": 6061208,
+   "bytes_gz": 915132,
+   "bytes_raw": 6060618,
+   "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-26eaebb-b300-captures/fixed-graphs-c32.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 12,
+     "home": 3,
+     "step1-out": 3,
+     "venv": 9,
+     "workdir": 17
+    }
+   },
+   "sha256_as_written": "da98879462ec08e208a1ca6b1bbe3e8172906b15d5080a853045890b2688e7b3",
+   "sha256_gz": "ea021214f789eda74a105947d883d261a7972df7fe6d17189ad29f26d04bc5e1",
+   "sha256_raw": "bc1c3a9a213543b7291d861ab4bc0983b3b6a95377d4b46eebb8f6f793e68c53",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server on one NVIDIA B300 SXM6 AC (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, the encoder step on the CUDA-graph path, decoder graphs off) with --padding fixed, word confidence off, the client admitting 32 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "server-26eaebb-fixed-graphs-c8.json.gz": {
+   "bytes_as_written": 6061769,
+   "bytes_gz": 916181,
+   "bytes_raw": 6061179,
+   "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-26eaebb-b300-captures/fixed-graphs-c8.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 12,
+     "home": 3,
+     "step1-out": 3,
+     "venv": 9,
+     "workdir": 17
+    }
+   },
+   "sha256_as_written": "07da0f331b8c2aae2f97eba27808c8a89d2ec4b42ca6c220dac1e23679587242",
+   "sha256_gz": "2ef6a2f46cc4375b5303593afc908d904fcdec98a72b33ecd98faed499d6bb49",
+   "sha256_raw": "4d74d5eedf35072ed436c0ad7366ac5f23e23548539f87e7e1e64d0c0c5aa9d3",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server on one NVIDIA B300 SXM6 AC (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, the encoder step on the CUDA-graph path, decoder graphs off) with --padding fixed, word confidence off, the client admitting 8 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "server-26eaebb-ragged-eager-c32-repeat.json.gz": {
+   "bytes_as_written": 6061431,
+   "bytes_gz": 915157,
+   "bytes_raw": 6060841,
+   "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-26eaebb-b300-captures/ragged-eager-c32-repeat.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 12,
+     "home": 3,
+     "step1-out": 3,
+     "venv": 9,
+     "workdir": 17
+    }
+   },
+   "sha256_as_written": "184491c0c2587461888810653d9ead15038dab07ba7951e947c41b00bf3fa9fa",
+   "sha256_gz": "c770eac484cf66b5270cc6e5d91024a1ad3e6547a831cfd2e6ed027496efff26",
+   "sha256_raw": "5625511450fb1d7504a195d3369855ab316b358644fae561d35dcbe6139a5369",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server on one NVIDIA B300 SXM6 AC (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding ragged, word confidence off, the client admitting 32 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run. A second ragged capture at the same commit and setting, taken after the first on the same server: ragged against ragged."
+  },
+  "server-26eaebb-ragged-eager-c32.json.gz": {
+   "bytes_as_written": 6061312,
+   "bytes_gz": 915258,
+   "bytes_raw": 6060722,
+   "commit": "26eaebb128cd00ea7b38c1245df4ac95b54cee6f",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-26eaebb-b300-captures/ragged-eager-c32.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 12,
+     "home": 3,
+     "step1-out": 3,
+     "venv": 9,
+     "workdir": 17
+    }
+   },
+   "sha256_as_written": "cdacd25c6c81130236a58dbf9fa15136f9c2ec32505cc15ca657e83fd781b72f",
+   "sha256_gz": "43f79929efe40f3d8d284219d2a4c8682cbcb37b2a909faebc136b574d09da23",
+   "sha256_raw": "5bb28a2a34c701cfed2428d44dfd264145758b582b6499644bee5aca4596e867",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server on one NVIDIA B300 SXM6 AC (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding ragged, word confidence off, the client admitting 32 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run."
+  },
+  "server-ba20c49-fixed-c64.FAILED.json.gz": {
+   "bytes_as_written": 6762748,
+   "bytes_gz": 463349,
+   "bytes_raw": 6762158,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture-failed",
+   "original": "run-ba20c49-b300-overload-c64/fixed-c64.FAILED.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 12,
+     "home": 3,
+     "step1-out": 3,
+     "venv": 9,
+     "workdir": 17
+    }
+   },
+   "sha256_as_written": "d98e26fcad18ce161b07f6c1d28ba43375a1d731d106b3d16129257f07a599f0",
+   "sha256_gz": "58185d0458e75d4bfe4869b3f54f7707f12d41b5ec61f45edfab31f2352e3ca1",
+   "sha256_raw": "b45c5fe0448dd4761d52eb74222079d7cdd395c65d675c3549d5ce08a1d0da3b",
+   "what": "EVIDENCE OF A REFUSED RUN, NOT A CAPTURE: probes/server_frozen_answers.py with --padding fixed, the client admitting 64 sessions at once, on a server process started for it after the two ragged runs (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off). The server's admission control refused most sessions, so the probe did not write a capture and wrote this record of the failure instead (success false, status FAILED). scripts/compare_captures.py refuses it as incomplete; it is kept only for its tick and refusal counts."
+  },
+  "server-ba20c49-ragged-c128-overload-run1.json.gz": {
+   "bytes_as_written": 6063362,
+   "bytes_gz": 914771,
+   "bytes_raw": 6062772,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-ba20c49-b300-overload/ragged-c128-run1.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 12,
+     "home": 3,
+     "step1-out": 3,
+     "venv": 9,
+     "workdir": 17
+    }
+   },
+   "sha256_as_written": "2cfc48fb56aa7a93ae8da0c3fc8d10bdc8ce7083939573fbff45ab84fcc85593",
+   "sha256_gz": "8d4b75a808df078e6dc59e01e55e59a3b798cd12e38f21ffe17d4a0a63a617f8",
+   "sha256_raw": "a1182b3baee0215baf4348d51e63cdf8513bb1d203a8deea631139c5491a4373",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server on one NVIDIA B300 SXM6 AC (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding ragged, word confidence off, the client admitting 128 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run. The first run of an overload test (the client admitting as many sessions as the bucket holds); complete."
+  },
+  "server-ba20c49-ragged-c128-overload-run2.FAILED.json.gz": {
+   "bytes_as_written": 6833225,
+   "bytes_gz": 481978,
+   "bytes_raw": 6832635,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture-failed",
+   "original": "run-ba20c49-b300-overload/ragged-c128-run2.FAILED.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 12,
+     "home": 3,
+     "step1-out": 3,
+     "venv": 9,
+     "workdir": 17
+    }
+   },
+   "sha256_as_written": "e46da5147a222e50e63ab59f0e12ba3b3c919a71626577ee889f6b5a33104eca",
+   "sha256_gz": "df796e71e31b255a652790c44b02ba94cee0c3e5d5feab17b2d0deecfb1dca24",
+   "sha256_raw": "d08096b01a92148a0be7145f9d43d8ead8fadfe1fcbcdca4c1d85e80582c5d47",
+   "what": "EVIDENCE OF A REFUSED RUN, NOT A CAPTURE: the second run of the overload test, on the same server right after the first. The server's admission control refused most sessions, so the probe did not write a capture and wrote this record of the failure instead (success false, status FAILED). scripts/compare_captures.py refuses it as incomplete; it is kept only for its refusal counts, and there is no second complete run at concurrency 128 to compare the first with."
+  },
+  "server-ba20c49-ragged-c64-first-attempt.FAILED.json.gz": {
+   "bytes_as_written": 6798491,
+   "bytes_gz": 408973,
+   "bytes_raw": 6797901,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture-failed",
+   "original": "run-ba20c49-b300-overload-c64/ragged-c64-run1.FAILED.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 12,
+     "home": 3,
+     "step1-out": 3,
+     "venv": 9,
+     "workdir": 17
+    }
+   },
+   "sha256_as_written": "f8dcd19494c500f3654caabf51c324dc143affc8b7eb0e1bfb16443412f6dae5",
+   "sha256_gz": "3e05f9a2efc85540ba11b05d128ea5ff6934300feeeea1547c9de9af177084c3",
+   "sha256_raw": "3e4fbd72dae4d085e2542140e8fa6c5d5a9fbd90900120fffcd27088250a8243",
+   "what": "EVIDENCE OF A FAILED ATTEMPT, NOT A CAPTURE: the first attempt at the ragged run at concurrency 64, on a server process started for it (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off). Most recordings got no final; the server refused most sessions; the probe did not write a capture and wrote this record of the failure instead (success false, status FAILED). Its cause was not found. The retest's first run (server-ba20c49-ragged-c64-run1.json.gz) was taken minutes later on another server process. Kept only as evidence that the attempt failed; nothing is compared with it."
+  },
+  "server-ba20c49-ragged-c64-run1.json.gz": {
+   "bytes_as_written": 6064319,
+   "bytes_gz": 915206,
+   "bytes_raw": 6063729,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-ba20c49-b300-overload-c64/ragged-c64-run1.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 12,
+     "home": 3,
+     "step1-out": 3,
+     "venv": 9,
+     "workdir": 17
+    }
+   },
+   "sha256_as_written": "a0a566c4f9aa3af0126bbc8b711b98cb858d81c278fe3e3a2c0d625974d61c9e",
+   "sha256_gz": "5829ed28cf139e6b02249a18516fae08d109008f21ee252c91a190d2e01b73b0",
+   "sha256_raw": "1f9a0819ba1a6d02f52e2ebc0b9b5d41ed3f43cbc65f49170fb4d42e207456b8",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server on one NVIDIA B300 SXM6 AC (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding ragged, word confidence off, the client admitting 64 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run. The retest at concurrency 64, first run, on a server process started for it; complete. It follows the failed attempt server-ba20c49-ragged-c64-first-attempt.FAILED.json.gz, on another server process."
+  },
+  "server-ba20c49-ragged-c64-run2.json.gz": {
+   "bytes_as_written": 6064524,
+   "bytes_gz": 915456,
+   "bytes_raw": 6063934,
+   "commit": "ba20c498b12458420b481c809422d0ccfe17fa29",
+   "commit_stamp": "client.verbatim_commit",
+   "kind": "capture",
+   "original": "run-ba20c49-b300-overload-c64/ragged-c64-run2.json",
+   "scrub": {
+    "links_rewritten": 0,
+    "placeholders": {
+     "checkout": 12,
+     "home": 3,
+     "step1-out": 3,
+     "venv": 9,
+     "workdir": 17
+    }
+   },
+   "sha256_as_written": "0d90b66f34a16773572bd8daf052411106f99cc250b2812a92e5c681b05ccbdc",
+   "sha256_gz": "75d82e270b5479ecbad15ab154adbbbe72f68979793ee081766b68abf1781c6b",
+   "sha256_raw": "db03de898693aa0b6c65af773cf7bdbfa2c3d6e013cc3cc8ea481206375cc989",
+   "what": "probes/server_frozen_answers.py: all 2,939 recordings streamed through a running verbatim server on one NVIDIA B300 SXM6 AC (model nvidia/nemotron-speech-streaming-en-0.6b, bucket 128, 160 ms, bfloat16, eager encoder step, decoder graphs off) with --padding ragged, word confidence off, the client admitting 64 sessions at once; records every final text and word timing, the server's observed settings and its tick statistics before and after the run. The retest at concurrency 64, second run, right after the first on the same server process; complete: ragged against ragged at concurrency 64."
+  }
+ },
+ "scrubbed": "scripts/scrub_record_paths.py replaced the absolute paths each record's tool stamped by a placeholder: <checkout>, the verbatim checkout the tool and the server ran from; <home>, the home directory of the user who ran them; <step1-out>, the directory the step-1 tools wrote their records and logs to; <venv>, the Python virtual environment they ran in; <workdir>, the directory that held the checkout, the environment, the model cache, the corpus and the outputs, where no narrower placeholder applies. A record that names another here by sha256 names the scrubbed one. sha256_as_written and bytes_as_written are the record as its tool wrote it; scrub says what was replaced. A record without them held no path and is as written.",
+ "what": "The raw records of step 1 on one NVIDIA B300 SXM6 AC (2026-09-26, and the retest at concurrency 64 on 2026-09-27): server captures at 26eaebb (fixed padding eager and on the CUDA-graph path at concurrency 32 and 8, ragged twice at 32, and the places), an overload test at ba20c49 (one complete ragged run at concurrency 128 and the refused second run), a retest at concurrency 64 at ba20c49 (a failed first attempt at the ragged run; then, on another server process, two complete ragged runs one after the other; then, on a third, the fixed run, refused), and the invariance runbook at ba20c49 (four arms), each gzipped whole: decompressing a file gives the record its tool wrote, with only its machine paths replaced (see scrubbed)."
+}
